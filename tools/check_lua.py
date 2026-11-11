@@ -250,6 +250,21 @@ def main():
       ns.OpenRecipe(2963)
       assert(opened == 2963, "open recipe")
 
+      -- Prices: with a TSM-like source, steps and the total get costs; vendor reagents use the
+      -- merchant buy price. Without a source, no cost is shown.
+      assert(ns.DescribeNeed(c.professions.Tailoring, c).cost == nil, "cost: hidden without prices")
+      TSM_API = { GetCustomPriceValue = function(_, itemStr)
+        return ({ ["i:2589"] = 100 })[itemStr] end }
+      ns.DetectPriceSource()
+      assert(ns.PriceSourceName == "TSM", "cost: TSM detected")
+      assert(ns.BuyCost(2589, 3) == 300 and ns.BuyCost(2320, 2) == 20, "cost: AH and vendor prices")
+      ns.UpdateNeeds(c)
+      local dc = ns.DescribeNeed(c.professions.Tailoring, c)
+      assert(dc.cost and dc.cost:find("TSM", 1, true), "cost: total line, got " .. tostring(dc.cost))
+      assert(dc.steps[1].range:find("c", 1, true), "cost: step range has a price, got " .. dc.steps[1].range)
+      TSM_API, ns.PriceSource, ns.PriceSourceName = nil, nil, nil
+      ns.UpdateNeeds(c)
+
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log
       local joined = table.concat(log, " / ")

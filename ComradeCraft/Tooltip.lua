@@ -124,6 +124,20 @@ function ns.DescribeNeed(p, c)
     end
     return table.concat(list, ", ")
   end
+  -- Costs (only with a real price source): mats of `mult` crafts, skipping items listed in
+  -- `skip` (made by another entry of the same step). Returns copper, complete?.
+  local priced = ns.PriceSource ~= nil
+  local function MatsCost(spell, mult, skip)
+    local s, sum, complete = ns.Recipes[spell], 0, true
+    for i = 1, #s[7], 2 do
+      local item = s[7][i]
+      if not (skip and skip[item]) then
+        local v = ns.BuyCost(item, s[7][i + 1] * mult)
+        if v then sum = sum + v else complete = false end
+      end
+    end
+    return sum, complete
+  end
   local stock = {}
   for item, n in pairs(need.used or {}) do stock[item] = n end
   local allKnown = {}
@@ -137,7 +151,7 @@ function ns.DescribeNeed(p, c)
     local req = seen and seen.req or (lib and lib.GetRequiredSkill and lib:GetRequiredSkill(line, spell))
     local guessed = not (seen and seen.req) and lib and lib.IsBorrowed and lib:IsBorrowed(spell, "requiredSkill")
     local cost = seen and seen.cost and ns.Money(seen.cost) or ns.L["cost unknown until you visit the trainer"]
-    return { kind = "learn", spell = spell, item = ns.Recipes[spell][5],
+    return { kind = "learn", spell = spell, item = ns.Recipes[spell][5], copper = seen and seen.cost,
       text = ns.L["Learn %s at the trainer (skill %s, %s)"]:format(SpellName(spell),
         (guessed and "~" or "") .. tostring(req or "?"), cost) }
   end
@@ -148,6 +162,10 @@ function ns.DescribeNeed(p, c)
     table.sort(subSpells)
     for _, sub in ipairs(subSpells) do entries[#entries + 1] = LearnEntry(sub) end
     entries[#entries + 1] = LearnEntry(step.spell)
+    local stepCost, stepComplete, made = 0, true, {}
+    for _, e in ipairs(entries) do
+      if e.copper then stepCost = stepCost + e.copper else stepComplete = false end
+    end
     for _, sub in ipairs(subSpells) do
       local s = ns.Recipes[sub]
       local item, qty = s[5], math.max(1, s[6])
@@ -158,9 +176,12 @@ function ns.DescribeNeed(p, c)
       stock[item] = (stock[item] or 0) - fromStock
       local toMake = wanted - fromStock
       local text
+      made[item] = true
       if toMake > 0 then
         text = ns.L["Craft %d %s (%s)"]:format(toMake, ItemName(item), ReagentList(sub, toMake / qty))
         if fromStock > 0 then text = text .. ns.L[" + %d from stock"]:format(fromStock) end
+        local v, ok = MatsCost(sub, toMake / qty)
+        stepCost, stepComplete = stepCost + v, stepComplete and ok
       else
         text = ns.L["%d %s from stock"]:format(fromStock, ItemName(item))
       end
@@ -169,7 +190,12 @@ function ns.DescribeNeed(p, c)
     entries[#entries + 1] = { kind = "craft", spell = step.spell, item = ns.Recipes[step.spell][5],
       text = ns.L["Craft %dx %s (%s)"]:format(Up(step.crafts), SpellName(step.spell),
         ReagentList(step.spell, Up(step.crafts))) }
+    local v, ok = MatsCost(step.spell, Up(step.crafts), made)
+    stepCost, stepComplete = stepCost + v, stepComplete and ok
     local range = ("%d-%d"):format(step.from, step.to)
+    if priced then
+      range = range .. "  |cffb0b0b0" .. (stepComplete and "~" or ">") .. ns.Money(math.floor(stepCost)) .. "|r"
+    end
     out.steps[#out.steps + 1] = { range = range, entries = entries }
     out.plan[#out.plan + 1] = range .. " :"
     for _, e in ipairs(entries) do out.plan[#out.plan + 1] = "  " .. e.text end
@@ -177,6 +203,27 @@ function ns.DescribeNeed(p, c)
   local k = need.knownOnly
   if k and k.reached < need.reached then
     out.knownOnly = ns.L["With only your current recipes, you would be stuck at %d."]:format(k.reached)
+  end
+
+  -- Total still to spend: missing mats (net of stock) + vendor reagents + known trainer costs.
+  if priced then
+    local total, complete = 0, true
+    for _, list in ipairs({ need.items or {}, need.vendor or {} }) do
+      for item, n in pairs(list) do
+        local v = ns.BuyCost(item, n)
+        if v then total = total + v else complete = false end
+      end
+    end
+    for _, step in ipairs(out.steps) do
+      for _, e in ipairs(step.entries) do
+        if e.kind == "learn" then
+          if e.copper then total = total + e.copper else complete = false end
+        end
+      end
+    end
+    out.cost = (complete and ns.L["Estimated cost: %s (%s prices)."]
+      or ns.L["Estimated cost: at least %s (%s prices, some items have no price)."])
+      :format(ns.Money(math.floor(total)), ns.PriceSourceName)
   end
 
   local used = {}
@@ -218,6 +265,7 @@ ns.commands.needs = function()
     for _, l in ipairs(d.plan or {}) do Print("  " .. l) end
     if d.used then Print("  " .. d.used) end
     if d.knownOnly then Print("  " .. d.knownOnly) end
+    if d.cost then Print("  " .. d.cost) end
     local need = c.needs and c.needs[p.skillLine]
     for item, n in pairs(need and need.items or {}) do
       Print(ns.L["  missing %s x%d"]:format(ItemName(item), n))

@@ -68,6 +68,12 @@ def main():
             if item and count:
                 rec["reagents"] += [item, count]
 
+    # Spells without reagents are not crafts (Disenchant 13262 sits in Enchanting's skill line).
+    dropped = [s for s, r in recipes.items() if not r["reagents"]]
+    for s in dropped:
+        del recipes[s]
+    print(f"dropped {len(dropped)} reagent-less spells (e.g. {sorted(dropped)[:5]})")
+
     # Merchant prices of every reagent and crafted item: a value proxy when no AH data exists.
     items = set()
     for r in recipes.values():

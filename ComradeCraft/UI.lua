@@ -227,6 +227,7 @@ local function LayoutProfession(y, name, p, c)
   end
 
   local extra = {}
+  if d.cost then extra[#extra + 1] = "|cffffd100" .. d.cost .. "|r" end
   if d.used then extra[#extra + 1] = "|cff80c080" .. d.used .. "|r" end
   if d.knownOnly then extra[#extra + 1] = "|cff9d9d9d" .. d.knownOnly .. "|r" end
   r.mid:ClearAllPoints()

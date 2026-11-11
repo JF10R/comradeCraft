@@ -59,6 +59,9 @@ local translations = {
     ["Craft %d %s (%s)"] = "Crafte %d %s (%s)",
     ["Craft %dx %s (%s)"] = "Crafte %dx %s (%s)",
     ["%d %s (vendor)"] = "%d %s (vendeur)",
+    ["Estimated cost: %s (%s prices)."] = "Coût estimé : %s (prix %s).",
+    ["Estimated cost: at least %s (%s prices, some items have no price)."] =
+      "Coût estimé : au moins %s (prix %s, certains objets sans prix).",
     [" + %d from stock"] = " + %d déjà en stock",
     ["%d %s from stock"] = "%d %s déjà en stock",
     ["With only your current recipes, you would be stuck at %d."] =

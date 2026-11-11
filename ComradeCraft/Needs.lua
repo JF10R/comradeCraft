@@ -37,6 +37,40 @@ local function Expand(spell, producers, depth, raw, subs, mult)
   end
 end
 
+-- Auction prices from TSM (DBMarket) or Auctionator, when one is loaded. Sets
+-- ns.PriceSource(itemID) -> copper|nil and ns.PriceSourceName.
+function ns.DetectPriceSource()
+  if TSM_API and TSM_API.GetCustomPriceValue then
+    ns.PriceSourceName = "TSM"
+    ns.PriceSource = function(item)
+      local ok, v = pcall(TSM_API.GetCustomPriceValue, "DBMarket", "i:" .. item)
+      return ok and v or nil
+    end
+  elseif Auctionator and Auctionator.API and Auctionator.API.v1
+    and Auctionator.API.v1.GetAuctionPriceByItemID then
+    ns.PriceSourceName = "Auctionator"
+    ns.PriceSource = function(item)
+      local ok, v = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "ComradeCraft", item)
+      return ok and v or nil
+    end
+  end
+end
+ns.On("PLAYER_LOGIN", function()
+  ns.DetectPriceSource()
+  ns.RequestRefresh()
+end)
+
+-- Cost of buying `n` of an item, in copper, or nil when no real price is known:
+-- AH price, or the merchant buy price for vendor reagents. Never the sell-price proxy.
+function ns.BuyCost(item, n)
+  if ns.IsVendorItem(item) then
+    local p = ns.ItemPrices and ns.ItemPrices[item]
+    if p and p[2] > 0 then return p[2] * n end
+  end
+  local v = ns.PriceSource and ns.PriceSource(item)
+  return v and v > 0 and v * n or nil
+end
+
 -- Value of one item in copper: AH price if a source is plugged in (ns.PriceSource),
 -- else the merchant price (buy price for vendor reagents, sell price otherwise). Min 1.
 function ns.ItemValue(item)
