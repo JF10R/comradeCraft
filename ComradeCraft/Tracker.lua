@@ -242,6 +242,11 @@ function ns.RefreshTracker()
     local first = d.steps and d.steps[1]
     local info = {}
     if d.status then info[#info + 1] = "|cff9d9d9d" .. d.status .. "|r" end
+    if d.rank and not (step and first) then
+      info[#info + 1] = "|cffffd100" .. d.rank.title .. "|r"
+      for _, e in ipairs(d.rank.entries) do info[#info + 1] = "|cff66ccff" .. e.text .. "|r |cff9d9d9d" .. e.detail .. "|r" end
+      for _, n in ipairs(d.rank.notes) do info[#info + 1] = "|cff9d9d9d" .. n .. "|r" end
+    end
     if step and first then
       local color = ns.RecipeColor(step.spell, p.rank) or "grey"
       local chance = math.floor(ns.SkillUpChance(step.spell, p.rank) * 100 + 0.5)

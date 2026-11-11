@@ -97,7 +97,8 @@ def main():
         used.update((a, b))
     used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container",
                  "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other", "now", "soon", "later",
-                 "pending", "accepted", "declined", "done", "cancelled"])
+                 "pending", "accepted", "declined", "done", "cancelled",
+                 "Journeyman", "Expert", "Artisan", "Master"])
     # A lone backslash before a letter ("Interface\DialogFrame" typed with one) is not a
     # path separator in Lua: the texture silently fails to load.
     for n in files:
@@ -394,6 +395,14 @@ def main():
       ns.AddSourceLines({ AddLine = function(_, l) tl[#tl + 1] = l end, AddDoubleLine = function(_, l, r) tl[#tl + 1] = l .. "=" .. r end }, 3915)
       assert(table.concat(tl, "|"):find("Near (Zone14 50, 52)", 1, true) and table.concat(tl, "|"):find("and 3 more", 1, true),
         "sources: tooltip " .. table.concat(tl, "|"))
+      -- Next rank: Cooking at 150 -> the Expert Cookbook (skill 125) from its vendor or the AH.
+      local ra = ns.RankAdvice({ skillLine = 185, rank = 150, max = 150 })
+      assert(ra and ra.entries[1] and ra.entries[1].item == 16072 and ra.entries[1].detail:find("125", 1, true),
+        "rank: expert cookbook " .. tostring(ra and ra.entries[1] and ra.entries[1].detail))
+      local rb = ns.RankAdvice({ skillLine = 197, rank = 150, max = 150 })
+      assert(rb and #rb.entries == 0 and rb.notes[1]:find("trainer", 1, true), "rank: primary from a trainer")
+      assert(ns.RankAdvice({ skillLine = 185, rank = 225, max = 225 }).notes[1]:find("quest", 1, true), "rank: artisan cooking quest")
+      assert(ns.DescribeNeed({ skillLine = 185, rank = 150, max = 150 }, { known = { [185] = {} } }).rank, "rank: shown at the cap")
       -- A visited trainer (exact position) beats the capped LibProfessionDB list.
       ComradeCraftDB.trainerSpots = { [5482] = { name = "Stephen Ryback", line = 197, map = 1014, x = 51, y = 51 } }
       ComradeCraftDB.trainer = ComradeCraftDB.trainer or {}

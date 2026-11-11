@@ -172,6 +172,52 @@ function ns.OpenRecipe(spell)
 end
 
 
+-- Next rank of a profession (raises the cap by 75). Secondary professions learn Expert from a
+-- book (LibProfessionDB: item, required skill, vendors; also on the AH); otherwise a trainer,
+-- with Classic's requirements marked unconfirmed. Returns { title, entries, notes } or nil.
+local RANK_NAMES = { [75] = "Journeyman", [150] = "Expert", [225] = "Artisan", [300] = "Master" }
+local SECONDARY = { [185] = true, [129] = true, [356] = true }
+local CLASSIC_REQ = { [75] = { 50, 10 }, [150] = { 125, 20 }, [225] = { 200, 35 }, [300] = { 275, 50 } }
+
+function ns.RankAdvice(p)
+  local line, max = p.skillLine, p.max
+  if not (line and max and RANK_NAMES[max]) or ns.GATHERING[line] and line ~= 356 then return nil end
+  local out = { title = ns.L["Next rank: %s (%d to %d)"]:format(ns.L[RANK_NAMES[max]], max, max + 75),
+    entries = {}, notes = {} }
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local book, bookData
+  for spell, e in pairs(lib and lib.GetRecipes and lib:GetRecipes(line) or {}) do
+    if lib.skillRankBooks and lib.skillRankBooks[spell] and e.requiredSkill
+      and e.requiredSkill < max and e.requiredSkill >= max - 75 then
+      book, bookData = spell, e
+    end
+  end
+  if book then
+    local item = bookData.itemId
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local name, _, _, _, reqLevel = get(item)
+    local parts = { ns.L["skill %d"]:format(bookData.requiredSkill) }
+    if reqLevel and reqLevel > 1 then parts[#parts + 1] = ns.L["level %d"]:format(reqLevel) end
+    local src = ns.RecipeSources and ns.RecipeSources(book)
+    if src and src.vendor then
+      local names = {}
+      for i = 1, math.min(2, #src.vendor.list) do names[#names + 1] = src.vendor.list[i].name or "?" end
+      parts[#parts + 1] = ns.L["sold by %s"]:format(table.concat(names, ", "))
+    end
+    local ah = ns.PriceSource and ns.PriceSource(item)
+    parts[#parts + 1] = ah and ns.L["or at the AH (~%s)"]:format(ns.Money(math.floor(ah))) or ns.L["or at the AH"]
+    out.entries[1] = { kind = "learn", spell = book, item = item, label = name or ItemName(item),
+      text = ns.L["Learn %s"]:format(name or ItemName(item)), detail = table.concat(parts, " - ") }
+  elseif SECONDARY[line] and max >= 225 then
+    out.notes[1] = ns.L["This rank comes from a quest; it is not in our data yet."]
+  else
+    local req = CLASSIC_REQ[max]
+    out.notes[1] = ns.L["Learn it from a trainer of this profession (in Classic: skill %d and character level %d; unconfirmed on Forever)."]
+      :format(req[1], req[2])
+  end
+  return out
+end
+
 -- Human-readable text for one profession's need, shared by the window and /comrade needs.
 -- Returns { status, plan = {lines}, used, vendor, blocked } (missing parts are nil).
 function ns.DescribeNeed(p, c)
@@ -185,7 +231,7 @@ function ns.DescribeNeed(p, c)
     return { status = ns.L["Open this profession's window once so your recipes can be read."] }
   end
   if p.rank >= p.max then
-    return { status = ns.L["At the cap (%d). Visit the trainer for the next rank."]:format(p.max) }
+    return { status = ns.L["At the cap (%d)."]:format(p.max), rank = ns.RankAdvice(p) }
   end
   if not need then return { status = ns.L["No data."] } end
 
@@ -325,6 +371,8 @@ function ns.DescribeNeed(p, c)
     out.blocked = why .. (#learn > 0 and ns.L[" To learn: %s."]:format(table.concat(learn, ", "))
       or ns.L[" No recipe to learn found within the next 25 points."])
   end
+  -- The plan reaches the cap: what comes next.
+  if (need.reached or 0) >= p.max then out.rank = ns.RankAdvice(p) end
   return out
 end
 
@@ -375,5 +423,10 @@ ns.commands.needs = function()
     end
     if d.vendor then Print("  " .. d.vendor) end
     if d.blocked then Print("  " .. d.blocked) end
+    if d.rank then
+      Print("  " .. d.rank.title)
+      for _, e in ipairs(d.rank.entries) do Print("    " .. e.text .. " (" .. e.detail .. ")") end
+      for _, n in ipairs(d.rank.notes) do Print("    " .. n) end
+    end
   end
 end

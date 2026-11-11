@@ -597,6 +597,16 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.bottom:SetText(table.concat(bottom, "\n"))
   if #bottom > 0 then yy = yy + r.bottom:GetStringHeight() + 4 end
 
+  -- Next rank: the book (hover: vendors; click: waypoint) or where to learn it.
+  if d.rank then
+    yy = yy + 4 + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "range", header = d.rank.title }, own)
+    for _, e in ipairs(d.rank.entries) do yy = yy + PlaceStep(PROF_W + 4, y - yy, RIGHT_W - 4, e, own) end
+    for _, n in ipairs(d.rank.notes) do
+      local _, nh = Label(PROF_W + 4, y - yy - 2, "|cff9d9d9d" .. n .. "|r", nil, RIGHT_W - 4)
+      yy = yy + nh + 6
+    end
+  end
+
   local h = math.max(r.shop:IsShown() and 76 or 48, yy + ROW_PAD)
   r:SetHeight(h)
   return h

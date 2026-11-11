@@ -75,8 +75,6 @@ local translations = {
       "Profession de récolte : monte en récoltant, pas en craftant.",
     ["Open this profession's window once so your recipes can be read."] =
       "Ouvre la fenêtre de cette profession une fois pour lire tes recettes.",
-    ["At the cap (%d). Visit the trainer for the next rank."] =
-      "Au maximum du palier (%d). Va voir le formateur pour le palier suivant.",
     ["No data."] = "Aucune donnée.",
     ["Learn %s at the trainer (skill %s, %s)"] = "Aller apprendre %s au formateur (skill %s, %s)",
     ["cost unknown until you visit the trainer"] = "coût inconnu tant que tu n'as pas ouvert le formateur",
@@ -494,6 +492,32 @@ local translations = {
     ["A group member can craft an upgrade for you (off by default)."] =
       "Un membre du groupe peut crafter un upgrade pour toi (désactivé par défaut).",
     ["visited"] = "visité",
+    ["Next rank: %s (%d to %d)"] =
+      "Prochain rang : %s (%d à %d)",
+    ["Journeyman"] =
+      "Compagnon",
+    ["Expert"] =
+      "Expert",
+    ["Artisan"] =
+      "Artisan",
+    ["Master"] =
+      "Maître",
+    ["skill %d"] =
+      "compétence %d",
+    ["level %d"] =
+      "niveau %d",
+    ["sold by %s"] =
+      "vendu par %s",
+    ["or at the AH (~%s)"] =
+      "ou à l'HV (~%s)",
+    ["or at the AH"] =
+      "ou à l'HV",
+    ["This rank comes from a quest; it is not in our data yet."] =
+      "Ce rang s'obtient par une quête; elle n'est pas encore dans nos données.",
+    ["Learn it from a trainer of this profession (in Classic: skill %d and character level %d; unconfirmed on Forever)."] =
+      "Apprends-le chez un maître de cette profession (en Classic : compétence %d et niveau %d; non confirmé sur Forever).",
+    ["At the cap (%d)."] =
+      "Au maximum (%d).",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =
