@@ -19,3 +19,7 @@ First version for WoW Forever (Interface 16001):
 - Help page (? button) and a short first-open tour.
 - Where to get a recipe: hover a "Learn" step for its trainers, vendors and drops (with
   Questie positions); click it for a TomTom waypoint to the nearest one.
+- Craft queue in the step panel: this step or up to the milestone, what your bags allow now,
+  and a Craft next button (one batch per click, as the game requires).
+- Collapse professions in Plan and Can craft; Can craft in columns; plan steps and a
+  milestone table with net cost (mats minus the best resale).

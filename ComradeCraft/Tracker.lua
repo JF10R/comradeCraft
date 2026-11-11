@@ -4,7 +4,7 @@
 local _, ns = ...
 local L = ns.L
 
-local W, PAD, ENTRY_H, MAX_ENTRIES = 300, 10, 18, 6
+local W, PAD, ENTRY_H, MAX_ENTRIES = 300, 10, 18, 8
 local COLOR = { orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "808080" }
 local panel, lastAnchor
 
@@ -84,6 +84,58 @@ local function CreateEntry(parent)
   return b
 end
 
+-- Craft queue of the open profession: the plan's craft entries of the current step, or of
+-- every step up to the end of the current milestone. Same recipe merged; a recipe still to
+-- learn stops the queue. Each entry: { spell, item, label, n (planned), ready (bags allow
+-- now, capped at n), enchant (needs a target item: crafted by hand) } or { learn = true }.
+function ns.CraftQueue(c, p, extent)
+  local d = ns.DescribeNeed(p, c)
+  local out, bySpell = {}, {}
+  local stop = (math.floor((p.rank or 0) / ns.MILESTONE) + 1) * ns.MILESTONE
+  for i, step in ipairs(d.steps or {}) do
+    if (extent == "milestone" and step.from >= stop) or (extent ~= "milestone" and i > 1) then break end
+    for _, e in ipairs(step.entries) do
+      if e.kind == "learn" then
+        out[#out + 1] = { learn = true, spell = e.spell, item = e.item, label = e.label, entry = e }
+        return out, stop
+      end
+      if e.kind == "craft" and not e.stock then
+        local q = bySpell[e.spell]
+        if not q then
+          q = { spell = e.spell, item = e.item, label = e.label, n = 0, entry = e,
+            enchant = ns.EnchantSlots and ns.EnchantSlots[e.spell] ~= nil }
+          bySpell[e.spell] = q
+          out[#out + 1] = q
+        end
+        q.n = q.n + (e.n or 0)
+      end
+    end
+  end
+  for _, q in ipairs(out) do
+    if not q.learn then q.ready = math.min(q.n, ns.CraftableNow(q.spell, c.bags or {})) end
+  end
+  return out, stop
+end
+
+-- The entry "Craft next" would start: the first one the bags allow (enchants excluded).
+function ns.NextCraft(queue)
+  for _, q in ipairs(queue) do
+    if q.learn then return nil, q end
+    if not q.enchant and (q.ready or 0) > 0 then return q end
+  end
+end
+
+-- One click = one batch (the game needs a click per craft, like TSM's Craft Next).
+local function CraftNext()
+  local q = panel and panel.next
+  if not q or (InCombatLockdown and InCombatLockdown()) then return end
+  local T = C_TradeSkillUI
+  local ok, err = false, "no CraftRecipe"
+  if T and T.CraftRecipe then ok, err = pcall(T.CraftRecipe, q.spell, q.ready) end
+  ns.Log(("craft queue: %d x%d -> %s"):format(q.spell, q.ready, ok and "ok" or tostring(err)))
+  if not ok then ns.Print(L["Could not start the craft (see /comrade log)."]) end
+end
+
 local function Create()
   if panel then return end
   panel = CreateFrame("Frame", "ComradeCraftTracker", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -130,6 +182,20 @@ local function Create()
   end
   panel.entries = {}
   for i = 1, MAX_ENTRIES do panel.entries[i] = CreateEntry(panel) end
+  -- Queue extent: this step, or up to the end of the current milestone.
+  panel.extent = CreateFrame("Button", nil, panel)
+  panel.extent:SetSize(W - 2 * PAD, 16)
+  panel.extent.text = panel.extent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  panel.extent.text:SetPoint("LEFT")
+  panel.extent:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  panel.extent:SetScript("OnClick", function()
+    local s = Settings()
+    s.queueExtent = s.queueExtent == "milestone" and "step" or "milestone"
+    ns.RefreshTracker()
+  end)
+  panel.craft = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+  panel.craft:SetSize(W - 2 * PAD, 24)
+  panel.craft:SetScript("OnClick", CraftNext)
   panel.shop = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
   panel.shop:SetSize(130, 20)
   panel.shop:SetText(L["Shopping list"])
@@ -155,6 +221,8 @@ function ns.RefreshTracker()
   end
   for _, b in ipairs(panel.entries) do b:Hide() end
   panel.shop:Hide()
+  panel.extent:Hide()
+  panel.craft:Hide()
   local y = PAD
   if not p then
     panel.title:SetText("ComradeCraft")
@@ -185,51 +253,63 @@ function ns.RefreshTracker()
     panel.info:ClearAllPoints()
     panel.info:SetPoint("TOPLEFT", PAD, -y)
     y = y + (panel.info:GetStringHeight() or 12) + 4
-    -- Too many entries: keep the first ones and always the last (the main craft).
-    local list = {}
-    for _, e in ipairs(first and first.entries or {}) do list[#list + 1] = e end
-    if #list > MAX_ENTRIES then
-      local last = list[#list]
-      for i = #list, MAX_ENTRIES, -1 do list[i] = nil end
-      list[MAX_ENTRIES] = last
-    end
-    for i, e in ipairs(list) do
+    -- Queue (this step, or to the end of the milestone) with what the bags allow now.
+    local extent = Settings().queueExtent == "milestone" and "milestone" or "step"
+    local queue, stop = ns.CraftQueue(c, p, extent)
+    panel.extent.text:SetText("|cff9d9d9d" .. L["Queue:"] .. "|r " .. (extent == "milestone"
+      and L["up to skill %d (click: this step only)"]:format(stop) or L["this step (click: up to the milestone)"]))
+    panel.extent:ClearAllPoints()
+    panel.extent:SetPoint("TOPLEFT", PAD, -y)
+    panel.extent:Show()
+    y = y + 18
+    local more = 0
+    for i, q in ipairs(queue) do
       local b = panel.entries[i]
-      b.entry = e
-      b.icon:SetTexture(e.item and e.item ~= 0 and GetItemIcon and GetItemIcon(e.item)
-        or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(e.spell)) or 134400)
-      b.text:SetText(e.kind == "learn" and ("|cff66ccff" .. e.text .. "|r") or e.text)
-      local h = math.max(ENTRY_H, (b.text:GetStringHeight() or 0) + 6)
-      b:SetHeight(h)
-      b:ClearAllPoints()
-      b:SetPoint("TOPLEFT", PAD, -y)
-      b:Show()
-      y = y + h
+      if not b then more = more + 1 else
+        b.entry = q.entry
+        b.icon:SetTexture(q.item and q.item ~= 0 and GetItemIcon and GetItemIcon(q.item)
+          or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(q.spell)) or 134400)
+        local text
+        if q.learn then
+          text = "|cff66ccff" .. L["Learn %s"]:format(q.label or "") .. "|r"
+        else
+          local ready = q.enchant and ("|cff9d9d9d" .. L["by hand (needs a target)"] .. "|r")
+            or ((q.ready or 0) >= q.n and ("|cff40ff40" .. L["ready"] .. "|r")
+            or ("|cffff9933" .. L["%d ready"]:format(q.ready or 0) .. "|r"))
+          text = ("%dx %s  %s"):format(q.n, q.label or "", ready)
+        end
+        b.text:SetText(text)
+        local h = math.max(ENTRY_H, (b.text:GetStringHeight() or 0) + 6)
+        b:SetHeight(h)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", PAD, -y)
+        b:Show()
+        y = y + h
+      end
     end
     local after = {}
-    -- What the bags allow for the first thing to craft (an intermediate when the step has one).
-    local todo
-    for _, e in ipairs(first and first.entries or {}) do
-      if e.kind == "learn" then break end
-      if e.kind == "craft" and not e.stock then todo = e break end
-    end
-    if todo then
-      local n = ns.CraftableNow(todo.spell, c.bags or {})
-      after[#after + 1] = n > 0
-        and ("|cff40ff40" .. L["Your bags allow %d crafts of %s now."]:format(n, ns.SpellName(todo.spell)) .. "|r")
-        or ("|cffff9933" .. L["Missing mats in your bags for %s."]:format(ns.SpellName(todo.spell)) .. "|r")
-    end
-    local second = d.steps and d.steps[2]
-    if second then
-      local last = second.entries[#second.entries]
-      after[#after + 1] = "|cff9d9d9d" .. L["Then %s: %s"]:format(second.range, last and last.text or "") .. "|r"
-    end
+    if more > 0 then after[#after + 1] = "|cff9d9d9d" .. L["+%d more"]:format(more) .. "|r" end
     panel.after:SetText(table.concat(after, "\n"))
     if #after > 0 then
       panel.after:ClearAllPoints()
-      panel.after:SetPoint("TOPLEFT", PAD, -(y + 4))
-      y = y + 8 + (panel.after:GetStringHeight() or 12)
+      panel.after:SetPoint("TOPLEFT", PAD, -(y + 2))
+      y = y + 4 + (panel.after:GetStringHeight() or 12)
     end
+    -- Craft next: one batch per click.
+    local nxt, blocker = ns.NextCraft(queue)
+    panel.next = nxt
+    if nxt then
+      panel.craft:SetText(L["Craft next: %dx %s"]:format(nxt.ready, nxt.label or ""))
+      panel.craft:SetEnabled(true)
+    else
+      panel.craft:SetText(blocker and L["Learn %s first"]:format(blocker.label or "")
+        or (#queue > 0 and L["Missing mats for the queue"] or L["Nothing to craft"]))
+      panel.craft:SetEnabled(false)
+    end
+    panel.craft:ClearAllPoints()
+    panel.craft:SetPoint("TOPLEFT", PAD, -(y + 4))
+    panel.craft:Show()
+    y = y + 32
     if ns.CanShop() and need and next(need.items or {}) then panel.shop:Show() end
   end
   y = y + 6

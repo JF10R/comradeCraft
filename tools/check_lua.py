@@ -437,6 +437,23 @@ def main():
       assert(ComradeCraftTracker and ComradeCraftTracker:IsShown(), "tracker: shown")
       assert(ComradeCraftTracker.title.text:find("Tailoring", 1, true), "tracker: title " .. tostring(ComradeCraftTracker.title.text))
       assert(ComradeCraftTracker.entries[1].entry ~= nil, "tracker: first step entries")
+      -- Craft queue: bolts first (bags hold linen), one click crafts the batch.
+      -- Craft queue: a recipe still to learn blocks it; otherwise the first batch the bags
+      -- allow (enchants are done by hand); one click sends that batch.
+      local cq = ns.CraftQueue(c, c.professions.Tailoring, "step")
+      local nq, blk = ns.NextCraft(cq)
+      assert(cq[1].learn and nq == nil and blk == cq[1], "queue: learn first blocks")
+      local pick = ns.NextCraft({ { spell = 1, n = 5, ready = 0 }, { spell = 2, n = 3, ready = 3, enchant = true },
+        { spell = 3, n = 4, ready = 2 } })
+      assert(pick and pick.spell == 3, "queue: first ready non-enchant")
+      local crafted
+      C_TradeSkillUI.CraftRecipe = function(spell, n) crafted = { spell, n } end
+      ComradeCraftTracker.next = { spell = 2963, ready = 2 }
+      ComradeCraftTracker.craft.scripts.OnClick(ComradeCraftTracker.craft)
+      assert(crafted and crafted[1] == 2963 and crafted[2] == 2, "queue: craft next sends the batch")
+      ComradeCraftDB.settings.queueExtent = "milestone"
+      ns.RefreshTracker()
+      ComradeCraftDB.settings.queueExtent = nil
       -- A step with an intermediate: the bags line is about the bolts, not the vest.
       local sc = { bags = { [2589] = 4 }, known = { [197] = { [2963] = true, [2385] = true } },
         professions = { Tailoring = { skillLine = 197, rank = 1, max = 10 } } }

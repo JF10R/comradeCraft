@@ -356,6 +356,28 @@ local translations = {
       "Coût net = mats moins la meilleure revente de chaque objet. Un + vert est un profit. Survole une ligne pour le détail.",
     ["Next: %s"] = "Ensuite : %s",
     ["Click to expand."] = "Clique pour déplier.",
+    ["Could not start the craft (see /comrade log)."] =
+      "Impossible de lancer le craft (voir /comrade log).",
+    ["Queue:"] =
+      "File :",
+    ["up to skill %d (click: this step only)"] =
+      "jusqu'à la compétence %d (clic : cette étape seulement)",
+    ["this step (click: up to the milestone)"] =
+      "cette étape (clic : jusqu'au palier)",
+    ["by hand (needs a target)"] =
+      "à la main (il faut une cible)",
+    ["ready"] =
+      "prêt",
+    ["%d ready"] =
+      "%d prêts",
+    ["Craft next: %dx %s"] =
+      "Crafter le suivant : %dx %s",
+    ["Learn %s first"] =
+      "Apprends d'abord %s",
+    ["Missing mats for the queue"] =
+      "Il manque des mats pour la file",
+    ["Nothing to craft"] =
+      "Rien à crafter",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =
@@ -364,12 +386,6 @@ local translations = {
       "Lecture des recettes de cette profession...",
     ["%d%% chance per craft (%s)"] =
       "%d%% de chance par craft (%s)",
-    ["Your bags allow %d crafts of %s now."] =
-      "Tes sacs permettent %d crafts de %s maintenant.",
-    ["Missing mats in your bags for %s."] =
-      "Il manque des mats dans tes sacs pour %s.",
-    ["Then %s: %s"] =
-      "Ensuite %s : %s",
     ["Step panel: off"] =
       "Panneau d'étape : désactivé",
     ["Step panel: on (shown with the profession window)"] =
