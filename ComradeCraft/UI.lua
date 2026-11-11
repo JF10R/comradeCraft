@@ -452,6 +452,23 @@ local function RenderGroup(filter)
     return -y
   end
 
+  -- "You can give": the current character's spare items that someone else needs.
+  local give = ns.GiveList(ns.CharKey())
+  if #give > 0 then
+    local _, hg = Label(0, y, "|cffffd100" .. L["You can give"] .. "|r  |cff9d9d9d"
+      .. L["Spare items in your bags that others need (your own plans come first)."] .. "|r", "GameFontNormal")
+    y = y - hg - 6
+    local width = math.floor((LIST_W - 8) / 3)
+    local shown = math.min(#give, 12)
+    for i = 1, shown do
+      local g = give[i]
+      local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
+      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), g.item, g.n,
+        ("-> %s %s"):format(ns.ClassColored(g.to, chars[g.to] and chars[g.to].class), ns.UrgencyText(g.step)), width)
+    end
+    y = y - math.ceil(shown / 3) * (MAT_H + 4) - 10
+  end
+
   -- Skill table: one line per character.
   local _, h = Label(0, y, "|cffffd100" .. L["Skill levels"] .. "|r", "GameFontNormal")
   y = y - h - 6
@@ -997,6 +1014,40 @@ end)
 
 ns.commands.show = ns.ToggleWindow
 
+-- Minimap tooltip: what this character needs now or soon, and what it can give.
+function ns.MinimapSummary(tt)
+  local key = ns.CharKey()
+  local c = ComradeCraftDB and ComradeCraftDB.chars and ComradeCraftDB.chars[key]
+  if not c then return end
+  local urgent = {}
+  for _, need in pairs(c.needs or {}) do
+    for item, n in pairs(need.items or {}) do
+      local step = need.when and need.when[item]
+      if ns.UrgencyRank(step) <= 2 then urgent[#urgent + 1] = { item = item, n = n, step = step } end
+    end
+  end
+  table.sort(urgent, function(a, b) return (a.step or 99) < (b.step or 99) or ((a.step == b.step) and a.n > b.n) end)
+  if #urgent > 0 then
+    tt:AddLine(" ")
+    tt:AddLine(L["You need"], 1, 0.82, 0)
+    for i = 1, math.min(#urgent, 5) do
+      local u = urgent[i]
+      tt:AddDoubleLine((ItemInfo(u.item)) or ("item:" .. u.item), ("x%d %s"):format(u.n, ns.UrgencyText(u.step)),
+        1, 1, 1, 1, 1, 1)
+    end
+  end
+  local give = ns.GiveList(key)
+  if #give > 0 then
+    tt:AddLine(" ")
+    tt:AddLine(L["You can give"], 1, 0.82, 0)
+    for i = 1, math.min(#give, 5) do
+      local g = give[i]
+      tt:AddDoubleLine(((ItemInfo(g.item)) or ("item:" .. g.item)) .. " x" .. g.n,
+        "-> " .. (g.to:match("^[^-]+") or g.to) .. " " .. ns.UrgencyText(g.step), 1, 1, 1, 1, 1, 1)
+    end
+  end
+end
+
 -- Minimap button (LibDataBroker launcher + LibDBIcon). Position saved in ComradeCraftDB.minimap.
 ns.On("PLAYER_LOGIN", function()
   local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
@@ -1008,6 +1059,8 @@ ns.On("PLAYER_LOGIN", function()
     OnClick = function() ns.ToggleWindow() end,
     OnTooltipShow = function(tt)
       tt:AddLine("ComradeCraft")
+      ns.MinimapSummary(tt)
+      tt:AddLine(" ")
       tt:AddLine(L["Click: group needs"], 1, 1, 1)
     end,
   })

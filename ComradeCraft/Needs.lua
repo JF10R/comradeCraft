@@ -366,6 +366,45 @@ function ns.GroupSupply(item, except)
   return total, list
 end
 
+-- What `key` can give: its spare items that other characters need, one entry per
+-- (item, receiver): { item, to, n = min(spare left, need), step }. Most urgent first.
+function ns.GiveList(key)
+  local chars = ns.AllChars()
+  local c = chars[key]
+  local out = {}
+  if not c then return out end
+  local items = {}
+  for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
+    for item in pairs(src) do items[item] = true end
+  end
+  for item in pairs(items) do
+    local spare = ns.Surplus(c, item)
+    if spare > 0 then
+      local wants = {}
+      for other, oc in pairs(chars) do
+        if other ~= key then
+          for _, r in ipairs(ns.NeedRows(oc, item)) do
+            wants[#wants + 1] = { to = other, n = r.n, step = r.step }
+          end
+        end
+      end
+      table.sort(wants, function(a, b) return (a.step or 99) < (b.step or 99) end)
+      for _, w in ipairs(wants) do
+        if spare <= 0 then break end
+        local n = math.min(spare, w.n)
+        spare = spare - n
+        out[#out + 1] = { item = item, to = w.to, n = n, step = w.step }
+      end
+    end
+  end
+  table.sort(out, function(a, b)
+    local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
+    if ua ~= ub then return ua < ub end
+    return a.n > b.n
+  end)
+  return out
+end
+
 -- When a material is needed, from the first plan step using it: step 1 = "now",
 -- steps 2-4 = "soon", 5+ (or unknown) = "later". Locale keys.
 function ns.Urgency(step)

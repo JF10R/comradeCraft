@@ -404,6 +404,20 @@ def main():
       tt2.AddDoubleLine = function(self, l, r) self.lines[#self.lines + 1] = l .. "|" .. r end
       ns.AddNeeds(tt2, 2592)
       assert(tt2.lines[#tt2.lines]:find("A 30", 1, true), "supply: tooltip line, got " .. tostring(tt2.lines[#tt2.lines]))
+      -- Give list: A's 30 spare go to B (needs 20, step 1), the rest to nobody.
+      ComradeCraftDB.chars["B-R"].needs[197].when = { [2592] = 1 }
+      ComradeCraftDB.chars["B-R"].needs[197].name = "Tailoring"
+      local give = ns.GiveList("A-R")
+      assert(#give == 1 and give[1].to == "B-R" and give[1].n == 20 and give[1].step == 1, "give: 20 to B, now")
+      assert(#ns.GiveList("B-R") == 0, "give: B has no spare")
+      -- Minimap summary and group view with a give list render without error.
+      local mt = { AddLine = function() end, AddDoubleLine = function() end }
+      local oldKey = ns.CharKey
+      ns.CharKey = function() return "A-R" end
+      ns.MinimapSummary(mt)
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      ns.CharKey = oldKey
       ComradeCraftDB.chars = saved2
       -- Shared calibration: an added peer's skill-up totals count, a non-added one does not.
       ComradeCraftDB.skillups = { raw = {}, colors = { green = { n = 30, gained = 10, expected = 15 } } }

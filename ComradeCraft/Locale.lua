@@ -43,6 +43,10 @@ local translations = {
     ["needs %d"] = "besoin de %d",
     ["Group total"] = "Total du groupe",
     ["Spare in the group"] = "En surplus dans le groupe",
+    ["You can give"] = "Tu peux donner",
+    ["Spare items in your bags that others need (your own plans come first)."] =
+      "Objets en surplus dans tes sacs dont d'autres ont besoin (tes propres plans passent d'abord).",
+    ["You need"] = "Il te faut",
     ["group: %d"] = "groupe : %d",
     ["now"] = "maintenant",
     ["soon"] = "bientôt",
