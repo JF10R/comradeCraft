@@ -114,6 +114,16 @@ function ns.DescribeNeed(p, c)
   -- the main craft. out.steps = { { range, entries = { { kind, spell, item, text } } } };
   -- out.plan is the same as flat text lines (for /comrade needs).
   local out = { plan = {}, steps = {} }
+  -- "16 Bolt of Woolen Cloth, 8 Fine Thread (vendor)" for `mult` crafts of a recipe.
+  local function ReagentList(spell, mult)
+    local s, list = ns.Recipes[spell], {}
+    for i = 1, #s[7], 2 do
+      local item, n = s[7][i], Up(s[7][i + 1] * mult)
+      list[#list + 1] = ns.IsVendorItem(item) and ns.L["%d %s (vendor)"]:format(n, ItemName(item))
+        or ("%d %s"):format(n, ItemName(item))
+    end
+    return table.concat(list, ", ")
+  end
   local stock = {}
   for item, n in pairs(need.used or {}) do stock[item] = n end
   local allKnown = {}
@@ -141,17 +151,15 @@ function ns.DescribeNeed(p, c)
     for _, sub in ipairs(subSpells) do
       local s = ns.Recipes[sub]
       local item, qty = s[5], math.max(1, s[6])
-      local wanted = Up(step.subs[sub] * qty)
+      -- Scaled to the rounded-up main craft count, so "37x Gloves (148 Bolts)" matches.
+      local scale = step.crafts > 0 and Up(step.crafts) / step.crafts or 1
+      local wanted = Up(step.subs[sub] * scale * qty)
       local fromStock = math.min(stock[item] or 0, wanted)
       stock[item] = (stock[item] or 0) - fromStock
       local toMake = wanted - fromStock
       local text
       if toMake > 0 then
-        local raw = {}
-        for i = 1, #s[7], 2 do
-          raw[#raw + 1] = ("%d %s"):format(Up(s[7][i + 1] * toMake / qty), ItemName(s[7][i]))
-        end
-        text = ns.L["Craft %d %s (%s)"]:format(toMake, ItemName(item), table.concat(raw, ", "))
+        text = ns.L["Craft %d %s (%s)"]:format(toMake, ItemName(item), ReagentList(sub, toMake / qty))
         if fromStock > 0 then text = text .. ns.L[" + %d from stock"]:format(fromStock) end
       else
         text = ns.L["%d %s from stock"]:format(fromStock, ItemName(item))
@@ -159,7 +167,8 @@ function ns.DescribeNeed(p, c)
       entries[#entries + 1] = { kind = "craft", spell = sub, item = item, text = text }
     end
     entries[#entries + 1] = { kind = "craft", spell = step.spell, item = ns.Recipes[step.spell][5],
-      text = ns.L["Craft %dx %s"]:format(Up(step.crafts), SpellName(step.spell)) }
+      text = ns.L["Craft %dx %s (%s)"]:format(Up(step.crafts), SpellName(step.spell),
+        ReagentList(step.spell, Up(step.crafts))) }
     local range = ("%d-%d"):format(step.from, step.to)
     out.steps[#out.steps + 1] = { range = range, entries = entries }
     out.plan[#out.plan + 1] = range .. " :"
