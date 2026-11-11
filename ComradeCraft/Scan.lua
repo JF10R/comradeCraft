@@ -96,6 +96,17 @@ function ns.ScanSpec()
   end
 end
 
+-- Equipped items { [slot 1-19] = itemID }, used to tell upgrades for group members.
+function ns.ScanEquipped()
+  local out = {}
+  if not GetInventoryItemID then return out end
+  for slot = 1, 19 do
+    local id = GetInventoryItemID("player", slot)
+    if id then out[slot] = id end
+  end
+  return out
+end
+
 -- Current bag contents { [itemID] = count } (bank excluded).
 function ns.ScanBagContents()
   return ScanBags(BagIndexes())
@@ -105,6 +116,7 @@ function ns.ScanAll()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
   local c = ns.CharData()
   c.spec, c.specIcon = ns.ScanSpec()
+  c.equipped = ns.ScanEquipped()
   c.professions = ScanProfessions()
   c.bags = ScanBags(BagIndexes())
   c.updated = time()
@@ -152,6 +164,7 @@ for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE
   "PLAYER_SPECIALIZATION_CHANGED" }) do
   ns.On(e, ns.ScanAll) -- talents change the specialization
 end
+ns.On("PLAYER_EQUIPMENT_CHANGED", ns.ScanAll)
 ns.On("BANKFRAME_OPENED", ScanBank)
 ns.On("TRADE_SKILL_LIST_UPDATE", ScanKnownRecipes)
 
@@ -340,7 +353,9 @@ ns.commands.api = function()
     "C_Container", "C_TradeSkillUI", "C_TooltipInfo", "TooltipDataProcessor",
     "ProfessionsFrame", "TradeSkillFrame", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
     "SetTrainerServiceTypeFilter", "GetSpecialization", "GetTalentTabInfo",
+    "PawnGetItemData", "PawnGetSingleValueFromItem", "PawnCommon",
   }
+  Print(("  pawn scale : %s"):format(tostring(ns.PawnScaleFor(ns.CharData()))))
   Print(("  spec : %s"):format(tostring((ns.ScanSpec()))))
   for _, k in ipairs({ "OpenRecipe", "OpenTradeSkill", "SetRecipeItemNameFilter" }) do
     Print(("  C_TradeSkillUI.%s : %s"):format(k, (C_TradeSkillUI and C_TradeSkillUI[k]) and ns.L["yes"] or ns.L["no"]))

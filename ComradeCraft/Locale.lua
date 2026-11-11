@@ -127,6 +127,7 @@ local translations = {
     ["%d recipe"] = "%d recette",
     ["%d recipes"] = "%d recettes",
     ["gear for %s"] = "équipement pour %s",
+    ["upgrade for %s (+%d)"] = "upgrade pour %s (+%d)",
     ["Enchant"] = "Enchantement",
     ["Consumable"] = "Consommable",
     ["Bag"] = "Sac",

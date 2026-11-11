@@ -127,7 +127,7 @@ function ns.BagAdvice(key)
     end
     if not entry.verdict then
       for other, oc in pairs(chars) do
-        if other ~= key and ns.ItemFits(item, oc) then
+        if other ~= key and ns.UpgradeFor(item, oc) then
           entry.verdict, entry.to = "gear", other
           break
         end

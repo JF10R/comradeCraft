@@ -105,7 +105,11 @@ function Sync.CleanRecord(r)
   if type(r) ~= "table" then return nil end
   local out = { class = Class(r.class), level = Num(r.level, 1, 200), updated = Num(r.updated, 0, 2 ^ 31) or 0,
     spec = Str(r.spec, 40), specIcon = Num(r.specIcon, 1, 2 ^ 31) or Str(r.specIcon, 120),
-    professions = {}, known = {}, bags = {} }
+    professions = {}, known = {}, bags = {}, equipped = {} }
+  for slot, item in pairs(type(r.equipped) == "table" and r.equipped or {}) do
+    slot, item = Num(slot, 1, 19), Num(item, 1, 2 ^ 31)
+    if slot and item then out.equipped[slot] = item end
+  end
   local n = 0
   for name, p in pairs(type(r.professions) == "table" and r.professions or {}) do
     name = Str(name, 40)
@@ -170,7 +174,7 @@ local function Record(c)
     profs[name] = { rank = p.rank, max = p.max, skillLine = p.skillLine, icon = p.icon }
   end
   return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon, updated = c.updated,
-    professions = profs, known = known, owned = owned }
+    professions = profs, known = known, owned = owned, equipped = c.equipped }
 end
 
 local function DB()

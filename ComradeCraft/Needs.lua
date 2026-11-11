@@ -263,6 +263,73 @@ function ns.ItemFits(item, c)
   return anyone or f.subclassID == MainArmor(c.class, c.level)
 end
 
+-- Equipment slots an inventory type can go to (armor and jewelry; weapons not judged).
+local SLOTS_OF = { INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_BODY = { 4 },
+  INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 },
+  INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 }, INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 },
+  INVTYPE_CLOAK = { 15 } }
+local CLASS_ID = { WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5, SHAMAN = 7, MAGE = 8,
+  WARLOCK = 9, DRUID = 11 }
+
+-- Optional Pawn bridge (Pawn is CC BY-NC-ND: we call it at runtime, we never copy its weights).
+-- Finds a Pawn scale for the character's class (and spec name when Pawn's name contains it).
+-- Pawn's scale fields are not documented: every access is guarded, nil means "use item level".
+local pawnScaleCache = {}
+function ns.PawnScaleFor(c)
+  if not (PawnCommon and type(PawnCommon.Scales) == "table" and c.class) then return nil end
+  local cacheKey = c.class .. "/" .. tostring(c.spec)
+  if pawnScaleCache[cacheKey] ~= nil then return pawnScaleCache[cacheKey] or nil end
+  local classID, best = CLASS_ID[c.class], nil
+  for name, scale in pairs(PawnCommon.Scales) do
+    if type(scale) == "table" and scale.ClassID == classID then
+      local label = tostring(scale.LocalizedName or name)
+      if c.spec and label:find(c.spec, 1, true) then
+        best = name
+        break
+      end
+      best = best or name
+    end
+  end
+  pawnScaleCache[cacheKey] = best or false
+  if best and ns.Log then ns.Log(("pawn: %s -> %s"):format(cacheKey, best)) end
+  return best
+end
+
+-- Value of an item for a character: Pawn's score for its class scale when available,
+-- else the item level. Returns value, "pawn"|"ilvl".
+function ns.ItemScore(item, c)
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  local _, link, _, ilvl = get(item)
+  local scale = ns.PawnScaleFor(c)
+  if scale and link and PawnGetItemData and PawnGetSingleValueFromItem then
+    local ok, data = pcall(PawnGetItemData, link)
+    if ok and data then
+      local ok2, v = pcall(PawnGetSingleValueFromItem, data, scale)
+      if ok2 and type(v) == "number" then return v, "pawn" end
+    end
+  end
+  return ilvl or 0, "ilvl"
+end
+
+-- Is `item` an upgrade for character c? It must fit (ItemFits) and score above the weakest
+-- piece worn in a slot it goes to (an empty slot counts as 0). Without equipment data, a
+-- fitting item counts as an upgrade with unknown gain. Returns isUpgrade, gain, how.
+function ns.UpgradeFor(item, c)
+  if not ns.ItemFits(item, c) then return false end
+  local f = ItemFacts(item)
+  local slots = f and SLOTS_OF[f.equipLoc]
+  if not (slots and c.equipped) then return true, nil, nil end
+  local score, how = ns.ItemScore(item, c)
+  local worst
+  for _, slot in ipairs(slots) do
+    local worn = c.equipped[slot]
+    local s = worn and ns.ItemScore(worn, c) or 0
+    if not worst or s < worst then worst = s end
+  end
+  if score > worst then return true, score - worst, how end
+  return false
+end
+
 -- Category label key of a recipe's product (Locale keys).
 function ns.ItemCategory(item)
   if not item or item == 0 then return "Enchant" end
@@ -294,7 +361,10 @@ function ns.CraftCatalog(key)
           if other ~= key then
             local n = r[5] ~= 0 and ns.NeedOf(oc, r[5]) or 0
             if n > 0 then e.needers[#e.needers + 1] = { key = other, n = n } end
-            if r[5] ~= 0 and ns.ItemFits(r[5], oc) then e.fits[#e.fits + 1] = other end
+            if r[5] ~= 0 then
+              local up, gain = ns.UpgradeFor(r[5], oc)
+              if up then e.fits[#e.fits + 1] = { key = other, gain = gain } end
+            end
           end
         end
         e.name = ns.SpellName and ns.SpellName(spell) or tostring(spell)

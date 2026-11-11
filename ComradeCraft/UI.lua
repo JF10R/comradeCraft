@@ -381,7 +381,10 @@ local function RecipeTags(e)
   for _, n in ipairs(e.needers) do
     t[#t + 1] = ("|cff80ff80%s : %s|r"):format(ShortName(n.key), L["needs %d"]:format(n.n))
   end
-  for _, k in ipairs(e.fits) do t[#t + 1] = "|cff66ccff" .. L["gear for %s"]:format(ShortName(k)) .. "|r" end
+  for _, u in ipairs(e.fits) do
+    t[#t + 1] = "|cff66ccff" .. (u.gain and L["upgrade for %s (+%d)"]:format(ShortName(u.key), math.floor(u.gain + 0.5))
+      or L["gear for %s"]:format(ShortName(u.key))) .. "|r"
+  end
   t[#t + 1] = "|cff9d9d9d" .. L[e.category] .. "|r"
   return table.concat(t, "  ")
 end

@@ -13,6 +13,12 @@ ComradeCraft's own code is MIT (see LICENSE). Embedded libraries keep their lice
 | LibDBIcon-1.0 | 57 | No license file; made to be embedded | copied from BugSack's embedded copy |
 | LibProfessionDB-1.0 | 1.9.1 (Forever data only) | MIT (`Libs/LibProfessionDB-1.0/LICENSE`) | curseforge.com/wow/addons/libprofessiondb |
 
+Optional, not embedded: Pawn (CC BY-NC-ND 3.0). If installed, its scales are queried at
+runtime (`PawnGetItemData`, `PawnGetSingleValueFromItem`); none of its weights are copied.
+
+Disenchant yield estimates (`Disenchant.lua`) are facts compiled from the wow-professions.com
+Forever disenchanting guide and warcraft.wiki.gg "Disenchanting tables".
+
 Data: `ComradeCraft/Data/Recipes.lua` is generated from the WoW Forever client tables
 (SkillLineAbility, SpellEffect, SpellReagents, ItemSparse) published by wago.tools.
 

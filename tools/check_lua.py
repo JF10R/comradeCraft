@@ -202,6 +202,28 @@ def main():
       assert(ns.ItemFits(99001, { class = "MAGE", level = 20 }), "fits: cloth for a mage")
       assert(not ns.ItemFits(99001, { class = "DRUID", level = 20 }), "fits: not for a druid")
       assert(not ns.ItemFits(99001, { class = "MAGE", level = 30 }), "fits: too low for level 30")
+      -- Upgrades: item level vs the piece worn in that slot; Pawn's class scale when present.
+      local fitsGet = GetItemInfo
+      GetItemInfo = function(id)
+        local il = ({ [99001] = 15, [99002] = 10, [99003] = 20 })[id]
+        if il then return "Robe" .. id, "|Hitem:" .. id .. "|h", 2, il, 15, "Armor", "Cloth", 1, "INVTYPE_CHEST", 0, 0, 4, 1 end
+        return fitsGet(id)
+      end
+      local up, gain = ns.UpgradeFor(99001, { class = "MAGE", level = 20, equipped = { [5] = 99002 } })
+      assert(up and gain == 5, "upgrade: +5 item levels over the worn chest")
+      assert(not ns.UpgradeFor(99001, { class = "MAGE", level = 20, equipped = { [5] = 99003 } }), "upgrade: worse than worn")
+      local up2, gain2 = ns.UpgradeFor(99001, { class = "MAGE", level = 20 })
+      assert(up2 and gain2 == nil, "upgrade: no equipment data -> fits, gain unknown")
+      PawnCommon = { Scales = { ["Classic:MAGE1"] = { ClassID = 8, LocalizedName = "Mage: Arcane" },
+        ["Classic:MAGE3"] = { ClassID = 8, LocalizedName = "Mage: Frost" } } }
+      PawnGetItemData = function(link) return { link = link } end
+      PawnGetSingleValueFromItem = function(data) return data.link:find("99001") and 50 or 30 end
+      local mageFrost = { class = "MAGE", spec = "Frost", level = 20, equipped = { [5] = 99003 } }
+      assert(ns.PawnScaleFor(mageFrost) == "Classic:MAGE3", "pawn: spec scale picked")
+      local up3, gain3, how3 = ns.UpgradeFor(99001, mageFrost)
+      assert(up3 and gain3 == 20 and how3 == "pawn", "pawn: score decides (50 vs 30), not item level")
+      PawnCommon, PawnGetItemData, PawnGetSingleValueFromItem = nil, nil, nil
+      GetItemInfo = fitsGet
       GetItemInfo = oldGet
       local gm = ns.GroupMaterials()
       assert(gm[1] and gm[1].total > 0, "group materials")
