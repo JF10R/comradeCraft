@@ -25,3 +25,5 @@ First version for WoW Forever (Interface 16001):
   milestone table with net cost (mats minus the best resale).
 - Craft requests between group members, kept until the other player's addon confirms it
   received them (both online once is enough).
+- Alerts (Manage group > Options): mats ready, cooldowns ready on any character, craft
+  requests, and opt-in upgrades a group member can craft (with Pawn score or stats).

@@ -608,6 +608,52 @@ def main():
       assert(rqs["vz-mail-1"] and rqs["vz-mail-1"].to == "Test-Realm" and rqs["vz-mail-1"].from == "Vez-Realm"
         and rqs["vz-mail-1"].qty == 2, "requests: inbox request added once")
       ComradeCraftDB.settings.mailRequests, GetInboxNumItems, GetInboxHeaderInfo = nil, nil, nil
+      -- Alerts: each fires once; upgrade alerts are opt-in and offer to ask for the craft.
+      local notes = {}
+      local origNotify = ns.Alerts.Notify
+      ns.Alerts.Notify = function(t) notes[#notes + 1] = t origNotify(t) end
+      local me = ns.CharData()
+      GetTime = function() return 500 end
+      GetSpellCooldown = function(spell) if spell == 2963 then return 490, 3600 end return 0, 0 end
+      me.known = me.known or {}
+      me.known[197] = me.known[197] or {}
+      me.known[197][2963] = true
+      ns.Alerts.ScanCooldowns()
+      assert(me.cooldowns[2963] == 1000 + 3590, "alerts: cooldown ready time " .. tostring(me.cooldowns[2963]))
+      me.cooldowns[2963] = 900
+      ns.Alerts.CheckCooldowns()
+      ns.Alerts.CheckCooldowns()
+      assert(#notes == 1 and notes[1].title:find("Cooldown ready", 1, true), "alerts: cooldown announced once")
+      GetSpellCooldown, GetTime = nil, nil
+      -- mats: no alert on the first look, one when the next craft becomes ready
+      local origQ, origN = ns.CraftQueue, ns.NextCraft
+      local readyNow = false
+      ns.CraftQueue = function() return {} end
+      ns.NextCraft = function() if readyNow then return { spell = 2963, n = 2, ready = 2, item = 2996, label = "Bolt" } end end
+      notes = {}
+      ns.Alerts.CheckMats()
+      readyNow = true
+      ns.Alerts.CheckMats()
+      ns.Alerts.CheckMats()
+      assert(#notes == 1 and notes[1].title:find("mats ready", 1, true), "alerts: mats ready once")
+      ns.CraftQueue, ns.NextCraft = origQ, origN
+      -- upgrade (opt-in): Vez knows Bolt of Linen; pretend it is an upgrade for us
+      local origUp = ns.UpgradeFor
+      ns.UpgradeFor = function(item) if item == ns.Recipes[2963][5] then return true, 7, "pawn" end end
+      notes = {}
+      ns.Alerts.CheckUpgrades()
+      assert(#notes == 0, "alerts: upgrade alert off by default")
+      ns.Alerts.Set("upgrade", true)
+      ns.Alerts.CheckUpgrades()
+      ns.Alerts.CheckUpgrades()
+      assert(#notes == 1 and notes[1].title:find("Vez", 1, true) and notes[1].text:find("+7", 1, true), "alerts: upgrade once")
+      ComradeCraftRequestDialog:Hide()
+      notes[1].buttons[1][2]()
+      assert(ComradeCraftRequestDialog:IsShown(), "alerts: Ask for it opens the request dialog")
+      ns.UpgradeFor, ns.Alerts.Notify = origUp, origNotify
+      ns.Alerts.Set("upgrade", false)
+      ComradeCraftDB.ui.sel = "manage"
+      ns.RefreshWindow()
       for _, r in pairs(rqs) do r.acked = r.updated end -- (as if Vez acknowledged: later tests count messages)
       GetServerTime = nil
       c.shared = nil

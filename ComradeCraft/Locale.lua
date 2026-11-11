@@ -459,6 +459,40 @@ local translations = {
       "Dans le panneau d'étape : les crafts de l'étape ou du palier, ce que tes sacs permettent, et Crafter le suivant (un lot par clic, le jeu exige un clic par craft).",
     ["Click a recipe in a group member's Can craft tab to ask for it. Answer what you are asked in Craft requests. Requests reach the other player the next time you are both online (or by mail, if turned on in Manage group)."] =
       "Clique une recette dans l'onglet Peut crafter d'un membre pour la demander. Réponds aux demandes dans Demandes de craft. Elles arrivent la prochaine fois que vous êtes en ligne ensemble (ou par courrier, si activé dans Gérer le groupe).",
+    ["%s: mats ready"] =
+      "%s : mats prêts",
+    ["Your bags hold everything for %dx %s."] =
+      "Tes sacs contiennent tout pour %dx %s.",
+    ["Cooldown ready: %s"] =
+      "Cooldown prêt : %s",
+    ["on %s"] =
+      "sur %s",
+    ["+%d with Pawn"] =
+      "+%d avec Pawn",
+    ["+%d item levels"] =
+      "+%d niveaux d'objet",
+    ["%s can craft an upgrade for you"] =
+      "%s peut crafter un upgrade pour toi",
+    ["Ask for it"] =
+      "Le demander",
+    ["Not interested"] =
+      "Pas intéressé",
+    ["New craft request"] =
+      "Nouvelle demande de craft",
+    ["Open"] =
+      "Ouvrir",
+    ["Alerts"] =
+      "Alertes",
+    ["A chat line and a short notice at the top of the screen."] =
+      "Une ligne dans le chat et un court avis en haut de l'écran.",
+    ["Your bags hold the mats for your next craft."] =
+      "Tes sacs ont les mats pour ton prochain craft.",
+    ["A profession cooldown is ready on one of your characters."] =
+      "Un cooldown de profession est prêt sur un de tes persos.",
+    ["A craft request arrives or changes."] =
+      "Une demande de craft arrive ou change.",
+    ["A group member can craft an upgrade for you (off by default)."] =
+      "Un membre du groupe peut crafter un upgrade pour toi (désactivé par défaut).",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

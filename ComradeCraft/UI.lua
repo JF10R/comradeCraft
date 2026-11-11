@@ -1045,6 +1045,16 @@ local function RenderManage()
   Action(LIST_W - 100, y, L["Re-dock"], function() ns.SetTracker(nil, true) end)
   y = y - math.max(28, h + 10)
 
+  y = Section(y - 6, L["Alerts"], L["A chat line and a short notice at the top of the screen."])
+  for _, a in ipairs({ { "mats", L["Your bags hold the mats for your next craft."] },
+    { "cooldown", L["A profession cooldown is ready on one of your characters."] },
+    { "requests", L["A craft request arrives or changes."] },
+    { "upgrade", L["A group member can craft an upgrade for you (off by default)."] } }) do
+    Check(0, y + 2, ns.Alerts.On(a[1]), function(on) ns.Alerts.Set(a[1], on) end)
+    local _, ah = Label(30, y - 4, a[2], nil, LIST_W - 30)
+    y = y - math.max(26, ah + 10)
+  end
+
   y = Section(y - 6, L["Measured skill-up chances"],
     L["Crafts logged by you and your group correct the Classic formula once a color has enough of them."])
   for _, l in ipairs(ns.SkillupStatsLines()) do

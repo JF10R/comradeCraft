@@ -45,6 +45,7 @@ Tooltip.lua
 Sync.lua
 Mail.lua
 Requests.lua
+Alerts.lua
 Shopping.lua
 Sources.lua
 Tracker.lua

@@ -380,6 +380,7 @@ function Sync.OnMessage(text, dist, sender)
         rec.peer = id
         db.remote[key] = rec
         ns.UpdateNeeds(rec)
+        if ns.Alerts then ns.Alerts.CheckUpgrades() end
       end
     end
   end

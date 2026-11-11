@@ -92,6 +92,7 @@ function ns.RequestRefresh()
   local function run()
     refreshPending = false
     if ComradeCraftDB and ComradeCraftDB.chars then ns.UpdateNeeds(ns.CharData()) end
+    if ns.Alerts then ns.Alerts.CheckMats() end
     if ns.RefreshWindow then ns.RefreshWindow() end
     if ns.RefreshTracker then ns.RefreshTracker() end
     if ns.Sync then ns.Sync.MarkDirty() end -- peers hear about the change (debounced)

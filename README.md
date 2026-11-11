@@ -12,6 +12,9 @@ question: *what should I do with what I have, for the group?*
 - **Mail helper**: attaches what a group member needs. It never sends the mail for you.
 - **Craft requests**: click a recipe in a group member's Can craft tab to ask for it; they
   accept, craft and mark it done. Delivered the next time you are both online.
+- **Alerts** (each can be turned off): mats ready for your next craft, profession cooldowns
+  ready on any of your characters, craft requests, and (opt-in) upgrades a group member can
+  craft for you, with a button to ask for it.
 - **Sharing** with the friends and guildmates you add, opt-in per character.
 
 English and French (follows the game's language).

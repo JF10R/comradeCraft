@@ -89,8 +89,17 @@ function Requests.OnRemote(id, q, sender)
     end
     clean.fromPeer, clean.acked = id, clean.updated
     db[clean.id] = clean
-    ns.Print(L["%s asks %s to craft %dx %s."]:format(clean.from:match("^[^-]+") or clean.from,
-      clean.to:match("^[^-]+") or clean.to, clean.qty, ns.SpellName(clean.spell)))
+    if ns.Alerts and ns.Alerts.On("requests") then
+      ns.Alerts.Notify({ title = L["New craft request"],
+        text = L["%s asks %s to craft %dx %s."]:format(clean.from:match("^[^-]+") or clean.from,
+          clean.to:match("^[^-]+") or clean.to, clean.qty, ns.SpellName(clean.spell)),
+        item = clean.item ~= 0 and clean.item or nil,
+        buttons = { { L["Open"], function()
+          ComradeCraftDB.ui = ComradeCraftDB.ui or {}
+          ComradeCraftDB.ui.sel = "requests"
+          if not (ComradeCraftFrame and ComradeCraftFrame:IsShown()) then ns.ToggleWindow() else ns.RefreshWindow() end
+        end } } })
+    end
   elseif clean.updated > (mine.updated or 0) and OtherPeer(mine) == id
     -- Each side may only make its own moves: the requester cancels, the crafter answers.
     and ((Requests.Role(mine) == "crafter" and clean.status == "cancelled")
@@ -98,8 +107,9 @@ function Requests.OnRemote(id, q, sender)
     local before = mine.status
     mine.status, mine.updated, mine.note = clean.status, clean.updated, clean.note or mine.note
     mine.acked = mine.updated
-    if before ~= mine.status then
-      ns.Print(L["Request %dx %s: %s."]:format(mine.qty, ns.SpellName(mine.spell), L[mine.status]))
+    if before ~= mine.status and ns.Alerts and ns.Alerts.On("requests") then
+      ns.Alerts.Notify({ title = L["Request %dx %s: %s."]:format(mine.qty, ns.SpellName(mine.spell), L[mine.status]),
+        item = mine.item ~= 0 and mine.item or nil })
     end
   end
   Ack()
