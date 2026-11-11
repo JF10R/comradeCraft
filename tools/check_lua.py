@@ -571,6 +571,20 @@ def main():
       sent = {}
       ComradeCraftRequestDialog.send.scripts.OnClick(ComradeCraftRequestDialog.send)
       assert(OfType("Q")[1] and OfType("Q")[1].msg.q.qty == 4, "requests: dialog sends")
+      -- By mail (opt-in): subject round-trips; the crafter's inbox scan adds it once, only when on.
+      local subj = ns.Requests.MailSubject({ spell = 2963, qty = 3, id = "abc-1700000000-1234" })
+      local sp, sq, sr = ns.Requests.ParseSubject(subj)
+      assert(#subj <= 64 and sp == 2963 and sq == 3 and sr == "abc-1700000000-1234", "requests: mail subject " .. subj)
+      GetInboxNumItems = function() return 1 end
+      GetInboxHeaderInfo = function() return nil, nil, "Vez", "[CC:2963:2:vz-mail-1] Bolt" end
+      f.onEvent(f, "MAIL_INBOX_UPDATE")
+      assert(not rqs["vz-mail-1"], "requests: mail mode off by default")
+      ComradeCraftDB.settings.mailRequests = true
+      f.onEvent(f, "MAIL_INBOX_UPDATE")
+      f.onEvent(f, "MAIL_INBOX_UPDATE")
+      assert(rqs["vz-mail-1"] and rqs["vz-mail-1"].to == "Test-Realm" and rqs["vz-mail-1"].from == "Vez-Realm"
+        and rqs["vz-mail-1"].qty == 2, "requests: inbox request added once")
+      ComradeCraftDB.settings.mailRequests, GetInboxNumItems, GetInboxHeaderInfo = nil, nil, nil
       for _, r in pairs(rqs) do r.acked = r.updated end -- (as if Vez acknowledged: later tests count messages)
       GetServerTime = nil
       c.shared = nil

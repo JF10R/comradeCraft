@@ -436,6 +436,14 @@ local translations = {
       "terminée",
     ["cancelled"] =
       "annulée",
+    ["(by mail)"] =
+      "(par courrier)",
+    ["Request mail ready: check it and click Send."] =
+      "Courrier de demande prêt : vérifie-le et clique Envoyer.",
+    ["By mail"] =
+      "Par courrier",
+    ["Craft requests by mail too: for players who are never online at the same time (you send the mail yourself, 30c postage)."] =
+      "Demandes de craft aussi par courrier : pour les joueurs jamais en ligne en même temps (tu envoies le courrier toi-même, 30 pc de port).",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

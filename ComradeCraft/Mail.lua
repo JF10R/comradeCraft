@@ -168,6 +168,21 @@ ns.On("MAIL_SHOW", function()
 end)
 ns.On("BAG_UPDATE_DELAYED", UpdateButton)
 
+-- Writes a craft request as a mail (opt-in mode): recipient, subject, note. Never sends.
+function Mail.PrepareRequest(r)
+  if not isOpen then
+    ns.Print(L["Open a mailbox first."])
+    return
+  end
+  if MailFrameTab_OnClick and MailFrameTab2 and SendMailFrame and not SendMailFrame:IsShown() then
+    pcall(MailFrameTab_OnClick, MailFrameTab2, 2)
+  end
+  if SendMailNameEditBox then SendMailNameEditBox:SetText(r.to:match("^[^-]+") or r.to) end
+  if SendMailSubjectEditBox then SendMailSubjectEditBox:SetText(ns.Requests.MailSubject(r)) end
+  if SendMailBodyEditBox and r.note then SendMailBodyEditBox:SetText(r.note) end
+  ns.Print(L["Request mail ready: check it and click Send."])
+end
+
 -- /comrade mail NAME: same as the button.
 ns.commands.mail = function(name)
   local to = Mail.KeyForName(name)

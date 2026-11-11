@@ -159,6 +159,56 @@ ns.On("PLAYER_LOGIN", function()
   end
 end)
 
+-- Requests by mail (opt-in, off by default): for players who are never online together.
+-- The requester writes a mail whose subject carries the request; the crafter's addon reads
+-- its inbox headers and adds it. Answers still travel by the sync.
+function Requests.MailOn() return ComradeCraftDB.settings and ComradeCraftDB.settings.mailRequests == true end
+
+-- Pure: subject "[CC:<spell>:<qty>:<rid>] <name>" (64 chars max) and its parser.
+function Requests.MailSubject(r)
+  return (("[CC:%d:%d:%s] %s"):format(r.spell, r.qty, r.id, ns.SpellName(r.spell))):sub(1, 64)
+end
+function Requests.ParseSubject(subject)
+  local spell, qty, rid = (subject or ""):match("^%[CC:(%d+):(%d+):([%w%-]+)%]")
+  if not spell then return nil end
+  return tonumber(spell), tonumber(qty), rid
+end
+
+-- Group member's character key for a mail sender name, and its account id.
+local function SenderKey(sender)
+  local short = (sender or ""):match("^[^-]+")
+  if not short then return nil end
+  for key, c in pairs(ns.AllChars()) do
+    if c.peer and (key:match("^[^-]+") or key) == short then return key, c.peer end
+  end
+end
+
+-- Inbox headers -> new incoming requests for the character reading the mail.
+function Requests.ScanInbox()
+  if not (Requests.MailOn() and GetInboxNumItems and GetInboxHeaderInfo) then return end
+  local db, added = DB(), 0
+  for i = 1, GetInboxNumItems() do
+    local _, _, sender, subject = GetInboxHeaderInfo(i)
+    local spell, qty, rid = Requests.ParseSubject(subject)
+    local from, peer = SenderKey(sender)
+    local p = peer and ComradeCraftDB.peers and ComradeCraftDB.peers[peer]
+    if spell and ns.Recipes[spell] and from and p and p.included and not db[rid] then
+      local now = Now()
+      db[rid] = { id = rid, from = from, to = ns.CharKey(), fromPeer = peer, spell = spell,
+        item = ns.Recipes[spell][5], qty = math.max(1, math.min(1000, qty)), status = "pending",
+        created = now, updated = now, acked = now, byMail = true }
+      added = added + 1
+      ns.Print(L["%s asks %s to craft %dx %s."]:format(from:match("^[^-]+") or from,
+        ns.CharKey():match("^[^-]+"), qty, ns.SpellName(spell)) .. " " .. L["(by mail)"])
+    end
+  end
+  if added > 0 then
+    ns.Log(("requests: %d from the inbox"):format(added))
+    if ns.RefreshWindow then ns.RefreshWindow() end
+  end
+end
+ns.On("MAIL_INBOX_UPDATE", function() Requests.ScanInbox() end)
+
 -- Request dialog: quantity + note, from a recipe of a group member's character ------------
 
 local dialog

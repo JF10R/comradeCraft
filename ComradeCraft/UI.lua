@@ -1037,6 +1037,9 @@ local function RenderManage()
   end)
   local _, h = Label(30, y - 4, L["Send a presence signal to the guild at login (no character data)."], nil, LIST_W - 30)
   y = y - math.max(28, h + 10)
+  Check(0, y + 2, ns.Requests.MailOn(), function(on) db.settings.mailRequests = on or nil ns.RefreshWindow() end)
+  _, h = Label(30, y - 4, L["Craft requests by mail too: for players who are never online at the same time (you send the mail yourself, 30c postage)."], nil, LIST_W - 30)
+  y = y - math.max(28, h + 10)
   Check(0, y + 2, ns.TrackerOn(), function(on) ns.SetTracker(on) end)
   _, h = Label(30, y - 4, L["Show the step panel next to the profession window."], nil, LIST_W - 140)
   Action(LIST_W - 100, y, L["Re-dock"], function() ns.SetTracker(nil, true) end)
@@ -1202,11 +1205,15 @@ local function RequestRow(y, r, incoming)
     end
   elseif r.status == "pending" or r.status == "accepted" then
     buttons = { { L["Cancel request"], "cancelled" } }
+    if r.status == "pending" and r.acked ~= r.updated and R.MailOn() then
+      buttons[2] = { L["By mail"], function() ns.Mail.PrepareRequest(r) end }
+    end
   end
   if #buttons == 0 then buttons = { { L["Remove"], false } } end
   for i, bt in ipairs(buttons) do
     Action(LIST_W - 100 * i, y, bt[1], function()
-      if bt[2] then R.Set(r.id, bt[2]) else R.Remove(r.id) end
+      if type(bt[2]) == "function" then bt[2]()
+      elseif bt[2] then R.Set(r.id, bt[2]) else R.Remove(r.id) end
     end)
   end
   return y - math.max(30, h1 + h2 + 12)
