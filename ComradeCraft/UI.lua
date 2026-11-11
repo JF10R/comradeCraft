@@ -383,6 +383,9 @@ local function CreateRecipe()
     GameTooltip:AddLine(L["Mats per craft:"], 1, 0.82, 0)
     GameTooltip:AddLine(ns.ReagentText(self.spell, 1), 1, 1, 1, true)
     if self.costText then GameTooltip:AddLine(self.costText, 1, 0.82, 0) end
+    if self.requestTo then
+      GameTooltip:AddLine(L["Click: ask %s to craft it."]:format(ShortName(self.requestTo)), 0.5, 0.8, 1)
+    end
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -392,6 +395,8 @@ local function CreateRecipe()
       if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
     elseif self.own then
       ns.OpenRecipe(self.spell)
+    elseif self.requestTo then
+      ns.Requests.ShowDialog(self.requestTo, self.spell)
     end
   end)
   return b
@@ -402,7 +407,7 @@ local function PlaceRecipe(x, y, e, tags, kind, own)
   b:ClearAllPoints()
   b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   b:SetWidth(LIST_W - x)
-  b.spell, b.item, b.own = e.spell, e.item, own
+  b.spell, b.item, b.own, b.requestTo = e.spell, e.item, own, nil
   local icon = e.item ~= 0 and select(3, ItemInfo(e.item))
     or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(e.spell)) or 134400
   b.icon:SetTexture(icon)
@@ -499,8 +504,12 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.shop.key, r.shop.line = key, p.skillLine
   r.shop:SetShown(ns.CanShop() and need ~= nil and next(need.items or {}) ~= nil)
 
-  local collapsed = Collapsed(p.skillLine)
+  -- Folding only makes sense with every profession listed ("All"); a filtered view is open.
+  local filtered = ComradeCraftDB.ui.prof ~= nil
+  local collapsed = not filtered and Collapsed(p.skillLine)
   r.hit.line = p.skillLine
+  r.hit:SetShown(not filtered)
+  r.fold:SetShown(not filtered)
   r.fold:SetTexture(FoldTexture(collapsed))
   local d = ns.DescribeNeed(p, c)
   if collapsed then
@@ -705,7 +714,7 @@ local function RenderCraft(key, c, filter)
       y = y - 16
     end
     for _, e in ipairs(list) do
-      PlaceRecipe(8, y, e, RecipeTags(e), L[e.category], own)
+      PlaceRecipe(8, y, e, RecipeTags(e), L[e.category], own).requestTo = c.peer and key or nil
       y = y - RECIPE_H
     end
     y = y - 8
@@ -902,6 +911,9 @@ local function RenderSide(sel)
   end
   Add("manage", L["Manage group"], ns.Plural(inGroup, "%d player", "%d players")
     .. (requests > 0 and ("  |cff80ff80" .. ns.Plural(requests, "%d request", "%d requests") .. "|r") or ""))
+  local open = ns.Requests and ns.Requests.OpenCount() or 0
+  Add("requests", L["Craft requests"], open > 0 and ("|cff80ff80" .. ns.Plural(open, "%d to answer", "%d to answer") .. "|r")
+    or ("|cff9d9d9d" .. L["none open"] .. "|r"))
   for _, key in ipairs(SortedKeys(chars)) do
     local c = chars[key]
     local lines = { LevelSpecClass(c) }
@@ -1161,6 +1173,64 @@ function ns.StartTutorial(force)
   ns.ShowTutorialStep(1)
 end
 
+-- Craft requests view: for your characters (answer them), then yours (follow them).
+local STATUS_COLOR = { pending = "ffd100", accepted = "40c0ff", done = "40ff40", declined = "ff6040", cancelled = "9d9d9d" }
+
+local function RequestRow(y, r, incoming)
+  local R = ns.Requests
+  local who = incoming and L["%s for %s"]:format(ShortName(r.from), ShortName(r.to))
+    or L["asked to %s"]:format(ShortName(r.to))
+  local line1 = ("|cffffffff%dx %s|r  |cff9d9d9d%s|r  |cff%s%s|r"):format(r.qty, ns.SpellName(r.spell), who,
+    STATUS_COLOR[r.status] or "ffffff", L[r.status])
+  local details = {}
+  if r.note then details[#details + 1] = "\"" .. r.note .. "\"" end
+  if r.acked ~= r.updated then details[#details + 1] = L["waiting to reach the other player"] end
+  if incoming and (r.status == "pending" or r.status == "accepted") then
+    details[#details + 1] = L["Mats: %s"]:format(ns.ReagentText(r.spell, r.qty))
+    if r.to == ns.CharKey() then
+      details[#details + 1] = L["your bags allow %d"]:format(ns.CraftableNow(r.spell, ns.CharData().bags or {}))
+    end
+  end
+  local _, h1 = Label(0, y - 2, line1, "GameFontHighlight", LIST_W - 210)
+  local _, h2 = Label(0, y - 4 - h1, "|cff9d9d9d" .. table.concat(details, "  -  ") .. "|r", nil, LIST_W - 210)
+  local buttons = {}
+  if incoming then
+    if r.status == "pending" then
+      buttons = { { L["Accept"], "accepted" }, { L["Decline"], "declined" } }
+    elseif r.status == "accepted" then
+      buttons = { { L["Done"], "done" }, { L["Decline"], "declined" } }
+    end
+  elseif r.status == "pending" or r.status == "accepted" then
+    buttons = { { L["Cancel request"], "cancelled" } }
+  end
+  if #buttons == 0 then buttons = { { L["Remove"], false } } end
+  for i, bt in ipairs(buttons) do
+    Action(LIST_W - 100 * i, y, bt[1], function()
+      if bt[2] then R.Set(r.id, bt[2]) else R.Remove(r.id) end
+    end)
+  end
+  return y - math.max(30, h1 + h2 + 12)
+end
+
+local function RenderRequests()
+  local inc, out = ns.Requests.Lists()
+  local y = Section(0, L["For your characters"],
+    L["Accept, craft, then mark it done; the mail helper attaches the item when you write to them."])
+  if #inc == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["Nobody yet."] .. "|r")
+    y = y - h - 8
+  end
+  for _, r in ipairs(inc) do y = RequestRow(y, r, true) end
+  y = Section(y - 10, L["Your requests"],
+    L["Click a recipe in a group member's Can craft tab to ask for it. Delivered the next time you are both online."])
+  if #out == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["Nobody yet."] .. "|r")
+    y = y - h - 8
+  end
+  for _, r in ipairs(out) do y = RequestRow(y, r, false) end
+  return -y
+end
+
 -- Refresh ---------------------------------------------------------------------------------
 
 -- Filter row: "All" + one chip per profession present in the group, and "Hide gathering".
@@ -1221,7 +1291,7 @@ function ns.RefreshWindow()
   if not (frame and frame:IsShown()) then return end
   local ui = ComradeCraftDB.ui
   local chars = ns.AllChars()
-  if ui.sel ~= "group" and ui.sel ~= "manage" and ui.sel ~= "help" and not chars[ui.sel or ""] then
+  if ui.sel ~= "group" and ui.sel ~= "manage" and ui.sel ~= "help" and ui.sel ~= "requests" and not chars[ui.sel or ""] then
     ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
   end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
@@ -1231,7 +1301,18 @@ function ns.RefreshWindow()
 
   local filter = (frame.search:GetText() or ""):lower()
   local h
-  if ui.sel == "help" then
+  if ui.sel == "requests" then
+    frame.title:SetText(L["Craft requests"])
+    frame.sub:SetText(L["Ask a group member to craft something, or answer what they asked you."])
+    frame.planTab:Hide()
+    frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
+    frame.search:Hide()
+    ReleaseAll(chips)
+    frame.gatherBox:Hide()
+    h = RenderRequests()
+  elseif ui.sel == "help" then
     frame.title:SetText(L["Help"])
     frame.sub:SetText(L["How ComradeCraft works, in short."])
     frame.planTab:Hide()

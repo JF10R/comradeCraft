@@ -16,6 +16,7 @@ local MAX_CHARS, MAX_PROFS, MAX_RECIPES, MAX_ITEMS = 50, 20, 3000, 2000
 
 local Sync = {}
 ns.Sync = Sync
+Sync.PROTO = PROTO
 
 -- Encoding --------------------------------------------------------------------------------
 
@@ -320,6 +321,8 @@ function Sync.OnMessage(text, dist, sender)
     db.peers[id] = peer
   end
   peer.name, peer.seen = sender, time()
+  -- Craft requests: whatever they have not acknowledged yet goes out now that they are online.
+  if peer.included and ns.Requests then ns.Requests.OnPeerSeen(id) end
 
   if msg.t == "P" then
     -- Presence only. An added player who just logged in gets our shared summaries.
@@ -365,6 +368,10 @@ function Sync.OnMessage(text, dist, sender)
         if c and c.shared then Sync.Send({ t = "D", v = PROTO, id = db.accountId, key = key, rec = Record(c) }, "WHISPER", sender) end
       end
     end
+  elseif msg.t == "Q" then
+    if peer.included and ns.Requests then ns.Requests.OnRemote(id, msg.q, sender) end
+  elseif msg.t == "A" then
+    if peer.included and ns.Requests then ns.Requests.OnAck(id, msg.rid, msg.u) end
   elseif msg.t == "D" then
     local key = Str(msg.key, 80)
     if peer.included and key and not db.chars[key] then

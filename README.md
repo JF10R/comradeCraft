@@ -10,6 +10,8 @@ question: *what should I do with what I have, for the group?*
 - **Step panel**: next to the profession window, the current step, its skill-up chance,
   how many crafts your bags allow, and the next step.
 - **Mail helper**: attaches what a group member needs. It never sends the mail for you.
+- **Craft requests**: click a recipe in a group member's Can craft tab to ask for it; they
+  accept, craft and mark it done. Delivered the next time you are both online.
 - **Sharing** with the friends and guildmates you add, opt-in per character.
 
 English and French (follows the game's language).

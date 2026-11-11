@@ -44,6 +44,7 @@ Disenchant.lua
 Tooltip.lua
 Sync.lua
 Mail.lua
+Requests.lua
 Shopping.lua
 Sources.lua
 Tracker.lua

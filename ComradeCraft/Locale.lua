@@ -378,6 +378,64 @@ local translations = {
       "Il manque des mats pour la file",
     ["Nothing to craft"] =
       "Rien à crafter",
+    ["%s asks %s to craft %dx %s."] =
+      "%s demande à %s de crafter %dx %s.",
+    ["Request %dx %s: %s."] =
+      "Demande %dx %s : %s.",
+    ["Request sent to %s. It is delivered as soon as you are both online."] =
+      "Demande envoyée à %s. Elle arrive dès que vous êtes tous les deux en ligne.",
+    ["Quantity"] =
+      "Quantité",
+    ["Note (optional)"] =
+      "Note (facultatif)",
+    ["Send request"] =
+      "Envoyer la demande",
+    ["Ask %s to craft %s"] =
+      "Demander à %s de crafter %s",
+    ["Craft requests"] =
+      "Demandes de craft",
+    ["%d to answer"] =
+      "%d à répondre",
+    ["none open"] =
+      "aucune en cours",
+    ["Ask a group member to craft something, or answer what they asked you."] =
+      "Demande un craft à un membre du groupe, ou réponds à ce qu'on t'a demandé.",
+    ["Click: ask %s to craft it."] =
+      "Clic : demander à %s de le crafter.",
+    ["%s for %s"] =
+      "%s pour %s",
+    ["asked to %s"] =
+      "demandé à %s",
+    ["waiting to reach the other player"] =
+      "en attente de l'autre joueur",
+    ["Mats: %s"] =
+      "Mats : %s",
+    ["your bags allow %d"] =
+      "tes sacs en permettent %d",
+    ["Accept"] =
+      "Accepter",
+    ["Decline"] =
+      "Refuser",
+    ["Cancel request"] =
+      "Annuler",
+    ["For your characters"] =
+      "Pour tes persos",
+    ["Your requests"] =
+      "Tes demandes",
+    ["Accept, craft, then mark it done; the mail helper attaches the item when you write to them."] =
+      "Accepte, crafte, puis marque Terminé; l'aide au courrier attache l'objet quand tu lui écris.",
+    ["Click a recipe in a group member's Can craft tab to ask for it. Delivered the next time you are both online."] =
+      "Clique une recette dans l'onglet Peut crafter d'un membre pour la demander. Livrée la prochaine fois que vous êtes en ligne ensemble.",
+    ["pending"] =
+      "en attente",
+    ["accepted"] =
+      "acceptée",
+    ["declined"] =
+      "refusée",
+    ["done"] =
+      "terminée",
+    ["cancelled"] =
+      "annulée",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

@@ -33,6 +33,14 @@ function Mail.ItemsFor(to)
   for _, g in ipairs(ns.GiveList(ns.CharKey())) do
     if g.to == to then out[#out + 1] = { item = g.item, n = g.n } end
   end
+  -- Crafted items of accepted requests from that character (when they are in our bags).
+  local bags = ns.CharData().bags or {}
+  for _, r in pairs(ComradeCraftDB.requests or {}) do
+    if r.from == to and r.status == "accepted" and ns.Requests and ns.Requests.Role(r) == "crafter"
+      and r.item and r.item ~= 0 and (bags[r.item] or 0) > 0 then
+      out[#out + 1] = { item = r.item, n = math.min(bags[r.item], r.qty * math.max(1, ns.Recipes[r.spell][6])) }
+    end
+  end
   return out
 end
 

@@ -96,7 +96,8 @@ def main():
     for a, b in re.findall(r'ns\.Plural\([^,]+,\s*"([^"]*)",\s*"([^"]*)"\)', code):
         used.update((a, b))
     used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container",
-                 "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other", "now", "soon", "later"])
+                 "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other", "now", "soon", "later",
+                 "pending", "accepted", "declined", "done", "cancelled"])
     # A lone backslash before a letter ("Interface\DialogFrame" typed with one) is not a
     # path separator in Lua: the texture silently fails to load.
     for n in files:
@@ -528,6 +529,50 @@ def main():
       assert(ns.AllChars()["Vez-Realm"] and vr.needs and vr.needs[197], "sync: remote character visible with needs")
       From({ t = "R", v = 1, id = "peerVez", k = { "Test-Realm", "Nope-Realm" } }, "Vez")
       assert(#sent == 1 and sent[1].msg.t == "D" and sent[1].msg.key == "Test-Realm", "sync: added player gets data")
+      -- Craft requests: ours goes to Vez and is re-sent until Vez's addon acknowledges it; Vez's
+      -- answer updates our copy; theirs for our character lands in our list; bad ones are dropped.
+      local function OfType(t)
+        local out = {}
+        for _, m in ipairs(sent) do if m.msg.t == t then out[#out + 1] = m end end
+        return out
+      end
+      GetServerTime = function() return 1000 end
+      sent = {}
+      local rq = ns.Requests.Create("Vez-Realm", 2963, 3, "for my vest")
+      local q1 = OfType("Q")[1]
+      assert(rq and q1 and q1.target == "Vez" and q1.msg.q.qty == 3 and q1.msg.q.note == "for my vest", "requests: sent to Vez")
+      sent = {}
+      From({ t = "P", v = 1, id = "peerVez" }, "Vez")
+      assert(#OfType("Q") == 1, "requests: not acknowledged -> re-sent when Vez shows up")
+      From({ t = "A", v = 1, id = "peerVez", rid = rq.id, u = rq.updated }, "Vez")
+      assert(rq.acked == rq.updated, "requests: acknowledged")
+      sent = {}
+      From({ t = "Q", v = 1, id = "peerVez", q = { rid = rq.id, from = "Test-Realm", to = "Vez-Realm", spell = 2963,
+        qty = 3, status = "accepted", u = 1005 } }, "Vez")
+      assert(rq.status == "accepted" and OfType("A")[1] and OfType("A")[1].msg.rid == rq.id, "requests: answer applied, acked")
+      From({ t = "Q", v = 1, id = "peerVez", q = { rid = "vz-1", from = "Vez-Realm", to = "Test-Realm", spell = 2963,
+        qty = 2, status = "pending", u = 1000 } }, "Vez")
+      From({ t = "Q", v = 1, id = "peerVez", q = { rid = "vz-2", from = "Vez-Realm", to = "Other-Realm", spell = 2963,
+        qty = 2, status = "pending", u = 1000 } }, "Vez")
+      From({ t = "Q", v = 1, id = "peerVez", q = { rid = "vz-3", from = "Vez-Realm", to = "Test-Realm", spell = 999999,
+        qty = 2, status = "pending", u = 1000 } }, "Vez")
+      local rqs = ComradeCraftDB.requests
+      assert(rqs["vz-1"] and ns.Requests.Role(rqs["vz-1"]) == "crafter" and not rqs["vz-2"] and not rqs["vz-3"],
+        "requests: only valid ones for our characters")
+      assert(ns.Requests.OpenCount() == 1, "requests: one to answer")
+      ComradeCraftDB.ui.sel = "requests"
+      ns.RefreshWindow()
+      sent = {}
+      ns.Requests.Set("vz-1", "done")
+      local q2 = OfType("Q")[1]
+      assert(q2 and q2.msg.q.status == "done" and q2.target == "Vez", "requests: crafter's answer sent back")
+      ns.Requests.ShowDialog("Vez-Realm", 2963)
+      ComradeCraftRequestDialog.qty.text = "4"
+      sent = {}
+      ComradeCraftRequestDialog.send.scripts.OnClick(ComradeCraftRequestDialog.send)
+      assert(OfType("Q")[1] and OfType("Q")[1].msg.q.qty == 4, "requests: dialog sends")
+      for _, r in pairs(rqs) do r.acked = r.updated end -- (as if Vez acknowledged: later tests count messages)
+      GetServerTime = nil
       c.shared = nil
       sent = {}
       From({ t = "R", v = 1, id = "peerVez", k = { "Test-Realm" } }, "Vez")

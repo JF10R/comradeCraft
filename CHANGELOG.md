@@ -23,3 +23,5 @@ First version for WoW Forever (Interface 16001):
   and a Craft next button (one batch per click, as the game requires).
 - Collapse professions in Plan and Can craft; Can craft in columns; plan steps and a
   milestone table with net cost (mats minus the best resale).
+- Craft requests between group members, kept until the other player's addon confirms it
+  received them (both online once is enough).
