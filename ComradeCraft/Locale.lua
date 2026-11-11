@@ -207,6 +207,13 @@ local translations = {
       "Groupe TSM \"%s\" : tout est acheté, supprime-le dans TSM (Groups, clic droit).",
     ["TSM group \"%s\": replaced by a newer one, delete it in TSM (Groups, right-click)."] =
       "Groupe TSM \"%s\" : remplacé par un plus récent, supprime-le dans TSM (Groups, clic droit).",
+    ["Send now"] = "Envoyer maintenant",
+    ["Show the step panel next to the profession window."] =
+      "Afficher le panneau d'étape à côté de la fenêtre de profession.",
+    ["Re-dock"] = "Recoller",
+    ["Measured skill-up chances"] = "Chances de skill-up mesurées",
+    ["Crafts logged by you and your group correct the Classic formula once a color has enough of them."] =
+      "Les crafts enregistrés par toi et ton groupe corrigent la formule Classic dès qu'une couleur en a assez.",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

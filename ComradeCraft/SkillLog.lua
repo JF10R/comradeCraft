@@ -112,17 +112,23 @@ function ns.Calibration(color)
   return gained / expected
 end
 
-ns.commands.stats = function()
-  local s = DB()
-  Print(ns.L["%d crafts recorded (calibration from %d per color)"]:format(#s.raw, MIN_SAMPLES))
+-- Text lines of the measured skill-up rates (group-wide), for /comrade stats and the window.
+function ns.SkillupStatsLines()
+  local lines = { ns.L["%d crafts recorded (calibration from %d per color)"]:format(#DB().raw, MIN_SAMPLES) }
   for _, color in ipairs({ "orange", "yellow", "green", "grey" }) do
     local n, gained, expected = ns.SkillupTotals(color) -- includes players in the group
     if n > 0 then
       local f = ns.Calibration(color)
-      Print(ns.L["  %s: %d crafts, %d points, Classic formula %.1f%s"]:format(ns.L[color], n, gained, expected,
-        f and ns.L[" -> factor %.2f applied"]:format(f) or ""))
+      lines[#lines + 1] = ns.L["  %s: %d crafts, %d points, Classic formula %.1f%s"]:format(ns.L[color], n, gained,
+        expected, f and ns.L[" -> factor %.2f applied"]:format(f) or "")
     end
   end
+  return lines
+end
+
+ns.commands.stats = function()
+  local s = DB()
+  for _, l in ipairs(ns.SkillupStatsLines()) do Print(l) end
   local seen, ours, lp = 0, 0, 0
   for _, x in ipairs(s.raw) do
     if x.game then

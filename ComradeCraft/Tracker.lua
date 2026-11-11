@@ -256,15 +256,13 @@ ns.On("TRADE_SKILL_CLOSE", function()
   if panel then panel:Hide() end
 end)
 
--- /comrade tracker [reset]: show/hide the step panel, or dock it back.
-ns.commands.tracker = function(rest)
+-- Step panel on/off (`on` nil = keep) and `redock` = forget the dragged position.
+-- Used by /comrade tracker and the Manage view.
+function ns.SetTracker(on, redock)
   local s = Settings()
-  if rest == "reset" then
-    s.trackerPos = nil
-  else
-    s.tracker = s.tracker == false
-  end
-  ns.Print(s.tracker == false and L["Step panel: off"] or L["Step panel: on (shown with the profession window)"])
+  if on ~= nil then s.tracker = on end
+  if redock then s.trackerPos = nil end
+  if s.tracker == false and panel then panel:Hide() end
   if s.tracker ~= false and Anchor() and not Linked() then
     Create()
     panel:Show()
@@ -273,4 +271,11 @@ ns.commands.tracker = function(rest)
     Place()
     ns.RefreshTracker()
   end
+end
+function ns.TrackerOn() return Settings().tracker ~= false end
+
+-- /comrade tracker [reset]: show/hide the step panel, or dock it back.
+ns.commands.tracker = function(rest)
+  if rest == "reset" then ns.SetTracker(nil, true) else ns.SetTracker(not ns.TrackerOn()) end
+  ns.Print(ns.TrackerOn() and L["Step panel: on (shown with the profession window)"] or L["Step panel: off"])
 end

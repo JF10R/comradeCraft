@@ -378,6 +378,7 @@ def main():
       assert(fe and fe.spell == 2963 and ns.CraftableNow(fe.spell, sc.bags) == 2, "tracker: first craft is the bolt")
       SlashCmdList.COMRADECRAFT("tracker")
       assert(ComradeCraftDB.settings.tracker == false, "tracker: toggled off")
+      assert(not ns.TrackerOn() and #ns.SkillupStatsLines() >= 1, "manage: tracker state, stats lines")
       SlashCmdList.COMRADECRAFT("tracker")
       f.onEvent(f, "TRADE_SKILL_CLOSE")
       assert(not ComradeCraftTracker:IsShown() and ns.openLine == nil, "tracker: hidden on close")

@@ -738,6 +738,11 @@ local function RenderManage()
     Action(LIST_W - 100, y, L["Remove"], function() Sync.Exclude(e.id) end)
     y = y - 28
   end
+  if #inGroup > 0 then
+    -- Updates go out by themselves (debounced); this sends right away.
+    Action(0, y, L["Send now"], function() ns.commands.sync() end)
+    y = y - 30
+  end
 
   y = Section(y - 10, L["Requests and suggestions"],
     L["Players with ComradeCraft in your guild, or who added you. Add them to share both ways."])
@@ -773,6 +778,17 @@ local function RenderManage()
   end)
   local _, h = Label(30, y - 4, L["Send a presence signal to the guild at login (no character data)."], nil, LIST_W - 30)
   y = y - math.max(28, h + 10)
+  Check(0, y + 2, ns.TrackerOn(), function(on) ns.SetTracker(on) end)
+  _, h = Label(30, y - 4, L["Show the step panel next to the profession window."], nil, LIST_W - 140)
+  Action(LIST_W - 100, y, L["Re-dock"], function() ns.SetTracker(nil, true) end)
+  y = y - math.max(28, h + 10)
+
+  y = Section(y - 6, L["Measured skill-up chances"],
+    L["Crafts logged by you and your group correct the Classic formula once a color has enough of them."])
+  for _, l in ipairs(ns.SkillupStatsLines()) do
+    local _, lh = Label(0, y, (l:gsub("^%s+", "")))
+    y = y - lh - 2
+  end
   return -y
 end
 
