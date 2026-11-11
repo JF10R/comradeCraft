@@ -198,6 +198,8 @@ local translations = {
       "Rien à acheter.",
     ["Step panel hidden. /comrade tracker shows it again."] =
       "Panneau d'étape masqué. /comrade tracker le réaffiche.",
+    ["TSM: Ctrl+C, then paste in the search box of TSM's Shopping tab."] =
+      "TSM : Ctrl+C, puis colle dans la barre de recherche de l'onglet Shopping de TSM.",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

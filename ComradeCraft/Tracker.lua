@@ -131,7 +131,7 @@ local function Create()
   panel.shop = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
   panel.shop:SetSize(130, 20)
   panel.shop:SetText(L["Shopping list"])
-  panel.shop:SetScript("OnClick", function() ns.ExportShoppingVerbose(ns.CharKey(), ns.openLine) end)
+  panel.shop:SetScript("OnClick", function() ns.ShoppingAction(ns.CharKey(), ns.openLine) end)
   panel.open = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
   panel.open:SetSize(130, 20)
   panel.open:SetText(L["Full plan"])
@@ -228,7 +228,7 @@ function ns.RefreshTracker()
       panel.after:SetPoint("TOPLEFT", PAD, -(y + 4))
       y = y + 8 + (panel.after:GetStringHeight() or 12)
     end
-    if ns.CanExportShopping() and need and next(need.items or {}) then panel.shop:Show() end
+    if ns.CanShop() and need and next(need.items or {}) then panel.shop:Show() end
   end
   y = y + 6
   panel.open:ClearAllPoints()

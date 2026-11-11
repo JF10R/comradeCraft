@@ -162,12 +162,12 @@ local function CreateRow()
     r[k]:SetJustifyH("LEFT")
   end
   r.top:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -8)
-  -- Exports the missing mats as an Auctionator shopping list (shown only with Auctionator).
+  -- Missing mats as an Auctionator list and/or TSM search text (shown only with one of them).
   r.shop = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
   r.shop:SetSize(PROF_W - 20, 20)
   r.shop:SetPoint("TOPLEFT", r, "TOPLEFT", 6, -48)
   r.shop:SetText(L["Shopping list"])
-  r.shop:SetScript("OnClick", function(self) ns.ExportShoppingVerbose(self.key, self.line) end)
+  r.shop:SetScript("OnClick", function(self) ns.ShoppingAction(self.key, self.line) end)
   r.shop:Hide()
   r.line = r:CreateTexture(nil, "BACKGROUND")
   r.line:SetHeight(1)
@@ -293,7 +293,7 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.bar:SetValue(p.rank or 0)
 
   r.shop.key, r.shop.line = key, p.skillLine
-  r.shop:SetShown(ns.CanExportShopping() and need ~= nil and next(need.items or {}) ~= nil)
+  r.shop:SetShown(ns.CanShop() and need ~= nil and next(need.items or {}) ~= nil)
 
   local d = ns.DescribeNeed(p, c)
   local top = {}

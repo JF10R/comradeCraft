@@ -1,5 +1,6 @@
 -- Shopping: the mats a plan still misses, as an Auctionator shopping list (one list per
--- profession, replaced on each export) or as chat text. Vendor reagents are left out.
+-- profession, replaced on each export), a TSM search text to paste, or chat text.
+-- Vendor reagents are left out.
 local _, ns = ...
 local L = ns.L
 
@@ -56,6 +57,63 @@ function ns.ExportShopping(key, line)
   return #strings, skipped
 end
 
+-- Pure: TSM Shopping search text, e.g. "Linen Cloth/exact/x124;Wool Cloth/exact/x60" (TSM
+-- splits searches on ";", "/xN" = max quantity). TSM has no API to create lists or groups.
+-- Returns the text and how many items were skipped (name not cached, or with / or ;).
+function ns.TSMSearchString(items, nameOf)
+  local parts, skipped = {}, 0
+  for _, e in ipairs(items) do
+    local name = nameOf(e.item)
+    if name and not name:find("[/;]") then
+      parts[#parts + 1] = ("%s/exact/x%d"):format(name, e.n)
+    else
+      skipped = skipped + 1
+    end
+  end
+  return table.concat(parts, ";"), skipped
+end
+
+function ns.CanTSMShopping() return TSM_API ~= nil end
+function ns.CanShop() return ns.CanExportShopping() or ns.CanTSMShopping() end
+
+-- Copy box: TSM's search text, selected, ready for Ctrl+C.
+local function ShowCopy(text)
+  if not (StaticPopupDialogs and StaticPopup_Show) then return ns.Print(text) end
+  StaticPopupDialogs.COMRADECRAFT_COPY = StaticPopupDialogs.COMRADECRAFT_COPY or {
+    text = L["TSM: Ctrl+C, then paste in the search box of TSM's Shopping tab."],
+    button1 = OKAY or "OK", hasEditBox = true, editBoxWidth = 350, timeout = 0,
+    whileDead = true, hideOnEscape = true,
+    OnShow = function(self, data)
+      local eb = self.editBox or self.EditBox or (self.GetEditBox and self:GetEditBox())
+      if not eb then return end
+      eb:SetText(data or self.data or "")
+      eb:HighlightText()
+      eb:SetFocus()
+    end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+    EditBoxOnEnterPressed = function(self) self:GetParent():Hide() end,
+  }
+  local dialog = StaticPopup_Show("COMRADECRAFT_COPY", nil, nil, text)
+  if dialog then dialog.data = text end
+end
+
+-- The Shopping list button: Auctionator list and/or TSM search text, whichever is loaded.
+function ns.ShoppingAction(key, line)
+  if ns.CanExportShopping() then ns.ExportShoppingVerbose(key, line) end
+  if ns.CanTSMShopping() then
+    local c = ns.AllChars()[key]
+    local need = c and c.needs and c.needs[line]
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local text, skipped = ns.TSMSearchString(ns.ShoppingItems(need), function(id) return (get(id)) end)
+    ns.Log(("shopping: TSM search text, %d chars, %d skipped"):format(#text, skipped))
+    if text == "" then
+      ns.Print(skipped > 0 and L["%d not cached yet; try again in a moment."]:format(skipped) or L["Nothing to buy."])
+    else
+      ShowCopy(text)
+    end
+  end
+end
+
 -- Exports and tells the player what happened.
 function ns.ExportShoppingVerbose(key, line)
   local need = ns.AllChars()[key] and ns.AllChars()[key].needs and ns.AllChars()[key].needs[line]
@@ -92,7 +150,7 @@ ns.commands.shop = function(rest)
         end
         local cost = ns.PriceSource and (" (" .. ns.CostText(total, complete) .. ")") or ""
         ns.Print(("%s%s: %s"):format(need.name, cost, table.concat(parts, ", ")))
-        if ns.CanExportShopping() then ns.ExportShoppingVerbose(key, line) end
+        if ns.CanShop() then ns.ShoppingAction(key, line) end
       end
     end
   end

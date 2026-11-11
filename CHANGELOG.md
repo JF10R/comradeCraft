@@ -10,6 +10,7 @@ First version for WoW Forever (Interface 16001):
 - Opt-in sharing with friends and guildmates you add (addon messages, no server).
 - Step panel next to the profession window: current step, skill-up chance, crafts your bags
   allow, next step (`/comrade tracker`).
-- Shopping list: export a plan's missing mats to Auctionator (`/comrade shop`).
+- Shopping list: export a plan's missing mats to Auctionator, or copy a TSM search text
+  (`/comrade shop`).
 - Disenchant advice uses the TSM or Auctionator disenchant value when available.
 - Mail helper, disenchant-or-keep advice, gear upgrades (Pawn when installed).

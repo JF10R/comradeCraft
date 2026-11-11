@@ -337,6 +337,16 @@ def main():
       assert(nn and nn > 0 and made.name == "ComradeCraft: Tailoring" and made.list[1]:find('"Item', 1, true),
         "shopping: exported " .. tostring(nn))
       SlashCmdList.COMRADECRAFT("shop tail")
+      -- TSM: search text with exact names and max quantities; odd names skipped.
+      local ts, tskip = ns.TSMSearchString({ { item = 1, n = 124 }, { item = 2, n = 60 }, { item = 3, n = 1 }, { item = 4, n = 2 } },
+        function(id) return ({ "Linen Cloth", "Wool Cloth", "A/B" })[id] end)
+      assert(ts == "Linen Cloth/exact/x124;Wool Cloth/exact/x60" and tskip == 2, "tsm search text: " .. ts)
+      local shown
+      StaticPopupDialogs, StaticPopup_Show = {}, function(_, _, _, data) shown = data end
+      TSM_API = {}
+      ns.ShoppingAction("Test-Realm", 197)
+      assert(shown and shown:find("/exact/x", 1, true), "tsm: copy box shown")
+      TSM_API, StaticPopupDialogs, StaticPopup_Show = nil, nil, nil
       -- Step panel: opens with the profession window, shows the first step; bags allow N crafts.
       assert(ns.CraftableNow(2963, { [2589] = 7 }) == 3 and ns.CraftableNow(2963, {}) == 0, "craftable now")
       f.onEvent(f, "TRADE_SKILL_LIST_UPDATE")
