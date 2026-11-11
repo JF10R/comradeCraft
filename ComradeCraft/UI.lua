@@ -474,6 +474,43 @@ local function RenderGroup(filter)
     y = y - math.ceil(shown / 3) * (MAT_H + 4) - 10
   end
 
+  -- "Disenchant or keep?": the current character's disenchantable bag items, with a verdict.
+  local advice = ns.BagAdvice(ns.CharKey())
+  if #advice > 0 then
+    local _, ha = Label(0, y, "|cffffd100" .. L["Disenchant or keep?"] .. "|r  |cff9d9d9d"
+      .. L["Green and better items in your bags. Yields are estimates until your disenchants are logged."] .. "|r",
+      "GameFontNormal")
+    y = y - ha - 6
+    local width = math.floor((LIST_W - 8) / 2)
+    local myBags = (ComradeCraftDB.chars[ns.CharKey()] or {}).bags or {}
+    local shown = math.min(#advice, 12)
+    for i = 1, shown do
+      local a = advice[i]
+      local text
+      if a.verdict == "target" then
+        text = "|cff66ccff" .. L["Keep: enchanting target (%s)"]:format(ns.SpellName(a.spell)) .. "|r"
+      elseif a.verdict == "gear" then
+        text = "|cff66ccff" .. L["Keep: gear for %s"]:format(ShortName(a.to)) .. "|r"
+      elseif a.verdict == "sell" then
+        text = "|cffffd100" .. L["Sell: AH %s vs disenchant %s"]:format(ns.Money(math.floor(a.ah)), ns.Money(math.floor(a.de))) .. "|r"
+      else
+        local parts = {}
+        for mat, n in pairs(a.yield) do
+          parts[#parts + 1] = { n = n, text = ("%.1f %s"):format(n, (ItemInfo(mat)) or ("item:" .. mat)) }
+        end
+        table.sort(parts, function(p, q) return p.n > q.n end)
+        local list = {}
+        for _, p in ipairs(parts) do list[#list + 1] = p.text end
+        text = L["Disenchant: %s"]:format(table.concat(list, ", "))
+        if a.useful then text = text .. "  |cff80ff80" .. L["the group needs these"] .. "|r" end
+        if a.enchanter then text = text .. "  |cff66ccff" .. L["give to %s"]:format(ShortName(a.enchanter)) .. "|r" end
+      end
+      local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, myBags[a.item] or 1, text, width)
+    end
+    y = y - math.ceil(shown / 2) * (MAT_H + 4) - 10
+  end
+
   -- Skill table: one line per character.
   local _, h = Label(0, y, "|cffffd100" .. L["Skill levels"] .. "|r", "GameFontNormal")
   y = y - h - 6

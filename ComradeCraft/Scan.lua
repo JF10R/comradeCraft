@@ -96,6 +96,11 @@ function ns.ScanSpec()
   end
 end
 
+-- Current bag contents { [itemID] = count } (bank excluded).
+function ns.ScanBagContents()
+  return ScanBags(BagIndexes())
+end
+
 function ns.ScanAll()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
   local c = ns.CharData()

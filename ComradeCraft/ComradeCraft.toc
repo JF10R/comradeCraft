@@ -39,6 +39,7 @@ Data\Recipes.lua
 Needs.lua
 Scan.lua
 SkillLog.lua
+Disenchant.lua
 Tooltip.lua
 Sync.lua
 Mail.lua

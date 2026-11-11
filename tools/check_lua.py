@@ -469,6 +469,60 @@ def main():
       C_Container, C_Timer = oldC, oldTimer
       ComradeCraftDB.chars = saved3
 
+      -- Disenchant: yields by required level and type; advice keeps ONE cheapest enchant target
+      -- per slot the plan needs, keeps gear for a member it fits, disenchants the rest.
+      local oldGII = GetItemInfo
+      local ITEMS = {
+        [90001] = { "Cheap Bracers", 2, 12, "INVTYPE_WRIST", 10, 4, 2 },   -- quality, reqLevel, equipLoc, sell, class, subclass
+        [90002] = { "Fine Bracers", 2, 12, "INVTYPE_WRIST", 50, 4, 2 },
+        [90003] = { "Green Sword", 2, 12, "INVTYPE_WEAPON", 30, 2, 7 },
+        [90004] = { "Cloth Robe", 2, 18, "INVTYPE_ROBE", 40, 4, 1 },
+        [90005] = { "Blue Ring", 3, 12, "INVTYPE_FINGER", 90, 4, 0 },
+      }
+      GetItemInfo = function(id)
+        local t = ITEMS[id]
+        if t then return t[1], "|Hitem:" .. id .. "|h", t[2], 20, t[3], "", "", 1, t[4], 0, t[5], t[6], t[7] end
+        return oldGII(id)
+      end
+      local ya = ns.DisenchantYield(90001)
+      assert(math.abs(ya[10940] - 1.875) < 1e-9 and math.abs(ya[10939] - 0.3) < 1e-9, "de: armor 75% dust 20% essence")
+      local yw = ns.DisenchantYield(90003)
+      assert(math.abs(yw[10940] - 0.5) < 1e-9 and math.abs(yw[10939] - 1.125) < 1e-9, "de: weapon reversed")
+      assert(ns.DisenchantYield(90005)[10978] == 1, "de: rare gives one shard")
+      assert(ns.DisenchantYield(2589) == nil, "de: cloth (trade good) is not disenchantable")
+      local saved4 = ComradeCraftDB.chars
+      ComradeCraftDB.chars = {
+        ["Test-Realm"] = { class = "WARRIOR", level = 20, bags = { [90001] = 1, [90002] = 1, [90003] = 1, [90004] = 1 },
+          professions = { Enchanting = { skillLine = 333, rank = 60, max = 75 } },
+          needs = { [333] = { name = "Enchanting", items = {}, plan = { { spell = 7418, subs = {} } } } } },
+        ["Mage-Realm"] = { class = "MAGE", level = 20, needs = { [333] = { name = "Enchanting", items = { [10940] = 9 } } } },
+      }
+      local adv = {}
+      for _, a in ipairs(ns.BagAdvice("Test-Realm")) do adv[a.item] = a end
+      assert(adv[90001].verdict == "target" and adv[90002].verdict == "disenchant", "de: cheapest bracers kept as target")
+      assert(adv[90004].verdict == "gear" and adv[90004].to == "Mage-Realm", "de: robe kept for the mage")
+      assert(adv[90003].verdict == "disenchant" and adv[90003].useful, "de: sword disenchanted, dust is needed")
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      ComradeCraftDB.chars = saved4
+      -- Logging: bag diff finds the source; loot recorded with item facts.
+      assert(ns.DisenchantedItem({ [90001] = 1, [2589] = 5 }, { [2589] = 5, [10940] = 2 }, { [10940] = 2 }) == 90001,
+        "de: source found by bag diff")
+      local bagNow = { [90002] = 1 }
+      local oldScan = ns.ScanBagContents
+      ns.ScanBagContents = function() return bagNow end
+      GetNumLootItems = function() return 1 end
+      GetLootSlotLink = function() return "|Hitem:10940:0|h" end
+      GetLootSlotInfo = function() return nil, nil, 2 end
+      C_Timer = { After = function(_, fn) fn() end }
+      f.onEvent(f, "UNIT_SPELLCAST_START", "player", "g", 13262)
+      bagNow = {}
+      f.onEvent(f, "LOOT_OPENED")
+      f.onEvent(f, "LOOT_CLOSED")
+      local dl = ComradeCraftDB.disenchants.raw[1]
+      assert(dl and dl.item == 90002 and dl.loot[10940] == 2 and dl.quality == 2, "de: disenchant logged")
+      ns.ScanBagContents, GetItemInfo = oldScan, oldGII
+
       -- Urgency: first plan step using an item; most-wanted sorts now < soon < later, then size.
       local when = ns.FirstStepOf({ { spell = 2963, subs = {} }, { spell = 2385, subs = { [2963] = 1 } } })
       assert(when[2589] == 1 and when[2320] == 2, "urgency: first step per item")
