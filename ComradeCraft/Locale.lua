@@ -284,6 +284,22 @@ local translations = {
       "Aide",
     ["How ComradeCraft works, in short."] =
       "Comment fonctionne ComradeCraft, en bref.",
+    ["Cheapest"] =
+      "Moins chère",
+    ["Profitable"] =
+      "Rentable",
+    ["Route:"] =
+      "Route :",
+    ["Picks recipes whose products sell back well; you sell what you craft."] =
+      "Choisit les recettes dont les produits se revendent bien; tu revends ce que tu craftes.",
+    ["Spends the least on mats."] =
+      "Dépense le moins possible en mats.",
+    ["%s %s (sold back %s)"] =
+      "%s %s (revendu %s)",
+    ["Cost by milestone (%s prices):"] =
+      "Coût par palier (prix %s) :",
+    ["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"] =
+      "Coût par palier (prix marchand, installe TSM ou Auctionator pour les prix de l'HV) :",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

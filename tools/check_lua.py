@@ -325,6 +325,27 @@ def main():
       TSM_API, ns.PriceSource, ns.PriceSourceName, ns.DisenchantPrice = nil, nil, nil, nil
       ns.UpdateNeeds(c)
 
+      -- Route types: with bolts selling for 1g, "profit" grinds bolts (mats - resale < 0),
+      -- "cheap" keeps the vest (fewest mats per point). Milestones hold the per-bracket copper.
+      local oldPS = ns.PriceSource
+      ns.PriceSource = function(item) return ({ [2589] = 100, [2996] = 10000, [2385] = 1000 })[item] end
+      local _, _, pc, ic = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, nil, nil, "cheap")
+      local _, _, pp, ip = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, nil, nil, "profit")
+      assert(pc[1].spell == 2385 and pp[1].spell == 2963, "routes: cheap=vest, profit=bolt, got "
+        .. pc[1].spell .. "/" .. pp[1].spell)
+      assert(ic.milestones[0] and ic.milestones[0].points == 9 and ip.milestones[0].resale > ip.milestones[0].mats,
+        "routes: milestone totals")
+      ns.PriceSource = oldPS
+      ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+      ns.SetRouteMode("profit")
+      assert(ns.RouteMode() == "profit" and c.needs[197] and c.needs[197].mode == "profit", "routes: mode stored")
+      local mt = ns.MilestoneText(c.needs[197])
+      assert(mt and #mt.rows >= 1 and mt.rows[1]:find("^1%-75"), "routes: milestone text " .. tostring(mt and mt.rows[1]))
+      ComradeCraftDB.ui.sel = "Test-Realm"
+      ComradeCraftDB.ui.tab = "plan"
+      ns.RefreshWindow()
+      ns.SetRouteMode("cheap")
+
       -- Shopping: biggest need first; Auctionator list built from exact search terms.
       local si = ns.ShoppingItems({ items = { [2589] = 5, [2320] = 9, [2996] = 0 } })
       assert(#si == 2 and si[1].item == 2320 and si[2].n == 5, "shopping: sorted, zero dropped")

@@ -280,6 +280,41 @@ end
 -- Views ---------------------------------------------------------------------------------
 
 -- Plan tab: one block per profession (status, clickable plan, cost, mats, vendor, blocked).
+local actionBtns, checks = {}, {}
+
+local function CreateActionBtn()
+  local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+  b:SetSize(96, 22)
+  b:SetScript("OnClick", function(self) if self.fn then self.fn() end end)
+  return b
+end
+
+local function Action(x, y, text, fn)
+  local b = Acquire(actionBtns, CreateActionBtn)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b:SetText(text)
+  b:SetEnabled(true)
+  b.fn = fn
+  return b
+end
+
+local function CreateCheck()
+  local b = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+  b:SetSize(24, 24)
+  b:SetScript("OnClick", function(self) if self.fn then self.fn(self:GetChecked() and true or false) end end)
+  return b
+end
+
+local function Check(x, y, checked, fn)
+  local b = Acquire(checks, CreateCheck)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b:SetChecked(checked and true or false)
+  b.fn = fn
+  return b
+end
+
 local function LayoutProfession(y, name, p, c, own, key)
   local r = Acquire(rows, CreateRow)
   r:ClearAllPoints()
@@ -329,6 +364,10 @@ local function LayoutProfession(y, name, p, c, own, key)
   if d.cost then extra[#extra + 1] = "|cffffd100" .. d.cost .. "|r" end
   if d.used then extra[#extra + 1] = "|cff80c080" .. d.used .. "|r" end
   if d.knownOnly then extra[#extra + 1] = "|cff9d9d9d" .. d.knownOnly .. "|r" end
+  local ms = ns.MilestoneText(need)
+  if ms then
+    extra[#extra + 1] = "|cffffd100" .. ms.header .. "|r\n|cffc0c0c0" .. table.concat(ms.rows, "\n") .. "|r"
+  end
   r.mid:ClearAllPoints()
   r.mid:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -(yy + 4))
   r.mid:SetText(table.concat(extra, "\n"))
@@ -360,6 +399,17 @@ end
 
 local function RenderPlan(key, c)
   local y = 0
+  -- Route type: cheapest (default) or profitable (products sold back).
+  local mode = ns.RouteMode()
+  Label(0, y - 5, L["Route:"], "GameFontNormal", 60)
+  local cheap = Action(60, y, L["Cheapest"], function() ns.SetRouteMode("cheap") end)
+  local profit = Action(160, y, L["Profitable"], function() ns.SetRouteMode("profit") end)
+  cheap:SetEnabled(mode ~= "cheap")
+  profit:SetEnabled(mode ~= "profit")
+  local _, hh = Label(262, y - 5, "|cff9d9d9d" .. (mode == "profit"
+    and L["Picks recipes whose products sell back well; you sell what you craft."]
+    or L["Spends the least on mats."]) .. "|r", nil, LIST_W - 262)
+  y = y - math.max(30, hh + 12)
   local own = key == ns.CharKey()
   local plist = SortedKeys(c.professions or {})
   if #plist == 0 then
@@ -647,40 +697,6 @@ local function RenderSide(sel)
 end
 
 -- Manage group view ------------------------------------------------------------------------
-
-local actionBtns, checks = {}, {}
-
-local function CreateActionBtn()
-  local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-  b:SetSize(96, 22)
-  b:SetScript("OnClick", function(self) if self.fn then self.fn() end end)
-  return b
-end
-
-local function Action(x, y, text, fn)
-  local b = Acquire(actionBtns, CreateActionBtn)
-  b:ClearAllPoints()
-  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
-  b:SetText(text)
-  b.fn = fn
-  return b
-end
-
-local function CreateCheck()
-  local b = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
-  b:SetSize(24, 24)
-  b:SetScript("OnClick", function(self) if self.fn then self.fn(self:GetChecked() and true or false) end end)
-  return b
-end
-
-local function Check(x, y, checked, fn)
-  local b = Acquire(checks, CreateCheck)
-  b:ClearAllPoints()
-  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
-  b:SetChecked(checked and true or false)
-  b.fn = fn
-  return b
-end
 
 -- Section title + one-line explanation; returns the new y.
 local function Section(y, title, help)

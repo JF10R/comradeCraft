@@ -14,3 +14,6 @@ First version for WoW Forever (Interface 16001):
   group import (`/comrade shop`); finished or replaced TSM groups are reported.
 - Disenchant advice uses the TSM or Auctionator disenchant value when available.
 - Mail helper, disenchant-or-keep advice, gear upgrades (Pawn when installed).
+- Route types: Cheapest (default) or Profitable (products sold back), with the cost of both
+  per 75-point milestone.
+- Help page (? button) and a short first-open tour.

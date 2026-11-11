@@ -305,6 +305,36 @@ function ns.DescribeNeed(p, c)
   return out
 end
 
+-- Cost per bracket of both route types, for the Plan tab:
+-- { header, rows = { "75-150: Cheapest 12g (sold back 3g) | Profitable ..." } } or nil.
+function ns.MilestoneText(need)
+  if not (need and need.milestones and need.alt) then return nil end
+  local routes = { [need.mode] = need.milestones, [need.alt.mode] = need.alt.milestones }
+  local starts, seen = {}, {}
+  for _, ms in pairs(routes) do
+    for b in pairs(ms) do
+      if not seen[b] then seen[b] = true starts[#starts + 1] = b end
+    end
+  end
+  table.sort(starts)
+  if #starts == 0 then return nil end
+  local rows = {}
+  for _, b in ipairs(starts) do
+    local parts = {}
+    for _, mode in ipairs(ns.ROUTES) do
+      local m = routes[mode][b]
+      local name = ns.L[mode == "cheap" and "Cheapest" or "Profitable"]
+      if mode == need.mode then name = "|cffffd100" .. name .. "|r" end
+      parts[#parts + 1] = m and ns.L["%s %s (sold back %s)"]:format(name, ns.Money(math.floor(m.mats)),
+        ns.Money(math.floor(m.resale))) or (name .. " -")
+    end
+    rows[#rows + 1] = ("%d-%d: %s"):format(math.max(1, b), b + ns.MILESTONE, table.concat(parts, "  |  "))
+  end
+  local header = ns.PriceSource and ns.L["Cost by milestone (%s prices):"]:format(ns.PriceSourceName)
+    or ns.L["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"]
+  return { header = header, rows = rows }
+end
+
 -- /comrade needs: same text as the window, for the current character.
 ns.commands.needs = function()
   local c = ns.CharData()

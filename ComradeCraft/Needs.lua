@@ -99,6 +99,20 @@ function ns.ItemValue(item)
   return math.max(1, v or 1)
 end
 
+-- What one crafted item sells for: AH price minus the 5% cut, else the merchant sell price.
+function ns.ResaleValue(item)
+  if not item or item == 0 then return 0 end
+  local v = ns.PriceSource and ns.PriceSource(item)
+  if v and v > 0 then return v * 0.95 end
+  local p = ns.ItemPrices and ns.ItemPrices[item]
+  return p and p[1] or 0
+end
+
+-- Route types: "cheap" = least spent on mats; "profit" = least spent once the products are
+-- sold back (mats - resale), so recipes whose products sell well win.
+ns.ROUTES = { "cheap", "profit" }
+ns.MILESTONE = 75 -- cost comparison per bracket of 75 points (1-75, 75-150, ...)
+
 local function Total(reag)
   local n = 0
   for item, c in pairs(reag) do n = n + c * ns.ItemValue(item) end
@@ -130,7 +144,7 @@ ns.MIN_GAIN = 0.25
 -- info { reason = nil | "grey" | "lowgain", bestGain, used = { [itemID] = count } }.
 -- learnable (optional): { [spellID] = requiredSkill } recipes not known yet but buyable at
 -- a trainer; each becomes an option from its required skill on (plan steps get .learn = true).
-function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable)
+function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
   -- A recipe makes an intermediate only when its mats are worth no more than the item
   -- (Bolt of Woolen Cloth 100c <= 3 Wool 99c: craft it; Light Leather 15c < 3 Ruined
   -- Leather Scraps 21c: gather or buy it instead). Values: ns.ItemValue.
@@ -161,7 +175,9 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable)
       local req = learnable and learnable[sub]
       if req and not (allKnown or known)[sub] then a.minRank = math.max(a.minRank, req) end
     end
-    a.cost = Total(a.raw)
+    a.mats = Total(a.raw)
+    a.resale = ns.ResaleValue(r[5]) * math.max(1, r[6])
+    a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
     actions[#actions + 1] = a
   end
   for spell in pairs(known) do AddAction(spell) end
@@ -170,7 +186,8 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable)
   end
 
   local acc, plan = {}, {}
-  local info = { used = {} }
+  -- milestones[start] = { mats, resale, points }: expected copper per bracket of the route.
+  local info = { used = {}, milestones = {} }
   local cur = rank
   while cur < target do
     local best, bestCost, bestN, topGain = nil, nil, nil, 0
@@ -191,6 +208,10 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable)
       break
     end
     for item, c in pairs(best.raw) do acc[item] = (acc[item] or 0) + c * bestN end
+    local b = math.floor(cur / ns.MILESTONE) * ns.MILESTONE
+    local m = info.milestones[b] or { mats = 0, resale = 0, points = 0 }
+    info.milestones[b] = m
+    m.mats, m.resale, m.points = m.mats + best.mats * bestN, m.resale + best.resale * bestN, m.points + 1
     local last = plan[#plan]
     if not (last and last.spell == best.spell) then
       last = { spell = best.spell, from = cur, crafts = 0, subs = {},
@@ -595,6 +616,20 @@ function ns.NextRecipes(line, rank, known)
   return out
 end
 
+-- Route type chosen in the Plan tab (account-wide).
+function ns.RouteMode()
+  local s = ComradeCraftDB and ComradeCraftDB.settings
+  return s and s.route == "profit" and "profit" or "cheap"
+end
+
+-- Switches the route type and recomputes every character shown (theirs use our prices).
+function ns.SetRouteMode(mode)
+  ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+  ComradeCraftDB.settings.route = mode
+  for _, c in pairs(ns.AllChars()) do ns.UpdateNeeds(c) end
+  ns.RequestRefresh()
+end
+
 -- Recomputes c.needs[skillLine] for one character record (rank -> cap, minus owned).
 function ns.UpdateNeeds(c)
   c.needs = {}
@@ -613,8 +648,11 @@ function ns.UpdateNeeds(c)
       -- Route "with what you know" (kept as a summary) and route "optimal" (also learns
       -- trainer recipes on the way, like leveling guides do). Needs follow the optimal one.
       local learnable = ns.TrainerRecipes(p.skillLine, p.max, known)
-      local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned)
-      local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable)
+      local mode = ns.RouteMode()
+      local other = mode == "profit" and "cheap" or "profit"
+      local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, nil, mode)
+      local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, mode)
+      local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, other)
       local net, vendor, have = {}, {}, {}
       for item, n in pairs(gross) do
         have[item] = owned[item] or 0
@@ -625,7 +663,9 @@ function ns.UpdateNeeds(c)
       c.needs[p.skillLine] = { name = name, items = net, vendor = vendor, gross = gross, have = have,
         reached = reached, target = p.max, plan = plan, reason = info.reason,
         bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
-        knownOnly = { reached = kReached, reason = kInfo.reason } }
+        knownOnly = { reached = kReached, reason = kInfo.reason },
+        mode = mode, milestones = info.milestones,
+        alt = { mode = other, reached = oReached, milestones = oInfo.milestones } }
     end
   end
 end
