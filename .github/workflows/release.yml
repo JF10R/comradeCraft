@@ -1,0 +1,20 @@
+# Builds the addon zip and uploads it to CurseForge when a version tag (v*) is pushed.
+# Needs the repository secret CF_API_TOKEN and "## X-Curse-Project-ID" in the TOC.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the packager builds the changelog from tags
+      - uses: BigWigsMods/packager@v2

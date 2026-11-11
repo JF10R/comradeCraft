@@ -1,0 +1,19 @@
+# BigWigs packager (github.com/BigWigsMods/packager). The addon lives in the ComradeCraft/
+# subfolder; move-folders lifts it to the zip root (source paths start with package-as).
+package-as: ComradeCraft
+
+move-folders:
+  ComradeCraft/ComradeCraft: ComradeCraft
+
+ignore:
+  - tools
+  - docs
+  - .github
+  - .env.example
+  - .gitignore
+  - THIRD_PARTY.md
+  - "*.html"
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

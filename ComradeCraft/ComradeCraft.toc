@@ -1,8 +1,10 @@
 ## Interface: 16001
 ## Title: ComradeCraft
-## Notes: Besoins de professions du groupe : qui a besoin de quels mats.
+## Notes: Group profession needs: who needs which materials, and what to craft next.
+## Notes-frFR: Besoins de professions du groupe : qui a besoin de quels mats, et quoi crafter ensuite.
 ## Author: JHF
-## Version: 0.1.0
+## X-License: MIT
+## Version: @project-version@
 ## SavedVariables: ComradeCraftDB
 ## IconTexture: Interface\Icons\INV_Misc_Bag_10
 
