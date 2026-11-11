@@ -128,13 +128,20 @@ local function CreateStep()
   b.text:SetWidth(RIGHT_W - 34)
   b.text:SetJustifyH("LEFT")
   b:SetScript("OnEnter", function(self)
-    if self.entry and self.entry.kind ~= "range" then ShowItemTooltip(self, self.entry.item, self.entry.spell) end
+    if self.entry and self.entry.kind ~= "range" then
+      ShowItemTooltip(self, self.entry.item, self.entry.spell)
+      if self.entry.kind == "learn" then
+        ns.AddSourceLines(GameTooltip, self.entry.spell)
+        GameTooltip:Show()
+      end
+    end
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
     local e = self.entry
     if not e or e.kind == "range" or LinkOnShiftClick(e.item) then return end
     if e.kind == "craft" and self.own then ns.OpenRecipe(e.spell) end
+    if e.kind == "learn" then ns.WaypointRecipe(e.spell) end
   end)
   return b
 end

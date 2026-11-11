@@ -17,3 +17,5 @@ First version for WoW Forever (Interface 16001):
 - Route types: Cheapest (default) or Profitable (products sold back), with the cost of both
   per 75-point milestone.
 - Help page (? button) and a short first-open tour.
+- Where to get a recipe: hover a "Learn" step for its trainers, vendors and drops (with
+  Questie positions); click it for a TomTom waypoint to the nearest one.

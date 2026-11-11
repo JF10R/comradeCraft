@@ -66,6 +66,7 @@ local function CreateEntry(parent)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     if e.item and e.item ~= 0 then GameTooltip:SetItemByID(e.item)
     elseif GameTooltip.SetSpellByID then GameTooltip:SetSpellByID(e.spell) end
+    if e.kind == "learn" then ns.AddSourceLines(GameTooltip, e.spell) end
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -78,6 +79,7 @@ local function CreateEntry(parent)
       return
     end
     if e.kind == "craft" then ns.OpenRecipe(e.spell) end
+    if e.kind == "learn" then ns.WaypointRecipe(e.spell) end
   end)
   return b
 end

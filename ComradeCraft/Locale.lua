@@ -301,6 +301,24 @@ local translations = {
       "Coût par palier (prix %s) :",
     ["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"] =
       "Coût par palier (prix marchand, installe TSM ou Auctionator pour les prix de l'HV) :",
+    ["Where to get it: unknown."] =
+      "Où l'obtenir : inconnu.",
+    ["Where to get it:"] =
+      "Où l'obtenir :",
+    ["and %d more"] =
+      "et %d autres",
+    ["Sources taken from another game version, unconfirmed on Forever."] =
+      "Sources reprises d'une autre version du jeu, non confirmées sur Forever.",
+    ["Install Questie for locations; TomTom for waypoints."] =
+      "Installe Questie pour les positions, TomTom pour les points de passage.",
+    ["Click: waypoint to the nearest one."] =
+      "Clic : point de passage vers le plus proche.",
+    ["No known location for %s."] =
+      "Aucune position connue pour %s.",
+    ["%s: %s. Install TomTom for a waypoint."] =
+      "%s : %s. Installe TomTom pour un point de passage.",
+    ["Waypoint: %s"] =
+      "Point de passage : %s",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

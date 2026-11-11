@@ -351,6 +351,32 @@ def main():
       ns.RefreshWindow()
       ns.SetRouteMode("Test-Realm", "cheap")
 
+      -- Sources: LibProfessionDB npc ids + QuestieDB spawns; nearest friendly trainer gets the
+      -- TomTom waypoint (same map as the player wins).
+      local lib = LibStub("LibProfessionDB-1.0")
+      local oldSrc = lib.GetRecipeSources
+      lib.GetRecipeSources = function(_, spell)
+        if spell == 3915 then return { trainer = { { id = 1, name = "Far" }, { id = 2, name = "Near" }, { id = 3, name = "Enemy" }, total = 5 } } end
+      end
+      LibQuestieDB = { Npc = {
+        name = function(id) return "N" .. id end,
+        friendlyToFaction = function(id) return id == 3 and "H" or "AH" end,
+        spawns = function(id) return ({ [1] = { [12] = { { 10, 10 } } }, [2] = { [14] = { { 50, 52 } } }, [3] = { [14] = { { 50, 50 } } } })[id] end } }
+      QuestieLoader = { ImportModule = function() return { GetUiMapIdByAreaId = function(_, a) return a + 1000 end } end }
+      UnitFactionGroup = function() return "Alliance" end
+      C_Map = { GetBestMapForUnit = function() return 1014 end,
+        GetPlayerMapPosition = function() return { x = 0.5, y = 0.5 } end, GetAreaInfo = function(a) return "Zone" .. a end }
+      local src = ns.RecipeSources(3915)
+      assert(#src.trainer.list == 2 and src.trainer.list[1].name == "Near" and src.trainer.total == 5, "sources: friendly, nearest first")
+      local wp
+      TomTom = { AddWaypoint = function(_, m, x, y, o) wp = { m = m, x = x, y = y, title = o.title } end }
+      assert(ns.WaypointRecipe(3915) and wp.m == 1014 and math.abs(wp.x - 0.5) < 1e-9, "sources: waypoint on the nearest")
+      local tl = {}
+      ns.AddSourceLines({ AddLine = function(_, l) tl[#tl + 1] = l end, AddDoubleLine = function(_, l, r) tl[#tl + 1] = l .. "=" .. r end }, 3915)
+      assert(table.concat(tl, "|"):find("Near (Zone14 50, 52)", 1, true) and table.concat(tl, "|"):find("and 3 more", 1, true),
+        "sources: tooltip " .. table.concat(tl, "|"))
+      lib.GetRecipeSources, LibQuestieDB, QuestieLoader, TomTom, C_Map, UnitFactionGroup = oldSrc, nil, nil, nil, nil, nil
+
       -- Shopping: biggest need first; Auctionator list built from exact search terms.
       local si = ns.ShoppingItems({ items = { [2589] = 5, [2320] = 9, [2996] = 0 } })
       assert(#si == 2 and si[1].item == 2320 and si[2].n == 5, "shopping: sorted, zero dropped")

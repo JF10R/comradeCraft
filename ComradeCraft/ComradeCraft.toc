@@ -6,7 +6,7 @@
 ## X-License: MIT
 ## Version: @project-version@
 ## SavedVariables: ComradeCraftDB
-## OptionalDeps: Pawn, TradeSkillMaster, Auctionator
+## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom
 ## IconTexture: Interface\Icons\INV_Misc_Bag_10
 
 Libs\LibStub\LibStub.lua
@@ -45,5 +45,6 @@ Tooltip.lua
 Sync.lua
 Mail.lua
 Shopping.lua
+Sources.lua
 Tracker.lua
 UI.lua

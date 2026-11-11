@@ -28,6 +28,8 @@ All optional. ComradeCraft detects them when the game loads.
 |---|---|---|
 | [TradeSkillMaster](https://www.curseforge.com/wow/addons/tradeskill-master) | Auction prices (DBMarket) for step costs and route choice; disenchant value (Destroy) for "sell or disenchant" advice; **Shopping list** button gives a search text for TSM's Shopping tab and a group to import (`ComradeCraft > Character > Tailoring 80-125`); TSM has no API to create, change or delete groups, so ComradeCraft tells you which ones are done or replaced | Auctionator, else merchant prices |
 | [Auctionator](https://www.curseforge.com/wow/addons/auctionator) | Auction prices when TSM is absent; **Shopping list** button exports a plan's missing mats as an Auctionator list; disenchant value | No shopping list export (`/comrade shop` still prints the list) |
+| Questie (with its QuestieDB) | Positions of the trainers, vendors and mobs that give a recipe you must learn | Names only (from the embedded recipe data) |
+| [TomTom](https://www.curseforge.com/wow/addons/tomtom) | Click a "Learn ..." step: waypoint to the nearest source | Location printed in chat |
 | [Pawn](https://www.curseforge.com/wow/addons/pawn) | Upgrade detection with the class and specialization scale of each group member | Item level comparison |
 
 Notes:
@@ -38,7 +40,7 @@ Notes:
   frame so it does not cover them. If an addon replaces that frame, click an entry of
   "You can give" in the group window while the mailbox is open, or type `/comrade mail NAME`.
 
-Not yet verified in game: the step panel's position, the TSM search text and group import, Pawn's scale names on Forever, the
+Not yet verified in game: Questie positions and TomTom waypoints, the step panel's position, the TSM search text and group import, Pawn's scale names on Forever, the
 Auctionator export, the TSM and Auctionator disenchant values, and the mail helper next to
 other mail addons.
 
