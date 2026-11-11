@@ -142,11 +142,24 @@ end
 
 -- Opens the profession window on a recipe the character knows. Tries the modern API first,
 -- then the older frames; logs which path worked so it can be checked on Forever.
+-- Puts the profession window in front of ours once it is open (it opens a moment later).
+local function FrontProfession()
+  local function Raise()
+    if ComradeCraftFrame and ComradeCraftFrame.Lower then ComradeCraftFrame:Lower() end
+    for _, name in ipairs({ "TradeSkillFrame", "ProfessionsFrame", "CraftFrame" }) do
+      local f = _G[name]
+      if f and f.IsShown and f:IsShown() and f.Raise then f:Raise() end
+    end
+  end
+  if C_Timer then C_Timer.After(0.3, Raise) else Raise() end
+end
+
 function ns.OpenRecipe(spell)
   if InCombatLockdown and InCombatLockdown() then return end
   local T = C_TradeSkillUI
   local r = ns.Recipes[spell]
   if not (T and r) then return end
+  FrontProfession()
   if T.OpenRecipe and pcall(T.OpenRecipe, spell) then ns.Log("open recipe: OpenRecipe") return end
   if T.OpenTradeSkill then pcall(T.OpenTradeSkill, r[1]) end
   local function Select()

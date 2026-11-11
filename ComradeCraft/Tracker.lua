@@ -88,7 +88,7 @@ local function Create()
   if panel then return end
   panel = CreateFrame("Frame", "ComradeCraftTracker", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
   panel:SetSize(W, 120)
-  panel:SetFrameStrata("MEDIUM")
+  panel:SetFrameStrata("HIGH") -- small, beside the profession window: never hidden behind ours
   if panel.SetBackdrop then
     panel:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
       edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,

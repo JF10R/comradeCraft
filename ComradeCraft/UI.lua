@@ -1245,7 +1245,9 @@ local function CreateWindow()
   end
   f:SetSize(W, H)
   f:SetPoint("CENTER")
-  f:SetFrameStrata("HIGH")
+  -- Same layer as the game's windows: the profession window can come in front of it.
+  f:SetFrameStrata("MEDIUM")
+  f:SetToplevel(true)
   f:SetMovable(true)
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
