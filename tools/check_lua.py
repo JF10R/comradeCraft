@@ -32,6 +32,7 @@ Widget = function()
     return function() end
   end })
 end
+MockWidget = Widget
 function CreateFrame(_, name)
   local f = Widget()
   if not _G.__frame then _G.__frame = f end
@@ -427,6 +428,46 @@ def main():
       assert(next(ns.Sync.CleanSkillups({ green = { 10, 50, 5 }, purple = { 1, 1, 1 } })) == nil,
         "calibration: gained > n and unknown colors rejected")
       ComradeCraftDB.peers.calib, ComradeCraftDB.peers.other, ComradeCraftDB.skillups = nil, nil, nil
+
+      -- Mail: Vez needs 15 linen; our bags hold two stacks of 10. Expect a whole stack, then a
+      -- split of 5, attached to free slots; recipient and subject filled; nothing sent.
+      local saved3 = ComradeCraftDB.chars
+      ComradeCraftDB.chars = {
+        ["Test-Realm"] = { bags = { [2589] = 20 } },
+        ["Vez-Realm"] = { needs = { [197] = { name = "T", items = { [2589] = 15 }, when = { [2589] = 1 } } } },
+      }
+      local slots = { [1] = { itemID = 2589, stackCount = 10 }, [2] = { itemID = 2589, stackCount = 10 } }
+      local attached, cursor, ops = {}, nil, {}
+      local oldC = C_Container
+      C_Container = {
+        GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+        GetContainerItemInfo = function(bag, slot) return bag == 0 and slots[slot] or nil end,
+        PickupContainerItem = function(_, slot) cursor = { slots[slot].itemID, slots[slot].stackCount }; slots[slot] = nil; ops[#ops + 1] = "pick" .. slot end,
+        SplitContainerItem = function(_, slot, n)
+          cursor = { slots[slot].itemID, n }
+          slots[slot] = { itemID = slots[slot].itemID, stackCount = slots[slot].stackCount - n }
+          ops[#ops + 1] = "split" .. slot .. ":" .. n
+        end,
+      }
+      GetSendMailItem = function(i) return attached[i] and "x" or nil end
+      ClickSendMailItemButton = function(i) attached[i] = cursor; cursor = nil end
+      CursorHasItem = function() return cursor ~= nil end
+      ClearCursor = function() cursor = nil end
+      local oldTimer = C_Timer
+      C_Timer = { After = function(_, fn) fn() end }
+      SendMailFrame = MockWidget()
+      SendMailNameEditBox, SendMailSubjectEditBox = MockWidget(), MockWidget()
+      SendMailNameEditBox.text, SendMailSubjectEditBox.text = "", ""
+      f.onEvent(f, "MAIL_SHOW")
+      assert(ns.Mail.KeyForName("vez") == "Vez-Realm", "mail: name match")
+      ns.Mail.Prepare("Vez-Realm")
+      assert(ops[1] == "pick1" and ops[2] == "split2:5", "mail: whole stack then split, got " .. table.concat(ops, ","))
+      assert(attached[1][2] == 10 and attached[2][2] == 5 and cursor == nil, "mail: 10 + 5 attached, cursor clear")
+      assert(SendMailNameEditBox.text == "Vez" and SendMailSubjectEditBox.text == "ComradeCraft", "mail: form filled")
+      f.onEvent(f, "MAIL_CLOSED")
+      ns.Mail.Prepare("Vez-Realm") -- closed: only a message
+      C_Container, C_Timer = oldC, oldTimer
+      ComradeCraftDB.chars = saved3
 
       -- Urgency: first plan step using an item; most-wanted sorts now < soon < later, then size.
       local when = ns.FirstStepOf({ { spell = 2963, subs = {} }, { spell = 2385, subs = { [2963] = 1 } } })

@@ -41,4 +41,5 @@ Scan.lua
 SkillLog.lua
 Tooltip.lua
 Sync.lua
+Mail.lua
 UI.lua

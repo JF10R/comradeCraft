@@ -194,12 +194,16 @@ local function CreateMat()
   b.own:SetWordWrap(false)
   b:SetScript("OnEnter", function(self) ShowItemTooltip(self, self.itemID) end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  b:SetScript("OnClick", function(self) LinkOnShiftClick(self.itemID) end)
+  -- Shift-click links; on a "you can give" entry with the mailbox open, prepares the mail.
+  b:SetScript("OnClick", function(self)
+    if not LinkOnShiftClick(self.itemID) and self.giveTo and ns.Mail.IsOpen() then ns.Mail.Prepare(self.giveTo) end
+  end)
   return b
 end
 
 local function PlaceMat(x, y, item, count, sub, width)
   local m = Acquire(mats, CreateMat)
+  m.giveTo = nil
   m:ClearAllPoints()
   m:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   m:SetWidth(width or MAT_W)
@@ -456,7 +460,7 @@ local function RenderGroup(filter)
   local give = ns.GiveList(ns.CharKey())
   if #give > 0 then
     local _, hg = Label(0, y, "|cffffd100" .. L["You can give"] .. "|r  |cff9d9d9d"
-      .. L["Spare items in your bags that others need (your own plans come first)."] .. "|r", "GameFontNormal")
+      .. L["Spare items in your bags that others need. With a mailbox open, click one to prepare the mail."] .. "|r", "GameFontNormal")
     y = y - hg - 6
     local width = math.floor((LIST_W - 8) / 3)
     local shown = math.min(#give, 12)
@@ -465,6 +469,7 @@ local function RenderGroup(filter)
       local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
       PlaceMat(col * (width + 4), y - line * (MAT_H + 4), g.item, g.n,
         ("-> %s %s"):format(ns.ClassColored(g.to, chars[g.to] and chars[g.to].class), ns.UrgencyText(g.step)), width)
+        .giveTo = g.to
     end
     y = y - math.ceil(shown / 3) * (MAT_H + 4) - 10
   end

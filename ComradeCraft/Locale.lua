@@ -44,8 +44,14 @@ local translations = {
     ["Group total"] = "Total du groupe",
     ["Spare in the group"] = "En surplus dans le groupe",
     ["You can give"] = "Tu peux donner",
-    ["Spare items in your bags that others need (your own plans come first)."] =
-      "Objets en surplus dans tes sacs dont d'autres ont besoin (tes propres plans passent d'abord).",
+    ["Spare items in your bags that others need. With a mailbox open, click one to prepare the mail."] =
+      "Objets en surplus dans tes sacs dont d'autres ont besoin. Boîte aux lettres ouverte : clique pour préparer le courrier.",
+    ["Mail full (%d attachments): send it, then click again for the rest."] =
+      "Courrier plein (%d pièces jointes) : envoie-le, puis reclique pour le reste.",
+    ["Open a mailbox first."] = "Ouvre d'abord une boîte aux lettres.",
+    ["Nothing to give to %s."] = "Rien à donner à %s.",
+    ["Attach what they need"] = "Joindre ses besoins",
+    ["Type the name of a group member."] = "Tape le nom d'un membre du groupe.",
     ["You need"] = "Il te faut",
     ["group: %d"] = "groupe : %d",
     ["now"] = "maintenant",
