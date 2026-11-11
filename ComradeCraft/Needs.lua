@@ -230,9 +230,9 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
     end
     for item, c in pairs(best.raw) do acc[item] = (acc[item] or 0) + c * bestN end
     local b = math.floor(cur / ns.MILESTONE) * ns.MILESTONE
-    local m = info.milestones[b] or { mats = 0, points = 0, vendor = 0, de = 0, ah = 0 }
+    local m = info.milestones[b] or { mats = 0, points = 0, vendor = 0, de = 0, ah = 0, best = 0 }
     info.milestones[b] = m
-    m.mats, m.points = m.mats + best.mats * bestN, m.points + 1
+    m.mats, m.points, m.best = m.mats + best.mats * bestN, m.points + 1, m.best + best.resale * bestN
     m.vendor = m.vendor + best.back.vendor * bestN
     for _, k in ipairs({ "de", "ah" }) do
       if best.back[k] then m[k] = m[k] + best.back[k] * bestN else m[k .. "Missing"] = true end

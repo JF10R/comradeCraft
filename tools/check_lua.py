@@ -350,9 +350,11 @@ def main():
       assert(ns.RouteMode(c) == "profit" and c.needs[197] and c.needs[197].mode == "profit", "routes: mode stored")
       assert(ns.Sync.CleanRecord({ class = "MAGE", route = "profit" }).route == "profit"
         and ns.Sync.CleanRecord({ class = "MAGE", route = "x" }).route == nil, "routes: synced, validated")
-      local mt = ns.MilestoneText(c.needs[197])
-      assert(mt and #mt.rows >= 3 and mt.rows[1] == "1-75" and mt.rows[2]:find("vendor", 1, true),
-        "routes: milestone text " .. tostring(mt and mt.rows[2]))
+      local mt = ns.MilestoneRows(c.needs[197])
+      local r1 = mt and mt.rows[1]
+      assert(r1 and r1.from == 1 and r1.to == 75 and #r1.routes == 2 and r1.routes[1].mode == "cheap"
+        and r1.routes[2].active and r1.routes[2].m and r1.routes[2].net == r1.routes[2].m.mats - r1.routes[2].m.best,
+        "routes: milestone rows")
       local ro = ns.ResaleOptions(2996)
       assert(ro.vendor >= 0 and ro.ah == nil and ro.de == nil, "resale: no AH, cloth not disenchantable")
       ComradeCraftDB.ui.sel = "Test-Realm"

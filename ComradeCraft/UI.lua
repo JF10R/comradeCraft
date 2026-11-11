@@ -119,34 +119,120 @@ local function Label(x, y, text, font, width)
   return fs, math.max(12, fs:GetStringHeight() or 12)
 end
 
--- One plan entry: a skill range header, or a clickable "learn"/"craft" line with an icon.
+-- Money without copper once above 1 gold (tables stay readable).
+local function ShortMoney(c)
+  c = math.floor(c + 0.5)
+  if math.abs(c) >= 10000 then c = math.floor(c / 100) * 100 end
+  return ns.Money(c)
+end
+
+-- Milestone table columns (x inside the steps column): range, route, mats, resale, net.
+local MS_COLS = { { 0, 64, "LEFT" }, { 66, 86, "LEFT" }, { 154, 92, "RIGHT" }, { 250, 110, "RIGHT" }, { 364, 92, "RIGHT" } }
+
+-- One line of the steps column: a range header ("87 - 107" + its cost), a learn/craft entry
+-- (icon | count | name, mats in grey below), or a milestone table row (5 columns).
 local function CreateStep()
   local b = CreateFrame("Button", nil, content)
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetSize(16, 16)
   b.icon:SetPoint("TOPLEFT", 0, -1)
+  b.count = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  b.count:SetPoint("TOPLEFT", 18, -3)
+  b.count:SetWidth(36)
+  b.count:SetJustifyH("RIGHT")
   b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  b.text:SetPoint("TOPLEFT", 20, -3)
-  b.text:SetWidth(RIGHT_W - 34)
   b.text:SetJustifyH("LEFT")
+  b.detail = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  b.detail:SetJustifyH("LEFT")
+  b.right = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  b.right:SetPoint("TOPRIGHT", -4, -4)
+  b.right:SetJustifyH("RIGHT")
+  b.line = b:CreateTexture(nil, "BACKGROUND")
+  b.line:SetHeight(1)
+  b.line:SetPoint("BOTTOMLEFT", 0, 1)
+  b.line:SetPoint("BOTTOMRIGHT", 0, 1)
+  b.line:SetColorTexture(1, 0.82, 0, 0.25)
+  b.cols = {}
+  for i, col in ipairs(MS_COLS) do
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPLEFT", col[1], -2)
+    fs:SetWidth(col[2])
+    fs:SetJustifyH(col[3])
+    fs:SetWordWrap(false)
+    b.cols[i] = fs
+  end
   b:SetScript("OnEnter", function(self)
-    if self.entry and self.entry.kind ~= "range" then
-      ShowItemTooltip(self, self.entry.item, self.entry.spell)
-      if self.entry.kind == "learn" then
-        ns.AddSourceLines(GameTooltip, self.entry.spell)
-        GameTooltip:Show()
-      end
+    local e = self.entry
+    if not e or e.kind == "range" then return end
+    if e.tip then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      for _, l in ipairs(e.tip) do GameTooltip:AddDoubleLine(l[1], l[2], 0.8, 0.8, 0.8, 1, 1, 1) end
+      GameTooltip:Show()
+      return
+    end
+    if e.kind == "milestone" then return end
+    ShowItemTooltip(self, e.item, e.spell)
+    if e.kind == "learn" then
+      ns.AddSourceLines(GameTooltip, e.spell)
+      GameTooltip:Show()
     end
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
     local e = self.entry
-    if not e or e.kind == "range" or LinkOnShiftClick(e.item) then return end
+    if not e or e.kind == "range" or e.kind == "milestone" or LinkOnShiftClick(e.item) then return end
     if e.kind == "craft" and self.own then ns.OpenRecipe(e.spell) end
     if e.kind == "learn" then ns.WaypointRecipe(e.spell) end
   end)
   return b
+end
+
+-- Places one steps-column line at content (x, y), width w; returns its height.
+local function PlaceStep(x, y, w, e, own)
+  local s = Acquire(steps, CreateStep)
+  s.entry, s.own = e, own
+  s:ClearAllPoints()
+  s:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  s:SetWidth(w)
+  s.count:SetText("")
+  s.detail:SetText("")
+  s.right:SetText("")
+  s.line:Hide()
+  s.icon:Hide()
+  for _, fs in ipairs(s.cols) do fs:SetText("") end
+  s.text:SetText("")
+  local h
+  if e.kind == "range" then
+    s.text:ClearAllPoints()
+    s.text:SetPoint("TOPLEFT", 0, -4)
+    s.text:SetWidth(w - 110)
+    s.text:SetText("|cffffd100" .. (e.header or L["Skill %d to %d"]:format(e.from, e.to)) .. "|r")
+    s.right:SetText(e.cost or "")
+    s.line:Show()
+    h = 22
+  elseif e.kind == "milestone" then
+    for i, v in ipairs(e.cols) do s.cols[i]:SetText(v) end
+    h = 16
+  else
+    s.icon:Show()
+    s.icon:SetTexture(e.item and e.item ~= 0 and select(3, ItemInfo(e.item))
+      or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(e.spell)) or 134400)
+    s.count:SetText(e.n and (e.n .. "x") or "")
+    s.text:ClearAllPoints()
+    s.text:SetPoint("TOPLEFT", 58, -3)
+    s.text:SetWidth(w - 62)
+    s.text:SetText(e.kind == "learn" and ("|cff66ccff" .. L["Learn %s"]:format(e.label or "") .. "|r")
+      or (e.label or e.text))
+    s.detail:ClearAllPoints()
+    s.detail:SetPoint("TOPLEFT", s.text, "BOTTOMLEFT", 0, -1)
+    s.detail:SetWidth(w - 62)
+    s.detail:SetText(e.detail or "")
+    h = 6 + (s.text:GetStringHeight() or 12) + ((e.detail or "") ~= "" and ((s.detail:GetStringHeight() or 12) + 1) or 0)
+    h = math.max(STEP_H, h + 2)
+  end
+  s:SetHeight(h)
+  return h
 end
 
 local function CreateRow()
@@ -398,41 +484,52 @@ local function LayoutProfession(y, name, p, c, own, key)
   local yy = 8 + (#top > 0 and (r.top:GetStringHeight() + 4) or 0)
 
   for _, step in ipairs(d.steps or {}) do
-    local list = { { kind = "range", text = "|cffffd100" .. step.range .. "|r" } }
-    for _, e in ipairs(step.entries) do list[#list + 1] = e end
-    for _, e in ipairs(list) do
-      local s = Acquire(steps, CreateStep)
-      s.entry, s.own = e, own
-      s:ClearAllPoints()
-      s:SetPoint("TOPLEFT", content, "TOPLEFT", PROF_W + (e.kind == "range" and 0 or 12), y - yy)
-      s:SetWidth(RIGHT_W - 12)
-      if e.kind == "range" then
-        s.icon:Hide()
-      else
-        s.icon:Show()
-        s.icon:SetTexture(e.item and e.item ~= 0 and select(3, ItemInfo(e.item))
-          or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(e.spell)) or 134400)
-      end
-      s.text:SetText(e.kind == "learn" and ("|cff66ccff" .. e.text .. "|r") or e.text)
-      local h = math.max(STEP_H, (s.text:GetStringHeight() or 0) + 6)
-      s:SetHeight(h)
-      yy = yy + h
-    end
+    yy = yy + 2 + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "range", from = step.from, to = step.to, cost = step.cost }, own)
+    for _, e in ipairs(step.entries) do yy = yy + PlaceStep(PROF_W + 4, y - yy, RIGHT_W - 4, e, own) end
   end
 
   local extra = {}
   if d.cost then extra[#extra + 1] = "|cffffd100" .. d.cost .. "|r" end
   if d.used then extra[#extra + 1] = "|cff80c080" .. d.used .. "|r" end
   if d.knownOnly then extra[#extra + 1] = "|cff9d9d9d" .. d.knownOnly .. "|r" end
-  local ms = ns.MilestoneText(need)
-  if ms then
-    extra[#extra + 1] = "|cffffd100" .. ms.header .. "|r\n|cffc0c0c0" .. table.concat(ms.rows, "\n") .. "|r"
-  end
   r.mid:ClearAllPoints()
   r.mid:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -(yy + 4))
   r.mid:SetText(table.concat(extra, "\n"))
   if #extra > 0 then yy = yy + 8 + r.mid:GetStringHeight() end
   yy = yy + 4
+
+  -- Cost per milestone: both routes, what they cost, bring back, and the net.
+  local ms = ns.MilestoneRows(need)
+  if ms then
+    yy = yy + 4 + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "range", from = 0, to = 0, header = ms.header }, own)
+    yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = { "|cff8f8f8f" .. L["Skill"] .. "|r",
+      "|cff8f8f8f" .. L["Route"] .. "|r", "|cff8f8f8f" .. L["Mats"] .. "|r", "|cff8f8f8f" .. L["Sold back"] .. "|r",
+      "|cff8f8f8f" .. L["Net cost"] .. "|r" } }, own)
+    for _, row in ipairs(ms.rows) do
+      for i, rt in ipairs(row.routes) do
+        local name = L[rt.mode == "cheap" and "Cheapest" or "Profitable"]
+        name = rt.active and ("|cffffd100" .. name .. "|r") or ("|cffb0b0b0" .. name .. "|r")
+        local cols, tip = { i == 1 and ("%d-%d"):format(row.from, row.to) or "", name, "-", "-", "-" }, nil
+        local m = rt.m
+        if m then
+          local net = rt.net
+          cols[3] = ShortMoney(m.mats)
+          cols[4] = m.best > 0 and ShortMoney(m.best) or ("|cff6f6f6f" .. L["nothing"] .. "|r")
+          cols[5] = net < 0 and ("|cff40ff40+" .. ShortMoney(-net) .. "|r") or ShortMoney(net)
+          local function Way(k)
+            if k ~= "vendor" and m[k] == 0 and m[k .. "Missing"] then return L["unknown"] end
+            return (m[k .. "Missing"] and ">" or "") .. ShortMoney(m[k])
+          end
+          tip = { { L["Mats"], ShortMoney(m.mats) }, { L["Sold to a merchant"], Way("vendor") },
+            { L["Disenchanted"], Way("de") }, { L["At the auction house (-5%)"], Way("ah") },
+            { L["Best way per item"], ShortMoney(m.best) }, { L["Net cost"], cols[5] } }
+        end
+        yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = cols, tip = tip }, own)
+      end
+    end
+    local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. L["Net cost = mats minus the best resale of each item. A green + is a profit. Hover a line for the details."] .. "|r", "GameFontDisableSmall", RIGHT_W)
+    yy = yy + nh + 8
+  end
 
   local items = need and SortedKeys(need.items) or {}
   for i, item in ipairs(items) do

@@ -204,7 +204,9 @@ function ns.DescribeNeed(p, c)
     local cost = seen and seen.cost and ns.Money(seen.cost) or ns.L["cost unknown until you visit the trainer"]
     return { kind = "learn", spell = spell, item = ns.Recipes[spell][5], copper = seen and seen.cost,
       text = ns.L["Learn %s at the trainer (skill %s, %s)"]:format(SpellName(spell),
-        (guessed and "~" or "") .. tostring(req or "?"), cost) }
+        (guessed and "~" or "") .. tostring(req or "?"), cost),
+      label = SpellName(spell),
+      detail = ns.L["At the trainer - skill %s - %s"]:format((guessed and "~" or "") .. tostring(req or "?"), cost) }
   end
   for _, step in ipairs(need.plan or {}) do
     local entries = {}
@@ -226,28 +228,36 @@ function ns.DescribeNeed(p, c)
       local fromStock = math.min(stock[item] or 0, wanted)
       stock[item] = (stock[item] or 0) - fromStock
       local toMake = wanted - fromStock
-      local text
+      local text, detail
       made[item] = true
       if toMake > 0 then
-        text = ns.L["Craft %d %s (%s)"]:format(toMake, ItemName(item), ReagentList(sub, toMake / qty))
-        if fromStock > 0 then text = text .. ns.L[" + %d from stock"]:format(fromStock) end
+        detail = ReagentList(sub, toMake / qty)
+        text = ns.L["Craft %d %s (%s)"]:format(toMake, ItemName(item), detail)
+        if fromStock > 0 then
+          text = text .. ns.L[" + %d from stock"]:format(fromStock)
+          detail = detail .. ns.L[" + %d from stock"]:format(fromStock)
+        end
         local v, ok = MatsCost(sub, toMake / qty)
         stepCost, stepComplete = stepCost + v, stepComplete and ok
       else
         text = ns.L["%d %s from stock"]:format(fromStock, ItemName(item))
+        detail = ns.L["already in your bags"]
       end
-      entries[#entries + 1] = { kind = "craft", spell = sub, item = item, text = text, stock = toMake == 0 }
+      entries[#entries + 1] = { kind = "craft", spell = sub, item = item, text = text, stock = toMake == 0,
+        n = toMake > 0 and toMake or fromStock, label = ItemName(item), detail = detail }
     end
     entries[#entries + 1] = { kind = "craft", spell = step.spell, item = ns.Recipes[step.spell][5],
       text = ns.L["Craft %dx %s (%s)"]:format(Up(step.crafts), SpellName(step.spell),
-        ReagentList(step.spell, Up(step.crafts))) }
+        ReagentList(step.spell, Up(step.crafts))),
+      n = Up(step.crafts), label = SpellName(step.spell), detail = ReagentList(step.spell, Up(step.crafts)) }
     local v, ok = MatsCost(step.spell, Up(step.crafts), made)
     stepCost, stepComplete = stepCost + v, stepComplete and ok
     local range = ("%d-%d"):format(step.from, step.to)
     if priced then
       range = range .. "  |cffb0b0b0" .. (stepComplete and "~" or ">") .. ns.Money(math.floor(stepCost)) .. "|r"
     end
-    out.steps[#out.steps + 1] = { range = range, entries = entries }
+    out.steps[#out.steps + 1] = { range = range, entries = entries, from = step.from, to = step.to,
+      cost = priced and ((stepComplete and "~" or ">") .. ns.Money(math.floor(stepCost))) or nil }
     out.plan[#out.plan + 1] = range .. " :"
     for _, e in ipairs(entries) do out.plan[#out.plan + 1] = "  " .. e.text end
   end
@@ -305,40 +315,32 @@ function ns.DescribeNeed(p, c)
   return out
 end
 
--- Cost per bracket of both route types, for the Plan tab. Each route: what its mats cost,
--- then what its products bring back sold to a merchant, disenchanted, or at the AH.
--- Returns { header, rows = { "75-150", "  Cheapest: 12g of mats; back: vendor 3g, ..." } } or nil.
-function ns.MilestoneText(need)
+-- Cost per bracket of both route types, for the Plan tab's table. Per route: copper spent on
+-- mats, best resale (per item: merchant, disenchant or AH), net = mats - best, plus each way
+-- of selling for the tooltip. { header, rows = { { from, to, routes = { {..}, {..} } } } }.
+function ns.MilestoneRows(need)
   if not (need and need.milestones and need.alt) then return nil end
-  local routes = { [need.mode] = need.milestones, [need.alt.mode] = need.alt.milestones }
+  local byMode = { [need.mode] = need.milestones, [need.alt.mode] = need.alt.milestones }
   local starts, seen = {}, {}
-  for _, ms in pairs(routes) do
+  for _, ms in pairs(byMode) do
     for b in pairs(ms) do
       if not seen[b] then seen[b] = true starts[#starts + 1] = b end
     end
   end
   table.sort(starts)
   if #starts == 0 then return nil end
-  local function Back(m, k)
-    if k ~= "vendor" and (m[k] or 0) == 0 and m[k .. "Missing"] then return "?" end
-    return (m[k .. "Missing"] and ">" or "") .. ns.Money(math.floor(m[k] or 0))
-  end
   local rows = {}
   for _, b in ipairs(starts) do
-    rows[#rows + 1] = ("%d-%d"):format(math.max(1, b), b + ns.MILESTONE)
+    local row = { from = math.max(1, b), to = b + ns.MILESTONE, routes = {} }
     for _, mode in ipairs(ns.ROUTES) do
-      local m = routes[mode][b]
-      local name = ns.L[mode == "cheap" and "Cheapest" or "Profitable"]
-      if mode == need.mode then name = "|cffffd100" .. name .. "|r" end
-      local nothing = m and m.vendor == 0 and m.de == 0 and m.ah == 0
-      rows[#rows + 1] = "  " .. (not m and (name .. ": -")
-        or nothing and ns.L["%s: %s of mats; nothing to sell back"]:format(name, ns.Money(math.floor(m.mats)))
-        or ns.L["%s: %s of mats; back: vendor %s, disenchant %s, AH %s"]:format(name,
-          ns.Money(math.floor(m.mats)), Back(m, "vendor"), Back(m, "de"), Back(m, "ah")))
+      local m = byMode[mode][b]
+      row.routes[#row.routes + 1] = { mode = mode, active = mode == need.mode, m = m,
+        net = m and (m.mats - (m.best or 0)) }
     end
+    rows[#rows + 1] = row
   end
-  local header = ns.PriceSource and ns.L["Cost by milestone (%s prices):"]:format(ns.PriceSourceName)
-    or ns.L["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"]
+  local header = ns.PriceSource and ns.L["Cost by milestone (%s prices)"]:format(ns.PriceSourceName)
+    or ns.L["Cost by milestone (merchant prices; TSM or Auctionator give AH prices)"]
   return { header = header, rows = rows }
 end
 

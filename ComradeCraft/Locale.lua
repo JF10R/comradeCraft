@@ -291,16 +291,9 @@ local translations = {
       "Route :",
     ["Picks recipes whose products sell back well. More crafts, so more mats: tooltips, the give list, mail and shopping all follow this route."] =
       "Choisit les recettes dont les produits se revendent bien. Plus de crafts, donc plus de mats : infobulles, Tu peux donner, courrier et achats suivent cette route.",
-    ["%s: %s of mats; nothing to sell back"] = "%s : %s de mats; rien à revendre",
     ["Chosen by its owner."] = "Choisi par son propriétaire.",
     ["Spends the least on mats."] =
       "Dépense le moins possible en mats.",
-    ["%s: %s of mats; back: vendor %s, disenchant %s, AH %s"] =
-      "%s : %s de mats; récupéré : marchand %s, désenchant %s, HV %s",
-    ["Cost by milestone (%s prices):"] =
-      "Coût par palier (prix %s) :",
-    ["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"] =
-      "Coût par palier (prix marchand, installe TSM ou Auctionator pour les prix de l'HV) :",
     ["Where to get it: unknown."] =
       "Où l'obtenir : inconnu.",
     ["Where to get it:"] =
@@ -325,6 +318,42 @@ local translations = {
     ["For the group"] = "Pour le groupe",
     ["Type"] = "Type",
     ["Mats cost"] = "Coût des mats",
+    ["At the trainer - skill %s - %s"] =
+      "Chez le maître - compétence %s - %s",
+    ["already in your bags"] =
+      "déjà dans tes sacs",
+    ["Cost by milestone (%s prices)"] =
+      "Coût par palier (prix %s)",
+    ["Cost by milestone (merchant prices; TSM or Auctionator give AH prices)"] =
+      "Coût par palier (prix marchand; TSM ou Auctionator donnent les prix de l'HV)",
+    ["Skill %d to %d"] =
+      "Compétence %d à %d",
+    ["Learn %s"] =
+      "Apprendre %s",
+    ["Skill"] =
+      "Palier",
+    ["Route"] =
+      "Route",
+    ["Mats"] =
+      "Mats",
+    ["Sold back"] =
+      "Revendu",
+    ["Net cost"] =
+      "Coût net",
+    ["nothing"] =
+      "rien",
+    ["unknown"] =
+      "inconnu",
+    ["Sold to a merchant"] =
+      "Vendu au marchand",
+    ["Disenchanted"] =
+      "Désenchanté",
+    ["At the auction house (-5%)"] =
+      "À l'hôtel des ventes (-5 %)",
+    ["Best way per item"] =
+      "Meilleure option par objet",
+    ["Net cost = mats minus the best resale of each item. A green + is a profit. Hover a line for the details."] =
+      "Coût net = mats moins la meilleure revente de chaque objet. Un + vert est un profit. Survole une ligne pour le détail.",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =
