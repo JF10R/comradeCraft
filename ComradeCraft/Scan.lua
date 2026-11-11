@@ -143,7 +143,14 @@ local function ScanKnownRecipes()
       end
     end
   end
-  for line, set in pairs(found) do c.known[line] = set end
+  local best, most = nil, 0
+  for line, set in pairs(found) do
+    c.known[line] = set
+    local n = 0
+    for _ in pairs(set) do n = n + 1 end
+    if n > most then best, most = line, n end
+  end
+  ns.openLine = best -- the open profession, for the step panel (Tracker.lua)
   c.professions = ScanProfessions()
   ns.RequestRefresh()
 end

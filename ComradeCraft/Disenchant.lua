@@ -134,7 +134,7 @@ function ns.BagAdvice(key)
       end
     end
     if not entry.verdict then
-      local de = DisenchantValue(cand.yield)
+      local de = (ns.DisenchantPrice and ns.DisenchantPrice(item)) or DisenchantValue(cand.yield)
       local ah = ns.PriceSource and ns.PriceSource(item)
       if de and ah and ah > de * SELL_RATIO then
         entry.verdict, entry.ah, entry.de = "sell", ah, de

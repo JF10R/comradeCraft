@@ -236,7 +236,7 @@ function ns.DescribeNeed(p, c)
       else
         text = ns.L["%d %s from stock"]:format(fromStock, ItemName(item))
       end
-      entries[#entries + 1] = { kind = "craft", spell = sub, item = item, text = text }
+      entries[#entries + 1] = { kind = "craft", spell = sub, item = item, text = text, stock = toMake == 0 }
     end
     entries[#entries + 1] = { kind = "craft", spell = step.spell, item = ns.Recipes[step.spell][5],
       text = ns.L["Craft %dx %s (%s)"]:format(Up(step.crafts), SpellName(step.spell),

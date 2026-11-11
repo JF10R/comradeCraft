@@ -93,6 +93,7 @@ function ns.RequestRefresh()
     refreshPending = false
     if ComradeCraftDB and ComradeCraftDB.chars then ns.UpdateNeeds(ns.CharData()) end
     if ns.RefreshWindow then ns.RefreshWindow() end
+    if ns.RefreshTracker then ns.RefreshTracker() end
     if ns.Sync then ns.Sync.MarkDirty() end -- peers hear about the change (debounced)
   end
   if C_Timer and C_Timer.After then
@@ -122,7 +123,7 @@ SlashCmdList.COMRADECRAFT = function(msg)
       error(err, 0)
     end
   else
-    Print(ns.L["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | scan | needs | stats | api | audit | log clear"])
+    Print(ns.L["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"])
   end
 end
 

@@ -321,8 +321,45 @@ def main():
       local dc = ns.DescribeNeed(c.professions.Tailoring, c)
       assert(dc.cost and dc.cost:find("TSM", 1, true), "cost: total line, got " .. tostring(dc.cost))
       assert(dc.steps[1].range:find("c", 1, true), "cost: step range has a price, got " .. dc.steps[1].range)
-      TSM_API, ns.PriceSource, ns.PriceSourceName = nil, nil, nil
+      assert(ns.DisenchantPrice and ns.DisenchantPrice(2589) == 100, "de price: TSM Destroy source wired")
+      TSM_API, ns.PriceSource, ns.PriceSourceName, ns.DisenchantPrice = nil, nil, nil, nil
       ns.UpdateNeeds(c)
+
+      -- Shopping: biggest need first; Auctionator list built from exact search terms.
+      local si = ns.ShoppingItems({ items = { [2589] = 5, [2320] = 9, [2996] = 0 } })
+      assert(#si == 2 and si[1].item == 2320 and si[2].n == 5, "shopping: sorted, zero dropped")
+      assert(not ns.CanExportShopping(), "shopping: no Auctionator")
+      local made
+      Auctionator = { API = { v1 = {
+        ConvertToSearchString = function(_, t) return '"' .. t.searchString .. '";;;;;;;;;;;;;' .. t.quantity end,
+        CreateShoppingList = function(_, name, list) made = { name = name, list = list } end } } }
+      local nn = ns.ExportShopping("Test-Realm", 197)
+      assert(nn and nn > 0 and made.name == "ComradeCraft: Tailoring" and made.list[1]:find('"Item', 1, true),
+        "shopping: exported " .. tostring(nn))
+      SlashCmdList.COMRADECRAFT("shop tail")
+      -- Step panel: opens with the profession window, shows the first step; bags allow N crafts.
+      assert(ns.CraftableNow(2963, { [2589] = 7 }) == 3 and ns.CraftableNow(2963, {}) == 0, "craftable now")
+      f.onEvent(f, "TRADE_SKILL_LIST_UPDATE")
+      assert(ns.openLine == 197, "tracker: open line " .. tostring(ns.openLine))
+      f.onEvent(f, "TRADE_SKILL_SHOW")
+      assert(ComradeCraftTracker and ComradeCraftTracker:IsShown(), "tracker: shown")
+      assert(ComradeCraftTracker.title.text:find("Tailoring", 1, true), "tracker: title " .. tostring(ComradeCraftTracker.title.text))
+      assert(ComradeCraftTracker.entries[1].entry ~= nil, "tracker: first step entries")
+      -- A step with an intermediate: the bags line is about the bolts, not the vest.
+      local sc = { bags = { [2589] = 4 }, known = { [197] = { [2963] = true, [2385] = true } },
+        professions = { Tailoring = { skillLine = 197, rank = 1, max = 10 } } }
+      ns.UpdateNeeds(sc)
+      local fe
+      for _, e in ipairs(ns.DescribeNeed(sc.professions.Tailoring, sc).steps[1].entries) do
+        if e.kind == "craft" and not e.stock then fe = e break end
+      end
+      assert(fe and fe.spell == 2963 and ns.CraftableNow(fe.spell, sc.bags) == 2, "tracker: first craft is the bolt")
+      SlashCmdList.COMRADECRAFT("tracker")
+      assert(ComradeCraftDB.settings.tracker == false, "tracker: toggled off")
+      SlashCmdList.COMRADECRAFT("tracker")
+      f.onEvent(f, "TRADE_SKILL_CLOSE")
+      assert(not ComradeCraftTracker:IsShown() and ns.openLine == nil, "tracker: hidden on close")
+      Auctionator = nil
 
       -- Sync, simulated with a captured transport: privacy by default, mutual add, cleaning.
       local sent = {}

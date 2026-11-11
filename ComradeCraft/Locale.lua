@@ -8,8 +8,8 @@ ns.L = L
 local translations = {
   frFR = {
     -- Core
-    ["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | scan | needs | stats | api | audit | log clear"] =
-      "commandes : /comrade (fenêtre) | share [off] | add NOM | remove NOM | peers | sync | guildping [off] | scan | needs | stats | api | audit | log clear",
+    ["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"] =
+      "commandes : /comrade (fenêtre) | share [off] | add NOM | remove NOM | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NOM | scan | needs | stats | api | audit | log clear",
     ["log cleared"] = "log vidé",
     ["%d lines in the log (written to disk on /reload or logout)"] =
       "%d lignes dans le log (écrit sur disque au /reload ou à la déconnexion)",
@@ -185,6 +185,37 @@ local translations = {
     ["%s added to the group"] = "%s ajouté au groupe",
     ["%s contacted; added as soon as they answer"] = "%s contacté; ajouté dès qu'il répond",
     ["%s removed from the group"] = "%s retiré du groupe",
+    -- Shopping, Tracker
+    ["Could not create the Auctionator list (see /comrade log)."] =
+      "Impossible de créer la liste Auctionator (voir /comrade log).",
+    ["Nothing to buy for %s."] =
+      "Rien à acheter pour %s.",
+    ["Auctionator list \"ComradeCraft: %s\" created: %d items. Open the Shopping tab at the auction house."] =
+      "Liste Auctionator \"ComradeCraft: %s\" créée : %d objets. Ouvre l'onglet Shopping à l'hôtel des ventes.",
+    ["%d not cached yet; try again in a moment."] =
+      "%d pas encore en cache; réessaie dans un instant.",
+    ["Nothing to buy."] =
+      "Rien à acheter.",
+    ["Step panel hidden. /comrade tracker shows it again."] =
+      "Panneau d'étape masqué. /comrade tracker le réaffiche.",
+    ["Shopping list"] =
+      "Liste d'achat",
+    ["Full plan"] =
+      "Plan complet",
+    ["Reading the recipes of this profession..."] =
+      "Lecture des recettes de cette profession...",
+    ["%d%% chance per craft (%s)"] =
+      "%d%% de chance par craft (%s)",
+    ["Your bags allow %d crafts of %s now."] =
+      "Tes sacs permettent %d crafts de %s maintenant.",
+    ["Missing mats in your bags for %s."] =
+      "Il manque des mats dans tes sacs pour %s.",
+    ["Then %s: %s"] =
+      "Ensuite %s : %s",
+    ["Step panel: off"] =
+      "Panneau d'étape : désactivé",
+    ["Step panel: on (shown with the profession window)"] =
+      "Panneau d'étape : activé (affiché avec la fenêtre de profession)",
     ["Click: group needs"] = "Clic : besoins du groupe",
   },
 }

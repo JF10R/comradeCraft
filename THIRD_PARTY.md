@@ -15,6 +15,8 @@ ComradeCraft's own code is MIT (see LICENSE). Embedded libraries keep their lice
 
 Optional, not embedded: Pawn (CC BY-NC-ND 3.0). If installed, its scales are queried at
 runtime (`PawnGetItemData`, `PawnGetSingleValueFromItem`); none of its weights are copied.
+TradeSkillMaster and Auctionator, if installed, are queried through their public APIs
+(`TSM_API.GetCustomPriceValue`; `Auctionator.API.v1`) for prices and shopping lists.
 
 Disenchant yield estimates (`Disenchant.lua`) are facts compiled from the wow-professions.com
 Forever disenchanting guide and warcraft.wiki.gg "Disenchanting tables".

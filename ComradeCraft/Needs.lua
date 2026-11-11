@@ -54,6 +54,22 @@ function ns.DetectPriceSource()
       return ok and v or nil
     end
   end
+  -- Disenchant value of an item (AH value of its expected mats): TSM "Destroy" source,
+  -- else Auctionator's. Used over our own yield table when present.
+  ns.DisenchantPrice = nil
+  if TSM_API and TSM_API.GetCustomPriceValue then
+    local get = TSM_API.GetCustomPriceValue
+    ns.DisenchantPrice = function(item)
+      local ok, v = pcall(get, "Destroy", "i:" .. item)
+      return ok and v and v > 0 and v or nil
+    end
+  elseif Auctionator and Auctionator.API and Auctionator.API.v1 and Auctionator.API.v1.GetDisenchantPriceByItemID then
+    local get = Auctionator.API.v1.GetDisenchantPriceByItemID
+    ns.DisenchantPrice = function(item)
+      local ok, v = pcall(get, "ComradeCraft", item)
+      return ok and v and v > 0 and v or nil
+    end
+  end
 end
 ns.On("PLAYER_LOGIN", function()
   ns.DetectPriceSource()

@@ -13,6 +13,9 @@ Steps when ready:
 4. Tag a version and push it: `git tag v0.1.0 && git push origin v0.1.0`.
    The workflow builds `ComradeCraft-v0.1.0.zip` and uploads it.
 
+Project description: the packager does not upload it; paste README.md into the CurseForge
+description (drop the License section's relative links).
+
 Open points:
 
 - The packager detects the game version from `## Interface: 16001`; its README lists 16001

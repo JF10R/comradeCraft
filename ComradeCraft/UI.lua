@@ -162,6 +162,13 @@ local function CreateRow()
     r[k]:SetJustifyH("LEFT")
   end
   r.top:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -8)
+  -- Exports the missing mats as an Auctionator shopping list (shown only with Auctionator).
+  r.shop = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+  r.shop:SetSize(PROF_W - 20, 20)
+  r.shop:SetPoint("TOPLEFT", r, "TOPLEFT", 6, -48)
+  r.shop:SetText(L["Shopping list"])
+  r.shop:SetScript("OnClick", function(self) ns.ExportShoppingVerbose(self.key, self.line) end)
+  r.shop:Hide()
   r.line = r:CreateTexture(nil, "BACKGROUND")
   r.line:SetHeight(1)
   r.line:SetPoint("BOTTOMLEFT", 4, 0)
@@ -285,6 +292,9 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.bar:SetMinMaxValues(0, math.max(1, p.max or 1))
   r.bar:SetValue(p.rank or 0)
 
+  r.shop.key, r.shop.line = key, p.skillLine
+  r.shop:SetShown(ns.CanExportShopping() and need ~= nil and next(need.items or {}) ~= nil)
+
   local d = ns.DescribeNeed(p, c)
   local top = {}
   if d.status then top[#top + 1] = "|cff9d9d9d" .. d.status .. "|r" end
@@ -343,7 +353,7 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.bottom:SetText(table.concat(bottom, "\n"))
   if #bottom > 0 then yy = yy + r.bottom:GetStringHeight() + 4 end
 
-  local h = math.max(48, yy + ROW_PAD)
+  local h = math.max(r.shop:IsShown() and 76 or 48, yy + ROW_PAD)
   r:SetHeight(h)
   return h
 end
