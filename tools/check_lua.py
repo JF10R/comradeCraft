@@ -22,7 +22,7 @@ local methods = {
   IsShown = function(self) return self.shown end,
   SetShown = function(self, v) if v then self:Show() else self:Hide() end end,
   SetText = function(self, t) self.text = t end,
-  GetText = function(self) return self.text end,
+  GetText = function(self) return rawget(self, "text") end,
 }
 Widget = function()
   return setmetatable({ scripts = {}, shown = true }, { __index = function(_, k)
@@ -54,6 +54,7 @@ UnitName = function() return "Test" end
 UnitClass = function() return "Mage", "MAGE" end
 GetRealmName = function() return "Realm" end
 date = os.date
+debugstack = function() return debug.traceback("", 2) end
 GetBuildInfo = function() return "1.60.1", "70888", "", 16001 end
 time = os.time
 GetProfessions = function() return 1 end
@@ -89,10 +90,12 @@ def main():
     # must have a frFR translation, and frFR must not keep keys the code no longer uses.
     code = "".join(open(os.path.join(ADDON, n), encoding="utf-8").read()
                    for n in files if not n.startswith("Libs/") and n != "Locale.lua")
-    used = set(re.findall(r'ns\.L\["((?:[^"\\]|\\.)*)"\]', code))
+    # ns.L["..."] and a file-local alias L["..."]; Plural keys; plus keys built at runtime.
+    used = set(re.findall(r'(?<![\w.])(?:ns\.)?L\["((?:[^"\\]|\\.)*)"\]', code))
     for a, b in re.findall(r'ns\.Plural\([^,]+,\s*"([^"]*)",\s*"([^"]*)"\)', code):
         used.update((a, b))
-    used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container"])
+    used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container",
+                 "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other"])
     loc = open(os.path.join(ADDON, "Locale.lua"), encoding="utf-8").read()
     fr = set(re.findall(r'^\s*\["((?:[^"\\]|\\.)*)"\]\s*=', loc, re.M))
     missing, stale = sorted(used - fr), sorted(fr - used)
@@ -181,6 +184,38 @@ def main():
       assert(#lines == 1 and lines[1]:find("needs " .. net) and lines[1]:find("Tailoring"),
         "tooltip: " .. tostring(lines[1]))
       SlashCmdList.COMRADECRAFT("needs")
+
+      -- Catalog: a second character needing Bolts of Linen (what Test can craft) is tagged;
+      -- a level-15 cloth chest fits a level-20 mage, not a druid.
+      ComradeCraftDB.chars["Vez-Realm"] = { class = "DRUID", level = 20, professions = {},
+        needs = { [197] = { name = "Tailoring", items = { [2996] = 5 } } } }
+      local cat = ns.CraftCatalog("Test-Realm")
+      assert(cat[1].spell == 2963 and cat[1].needers[1].key == "Vez-Realm" and cat[1].needers[1].n == 5,
+        "catalog: Vez needs the bolts Test can craft")
+      local oldGet = GetItemInfo
+      GetItemInfo = function(id)
+        if id == 99001 then return "Robe", nil, 2, 15, 15, "Armor", "Cloth", 1, "INVTYPE_CHEST", 0, 0, 4, 1 end
+        return oldGet(id)
+      end
+      assert(ns.ItemFits(99001, { class = "MAGE", level = 20 }), "fits: cloth for a mage")
+      assert(not ns.ItemFits(99001, { class = "DRUID", level = 20 }), "fits: not for a druid")
+      assert(not ns.ItemFits(99001, { class = "MAGE", level = 30 }), "fits: too low for level 30")
+      GetItemInfo = oldGet
+      local gm = ns.GroupMaterials()
+      assert(gm[1] and gm[1].total > 0, "group materials")
+      -- Views render without error: group, group search, character craft tab with a filter.
+      ComradeCraftDB.ui = ComradeCraftDB.ui or {}
+      if not (ComradeCraftFrame and ComradeCraftFrame:IsShown()) then SlashCmdList.COMRADECRAFT("") end
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      ComradeCraftFrame.search.text = "bolt"
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.sel, ComradeCraftDB.ui.tab = "Test-Realm", "craft"
+      ns.RefreshWindow()
+      ComradeCraftFrame.search.text = nil
+      ComradeCraftDB.ui.tab = "plan"
+      ns.RefreshWindow()
+      ComradeCraftDB.chars["Vez-Realm"] = nil
 
       -- Window: /comrade opens it, renders a header + row + material, Escape-registered.
       -- (the earlier bare "/comrade" already opened it, before any needs existed)

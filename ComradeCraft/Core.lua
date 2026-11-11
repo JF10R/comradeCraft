@@ -41,6 +41,7 @@ function ns.CharData()
   end
   local _, class = UnitClass("player")
   c.class = class
+  c.level = UnitLevel and UnitLevel("player") or c.level
   return c
 end
 

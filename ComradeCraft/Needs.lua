@@ -233,6 +233,103 @@ function ns.IsVendorItem(id)
     and ComradeCraftDB.vendorSeen[id]) or false
 end
 
+-- Item info fields used by the catalog (nil until the client has the item cached).
+local function ItemFacts(item)
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  if not (get and item and item ~= 0) then return nil end
+  local name, _, _, _, reqLevel, _, _, _, equipLoc, _, _, classID, subclassID = get(item)
+  if not name then return nil end
+  return { name = name, reqLevel = reqLevel or 0, equipLoc = equipLoc or "", classID = classID,
+    subclassID = subclassID }
+end
+
+-- Main armor type of a class at a level: 1 cloth, 2 leather, 3 mail, 4 plate.
+local ARMOR = { MAGE = 1, PRIEST = 1, WARLOCK = 1, DRUID = 2, ROGUE = 2 }
+local function MainArmor(class, level)
+  if ARMOR[class] then return ARMOR[class] end
+  local high = (level or 0) >= 40
+  if class == "HUNTER" or class == "SHAMAN" then return high and 3 or 2 end
+  if class == "WARRIOR" or class == "PALADIN" then return high and 4 or 3 end
+  return nil
+end
+
+-- Does a crafted item suit a character: its main armor type (cloaks, necks, rings and
+-- trinkets suit everyone), required level between level-10 and level. Weapons: not judged.
+function ns.ItemFits(item, c)
+  local f = ItemFacts(item)
+  if not (f and c.level and f.classID == 4 and f.equipLoc ~= "") then return false end
+  if f.reqLevel > c.level or f.reqLevel < c.level - 10 then return false end
+  local anyone = f.subclassID == 0 or f.equipLoc == "INVTYPE_CLOAK"
+  return anyone or f.subclassID == MainArmor(c.class, c.level)
+end
+
+-- Category label key of a recipe's product (Locale keys).
+function ns.ItemCategory(item)
+  if not item or item == 0 then return "Enchant" end
+  local f = ItemFacts(item)
+  if not f then return "Other" end
+  return ({ [0] = "Consumable", [1] = "Bag", [2] = "Weapon", [4] = "Armor", [7] = "Reagent" })[f.classID]
+    or "Other"
+end
+
+-- Recipes a character knows, annotated for the "can craft" view:
+-- { spell, line, item, color, category, needers = { {key, n} }, fits = { key } }.
+-- Sorted: helps someone first, then fits someone, then by name.
+function ns.CraftCatalog(key)
+  local chars = ComradeCraftDB.chars
+  local c = chars[key]
+  local rankOf = {}
+  for _, p in pairs(c.professions or {}) do
+    if p.skillLine then rankOf[p.skillLine] = p.rank end
+  end
+  local out = {}
+  for line, set in pairs(c.known or {}) do
+    for spell in pairs(set) do
+      local r = ns.Recipes[spell]
+      if r then
+        local e = { spell = spell, line = line, item = r[5], needers = {}, fits = {},
+          color = rankOf[line] and ns.RecipeColor(spell, rankOf[line]) or "grey",
+          category = ns.ItemCategory(r[5]) }
+        for other, oc in pairs(chars) do
+          if other ~= key then
+            local n = r[5] ~= 0 and ns.NeedOf(oc, r[5]) or 0
+            if n > 0 then e.needers[#e.needers + 1] = { key = other, n = n } end
+            if r[5] ~= 0 and ns.ItemFits(r[5], oc) then e.fits[#e.fits + 1] = other end
+          end
+        end
+        e.name = ns.SpellName and ns.SpellName(spell) or tostring(spell)
+        out[#out + 1] = e
+      end
+    end
+  end
+  table.sort(out, function(a, b)
+    local ra = #a.needers > 0 and 1 or #a.fits > 0 and 2 or 3
+    local rb = #b.needers > 0 and 1 or #b.fits > 0 and 2 or 3
+    if ra ~= rb then return ra < rb end
+    return a.name < b.name
+  end)
+  return out
+end
+
+-- Group-wide missing materials: { { item, total, by = { {key, n} } } }, most needed first.
+function ns.GroupMaterials()
+  local acc = {}
+  for key, c in pairs(ComradeCraftDB.chars) do
+    for _, need in pairs(c.needs or {}) do
+      for item, n in pairs(need.items or {}) do
+        local a = acc[item] or { item = item, total = 0, by = {} }
+        acc[item] = a
+        a.total = a.total + n
+        a.by[#a.by + 1] = { key = key, n = n }
+      end
+    end
+  end
+  local list = {}
+  for _, a in pairs(acc) do list[#list + 1] = a end
+  table.sort(list, function(a, b) return a.total > b.total or (a.total == b.total and a.item < b.item) end)
+  return list
+end
+
 -- Gathering professions level by gathering, not crafting: no needs computed.
 ns.GATHERING = { [356] = "Fishing", [182] = "Herbalism", [393] = "Skinning", [186] = "Mining" }
 
