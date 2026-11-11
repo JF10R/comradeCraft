@@ -333,18 +333,23 @@ def main():
       local _, _, pp, ip = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, nil, nil, "profit")
       assert(pc[1].spell == 2385 and pp[1].spell == 2963, "routes: cheap=vest, profit=bolt, got "
         .. pc[1].spell .. "/" .. pp[1].spell)
-      assert(ic.milestones[0] and ic.milestones[0].points == 9 and ip.milestones[0].resale > ip.milestones[0].mats,
+      assert(ic.milestones[0] and ic.milestones[0].points == 9 and ip.milestones[0].ah > ip.milestones[0].mats,
         "routes: milestone totals")
       ns.PriceSource = oldPS
       ComradeCraftDB.settings = ComradeCraftDB.settings or {}
-      ns.SetRouteMode("profit")
-      assert(ns.RouteMode() == "profit" and c.needs[197] and c.needs[197].mode == "profit", "routes: mode stored")
+      ns.SetRouteMode("Test-Realm", "profit")
+      assert(ns.RouteMode(c) == "profit" and c.needs[197] and c.needs[197].mode == "profit", "routes: mode stored")
+      assert(ns.Sync.CleanRecord({ class = "MAGE", route = "profit" }).route == "profit"
+        and ns.Sync.CleanRecord({ class = "MAGE", route = "x" }).route == nil, "routes: synced, validated")
       local mt = ns.MilestoneText(c.needs[197])
-      assert(mt and #mt.rows >= 1 and mt.rows[1]:find("^1%-75"), "routes: milestone text " .. tostring(mt and mt.rows[1]))
+      assert(mt and #mt.rows >= 3 and mt.rows[1] == "1-75" and mt.rows[2]:find("vendor", 1, true),
+        "routes: milestone text " .. tostring(mt and mt.rows[2]))
+      local ro = ns.ResaleOptions(2996)
+      assert(ro.vendor >= 0 and ro.ah == nil and ro.de == nil, "resale: no AH, cloth not disenchantable")
       ComradeCraftDB.ui.sel = "Test-Realm"
       ComradeCraftDB.ui.tab = "plan"
       ns.RefreshWindow()
-      ns.SetRouteMode("cheap")
+      ns.SetRouteMode("Test-Realm", "cheap")
 
       -- Shopping: biggest need first; Auctionator list built from exact search terms.
       local si = ns.ShoppingItems({ items = { [2589] = 5, [2320] = 9, [2996] = 0 } })

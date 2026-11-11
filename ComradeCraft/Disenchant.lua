@@ -65,6 +65,20 @@ function ns.DisenchantYield(item)
   return out
 end
 
+-- AH value of an item's expected disenchant mats (our yield table), or nil without prices
+-- or when the item cannot be disenchanted.
+function ns.DisenchantEstimate(item)
+  local y = ns.DisenchantYield(item)
+  if not y then return nil end
+  local v = 0
+  for mat, n in pairs(y) do
+    local cost = ns.BuyCost(mat, n)
+    if not cost then return nil end
+    v = v + cost
+  end
+  return v
+end
+
 -- Inventory type number of an item (9 = wrist, 5 = chest, ...), for enchant targets.
 local INVTYPE = { INVTYPE_HEAD = 1, INVTYPE_NECK = 2, INVTYPE_SHOULDER = 3, INVTYPE_BODY = 4, INVTYPE_CHEST = 5,
   INVTYPE_WAIST = 6, INVTYPE_LEGS = 7, INVTYPE_FEET = 8, INVTYPE_WRIST = 9, INVTYPE_HAND = 10, INVTYPE_FINGER = 11,

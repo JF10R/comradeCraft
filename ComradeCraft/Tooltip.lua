@@ -305,8 +305,9 @@ function ns.DescribeNeed(p, c)
   return out
 end
 
--- Cost per bracket of both route types, for the Plan tab:
--- { header, rows = { "75-150: Cheapest 12g (sold back 3g) | Profitable ..." } } or nil.
+-- Cost per bracket of both route types, for the Plan tab. Each route: what its mats cost,
+-- then what its products bring back sold to a merchant, disenchanted, or at the AH.
+-- Returns { header, rows = { "75-150", "  Cheapest: 12g of mats; back: vendor 3g, ..." } } or nil.
 function ns.MilestoneText(need)
   if not (need and need.milestones and need.alt) then return nil end
   local routes = { [need.mode] = need.milestones, [need.alt.mode] = need.alt.milestones }
@@ -318,17 +319,20 @@ function ns.MilestoneText(need)
   end
   table.sort(starts)
   if #starts == 0 then return nil end
+  local function Back(m, k)
+    if k ~= "vendor" and (m[k] or 0) == 0 and m[k .. "Missing"] then return "?" end
+    return (m[k .. "Missing"] and ">" or "") .. ns.Money(math.floor(m[k] or 0))
+  end
   local rows = {}
   for _, b in ipairs(starts) do
-    local parts = {}
+    rows[#rows + 1] = ("%d-%d"):format(math.max(1, b), b + ns.MILESTONE)
     for _, mode in ipairs(ns.ROUTES) do
       local m = routes[mode][b]
       local name = ns.L[mode == "cheap" and "Cheapest" or "Profitable"]
       if mode == need.mode then name = "|cffffd100" .. name .. "|r" end
-      parts[#parts + 1] = m and ns.L["%s %s (sold back %s)"]:format(name, ns.Money(math.floor(m.mats)),
-        ns.Money(math.floor(m.resale))) or (name .. " -")
+      rows[#rows + 1] = "  " .. (m and ns.L["%s: %s of mats; back: vendor %s, disenchant %s, AH %s"]:format(name,
+        ns.Money(math.floor(m.mats)), Back(m, "vendor"), Back(m, "de"), Back(m, "ah")) or (name .. ": -"))
     end
-    rows[#rows + 1] = ("%d-%d: %s"):format(math.max(1, b), b + ns.MILESTONE, table.concat(parts, "  |  "))
   end
   local header = ns.PriceSource and ns.L["Cost by milestone (%s prices):"]:format(ns.PriceSourceName)
     or ns.L["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"]

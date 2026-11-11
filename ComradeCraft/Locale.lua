@@ -290,12 +290,13 @@ local translations = {
       "Rentable",
     ["Route:"] =
       "Route :",
-    ["Picks recipes whose products sell back well; you sell what you craft."] =
-      "Choisit les recettes dont les produits se revendent bien; tu revends ce que tu craftes.",
+    ["Picks recipes whose products sell back well. More crafts, so more mats: tooltips, the give list, mail and shopping all follow this route."] =
+      "Choisit les recettes dont les produits se revendent bien. Plus de crafts, donc plus de mats : infobulles, Tu peux donner, courrier et achats suivent cette route.",
+    ["Chosen by its owner."] = "Choisi par son propriétaire.",
     ["Spends the least on mats."] =
       "Dépense le moins possible en mats.",
-    ["%s %s (sold back %s)"] =
-      "%s %s (revendu %s)",
+    ["%s: %s of mats; back: vendor %s, disenchant %s, AH %s"] =
+      "%s : %s de mats; récupéré : marchand %s, désenchant %s, HV %s",
     ["Cost by milestone (%s prices):"] =
       "Coût par palier (prix %s) :",
     ["Cost by milestone (merchant prices, install TSM or Auctionator for AH prices):"] =

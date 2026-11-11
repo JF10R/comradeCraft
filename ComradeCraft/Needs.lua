@@ -99,19 +99,29 @@ function ns.ItemValue(item)
   return math.max(1, v or 1)
 end
 
--- What one crafted item sells for: AH price minus the 5% cut, else the merchant sell price.
-function ns.ResaleValue(item)
-  if not item or item == 0 then return 0 end
-  local v = ns.PriceSource and ns.PriceSource(item)
-  if v and v > 0 then return v * 0.95 end
+-- What one crafted item brings back, three ways: merchant sell price, disenchant (AH value
+-- of its mats: TSM/Auctionator, else our yield table priced at the AH; nil if unknown or not
+-- disenchantable), auction house (price minus the 5% cut; nil without a price source).
+function ns.ResaleOptions(item)
+  if not item or item == 0 then return { vendor = 0 } end
   local p = ns.ItemPrices and ns.ItemPrices[item]
-  return p and p[1] or 0
+  local ah = ns.PriceSource and ns.PriceSource(item)
+  local de = ns.DisenchantPrice and ns.DisenchantPrice(item)
+  if not de and ns.DisenchantEstimate then de = ns.DisenchantEstimate(item) end
+  return { vendor = p and p[1] or 0, de = de, ah = ah and ah > 0 and ah * 0.95 or nil }
+end
+
+-- The best of the three: what the "profitable" route counts on.
+function ns.ResaleValue(item)
+  local o = ns.ResaleOptions(item)
+  return math.max(o.vendor, o.de or 0, o.ah or 0)
 end
 
 -- Route types: "cheap" = least spent on mats; "profit" = least spent once the products are
 -- sold back (mats - resale), so recipes whose products sell well win.
 ns.ROUTES = { "cheap", "profit" }
 ns.MILESTONE = 75 -- cost comparison per bracket of 75 points (1-75, 75-150, ...)
+ns.PROFIT_SPEED = 0.5 -- profit route: only recipes at least this fraction as fast as the best
 
 local function Total(reag)
   local n = 0
@@ -176,7 +186,10 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
       if req and not (allKnown or known)[sub] then a.minRank = math.max(a.minRank, req) end
     end
     a.mats = Total(a.raw)
-    a.resale = ns.ResaleValue(r[5]) * math.max(1, r[6])
+    local q = math.max(1, r[6])
+    local o = ns.ResaleOptions(r[5])
+    a.back = { vendor = o.vendor * q, de = o.de and o.de * q, ah = o.ah and o.ah * q }
+    a.resale = math.max(a.back.vendor, a.back.de or 0, a.back.ah or 0)
     a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
     actions[#actions + 1] = a
   end
@@ -186,15 +199,23 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
   end
 
   local acc, plan = {}, {}
-  -- milestones[start] = { mats, resale, points }: expected copper per bracket of the route.
+  -- milestones[start] = { mats, points, vendor, de, ah, deMissing, ahMissing }: expected copper
+  -- per bracket of the route; *Missing = some products had no such value (sum is partial).
   local info = { used = {}, milestones = {} }
   local cur = rank
   while cur < target do
     local best, bestCost, bestN, topGain = nil, nil, nil, 0
-    for _, a in ipairs(actions) do
-      local gain = cur >= a.minRank and ActionGain(a, line, cur) or 0
-      if gain > topGain then topGain = gain end
-      if gain >= ns.MIN_GAIN then
+    local gains = {}
+    for i, a in ipairs(actions) do
+      gains[i] = cur >= a.minRank and ActionGain(a, line, cur) or 0
+      if gains[i] > topGain then topGain = gains[i] end
+    end
+    -- "profit" only keeps recipes at least half as fast as the fastest one: a slow recipe
+    -- that sells well would otherwise win and multiply the crafts (and the mats).
+    local floor = mode == "profit" and math.max(ns.MIN_GAIN, topGain * ns.PROFIT_SPEED) or ns.MIN_GAIN
+    for i, a in ipairs(actions) do
+      local gain = gains[i]
+      if gain >= floor then
         local n = 1 / gain -- actions for one expected point
         local cost = a.cost * n
         if not best or cost < bestCost or (cost == bestCost and a.spell < best.spell) then
@@ -209,9 +230,13 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
     end
     for item, c in pairs(best.raw) do acc[item] = (acc[item] or 0) + c * bestN end
     local b = math.floor(cur / ns.MILESTONE) * ns.MILESTONE
-    local m = info.milestones[b] or { mats = 0, resale = 0, points = 0 }
+    local m = info.milestones[b] or { mats = 0, points = 0, vendor = 0, de = 0, ah = 0 }
     info.milestones[b] = m
-    m.mats, m.resale, m.points = m.mats + best.mats * bestN, m.resale + best.resale * bestN, m.points + 1
+    m.mats, m.points = m.mats + best.mats * bestN, m.points + 1
+    m.vendor = m.vendor + best.back.vendor * bestN
+    for _, k in ipairs({ "de", "ah" }) do
+      if best.back[k] then m[k] = m[k] + best.back[k] * bestN else m[k .. "Missing"] = true end
+    end
     local last = plan[#plan]
     if not (last and last.spell == best.spell) then
       last = { spell = best.spell, from = cur, crafts = 0, subs = {},
@@ -616,17 +641,19 @@ function ns.NextRecipes(line, rank, known)
   return out
 end
 
--- Route type chosen in the Plan tab (account-wide).
-function ns.RouteMode()
-  local s = ComradeCraftDB and ComradeCraftDB.settings
-  return s and s.route == "profit" and "profit" or "cheap"
+-- Route type of a character, chosen by its owner in the Plan tab and synced with its record,
+-- so every viewer (tooltips, give list, mail, shopping) follows the same choice.
+function ns.RouteMode(c)
+  return c and c.route == "profit" and "profit" or "cheap"
 end
 
--- Switches the route type and recomputes every character shown (theirs use our prices).
-function ns.SetRouteMode(mode)
-  ComradeCraftDB.settings = ComradeCraftDB.settings or {}
-  ComradeCraftDB.settings.route = mode
-  for _, c in pairs(ns.AllChars()) do ns.UpdateNeeds(c) end
+-- Sets the route of one of this account's characters and recomputes it.
+function ns.SetRouteMode(key, mode)
+  local c = ComradeCraftDB.chars and ComradeCraftDB.chars[key]
+  if not c then return end
+  c.route = mode == "profit" and "profit" or nil
+  c.updated = time() -- peers pick up the change with the next sync
+  ns.UpdateNeeds(c)
   ns.RequestRefresh()
 end
 
@@ -648,7 +675,7 @@ function ns.UpdateNeeds(c)
       -- Route "with what you know" (kept as a summary) and route "optimal" (also learns
       -- trainer recipes on the way, like leveling guides do). Needs follow the optimal one.
       local learnable = ns.TrainerRecipes(p.skillLine, p.max, known)
-      local mode = ns.RouteMode()
+      local mode = ns.RouteMode(c)
       local other = mode == "profit" and "cheap" or "profit"
       local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, nil, mode)
       local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, mode)

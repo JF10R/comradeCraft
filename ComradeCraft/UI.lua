@@ -399,16 +399,19 @@ end
 
 local function RenderPlan(key, c)
   local y = 0
-  -- Route type: cheapest (default) or profitable (products sold back).
-  local mode = ns.RouteMode()
+  -- Route type of this character: cheapest (default) or profitable (products sold back).
+  -- Only its owner can change it; everything else (tooltips, give list, mail) follows it.
+  local mode = ns.RouteMode(c)
   Label(0, y - 5, L["Route:"], "GameFontNormal", 60)
-  local cheap = Action(60, y, L["Cheapest"], function() ns.SetRouteMode("cheap") end)
-  local profit = Action(160, y, L["Profitable"], function() ns.SetRouteMode("profit") end)
-  cheap:SetEnabled(mode ~= "cheap")
-  profit:SetEnabled(mode ~= "profit")
-  local _, hh = Label(262, y - 5, "|cff9d9d9d" .. (mode == "profit"
-    and L["Picks recipes whose products sell back well; you sell what you craft."]
-    or L["Spends the least on mats."]) .. "|r", nil, LIST_W - 262)
+  local cheap = Action(60, y, L["Cheapest"], function() ns.SetRouteMode(key, "cheap") end)
+  local profit = Action(160, y, L["Profitable"], function() ns.SetRouteMode(key, "profit") end)
+  cheap:SetEnabled(not c.peer and mode ~= "cheap")
+  profit:SetEnabled(not c.peer and mode ~= "profit")
+  local why = mode == "profit"
+    and L["Picks recipes whose products sell back well. More crafts, so more mats: tooltips, the give list, mail and shopping all follow this route."]
+    or L["Spends the least on mats."]
+  if c.peer then why = why .. " " .. L["Chosen by its owner."] end
+  local _, hh = Label(262, y - 5, "|cff9d9d9d" .. why .. "|r", nil, LIST_W - 262)
   y = y - math.max(30, hh + 12)
   local own = key == ns.CharKey()
   local plist = SortedKeys(c.professions or {})
