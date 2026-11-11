@@ -354,6 +354,8 @@ local translations = {
       "Meilleure option par objet",
     ["Net cost = mats minus the best resale of each item. A green + is a profit. Hover a line for the details."] =
       "Coût net = mats moins la meilleure revente de chaque objet. Un + vert est un profit. Survole une ligne pour le détail.",
+    ["Next: %s"] = "Ensuite : %s",
+    ["Click to expand."] = "Clique pour déplier.",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

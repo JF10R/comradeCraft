@@ -100,7 +100,21 @@ local function ShowItemTooltip(owner, item, spell)
 end
 
 -- Pools ---------------------------------------------------------------------------------
-local sideBtns, rows, mats, steps, recipes, labels = {}, {}, {}, {}, {}, {}
+local sideBtns, rows, mats, steps, recipes, labels, heads = {}, {}, {}, {}, {}, {}, {}
+
+-- Collapsed professions (by skill line), shared by Plan and Can craft, kept across sessions.
+local function Collapsed(line)
+  local ui = ComradeCraftDB.ui
+  return line and ui.collapsed and ui.collapsed[line] or false
+end
+local function ToggleCollapsed(line)
+  if not line then return end
+  local ui = ComradeCraftDB.ui
+  ui.collapsed = ui.collapsed or {}
+  ui.collapsed[line] = not ui.collapsed[line] or nil
+  ns.RefreshWindow()
+end
+local function FoldTexture(collapsed) return collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up" end
 
 local function CreateLabel()
   local fs = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -237,15 +251,24 @@ end
 
 local function CreateRow()
   local r = CreateFrame("Frame", nil, content)
+  -- Click the header (fold icon, icon, name) to collapse or expand the profession.
+  r.hit = CreateFrame("Button", nil, r)
+  r.hit:SetPoint("TOPLEFT", 0, 0)
+  r.hit:SetSize(PROF_W - 8, 30)
+  r.hit:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  r.hit:SetScript("OnClick", function(self) ToggleCollapsed(self.line) end)
+  r.fold = r:CreateTexture(nil, "ARTWORK")
+  r.fold:SetSize(14, 14)
+  r.fold:SetPoint("TOPLEFT", 2, -8)
   r.icon = r:CreateTexture(nil, "ARTWORK")
   r.icon:SetSize(32, 32)
-  r.icon:SetPoint("TOPLEFT", 6, -6)
+  r.icon:SetPoint("TOPLEFT", 20, -6)
   r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   r.name:SetPoint("TOPLEFT", r.icon, "TOPRIGHT", 8, -1)
   r.level = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   r.level:SetPoint("TOPRIGHT", r, "TOPLEFT", PROF_W - 8, -8)
   r.bar = CreateFrame("StatusBar", nil, r)
-  r.bar:SetSize(PROF_W - 54, 8)
+  r.bar:SetSize(PROF_W - 70, 8)
   r.bar:SetPoint("TOPLEFT", r.icon, "BOTTOMRIGHT", 8, 10)
   r.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
   r.bar:SetStatusBarColor(0.35, 0.7, 0.25)
@@ -476,7 +499,23 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.shop.key, r.shop.line = key, p.skillLine
   r.shop:SetShown(ns.CanShop() and need ~= nil and next(need.items or {}) ~= nil)
 
+  local collapsed = Collapsed(p.skillLine)
+  r.hit.line = p.skillLine
+  r.fold:SetTexture(FoldTexture(collapsed))
   local d = ns.DescribeNeed(p, c)
+  if collapsed then
+    -- Folded: one summary line, nothing else.
+    r.shop:Hide()
+    local first = d.steps and d.steps[1]
+    local last = first and first.entries[#first.entries]
+    r.top:SetText("|cff9d9d9d" .. (d.status or (last and L["Next: %s"]:format(last.text))
+      or L["Click to expand."]) .. "|r")
+    r.mid:SetText("")
+    r.bottom:SetText("")
+    local h = math.max(48, 16 + (r.top:GetStringHeight() or 12))
+    r:SetHeight(h)
+    return h
+  end
   local top = {}
   if d.status then top[#top + 1] = "|cff9d9d9d" .. d.status .. "|r" end
   if d.steps and #d.steps > 0 then top[#top + 1] = "|cffffd100" .. L["What to craft:"] .. "|r" end
@@ -609,6 +648,30 @@ local function RecipeTags(e)
 end
 
 -- Can craft tab: known recipes by profession; helps-the-group and fits-someone first.
+local function CreateHead()
+  local b = CreateFrame("Button", nil, content)
+  b:SetSize(LIST_W, 20)
+  b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  b.fold = b:CreateTexture(nil, "ARTWORK")
+  b.fold:SetSize(14, 14)
+  b.fold:SetPoint("LEFT", 0, 0)
+  b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  b.text:SetPoint("LEFT", 20, 0)
+  b:SetScript("OnClick", function(self) ToggleCollapsed(self.line) end)
+  return b
+end
+
+-- Profession title that folds its section; returns its height.
+local function Head(y, line, text)
+  local b = Acquire(heads, CreateHead)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+  b.line = line
+  b.fold:SetTexture(FoldTexture(Collapsed(line)))
+  b.text:SetText(text)
+  return 22
+end
+
 local function RenderCraft(key, c, filter)
   local y = 0
   local own = key == ns.CharKey()
@@ -629,16 +692,18 @@ local function RenderCraft(key, c, filter)
   end
   for _, line in ipairs(lines) do
     local list = byLine[line]
-    local _, h = Label(0, y, ("|cffffd100%s|r  |cff9d9d9d%s|r"):format(nameOf[line] or tostring(line),
-      ns.Plural(#list, "%d recipe", "%d recipes")), "GameFontNormal")
-    y = y - h - 2
-    -- Column titles.
-    Label(8 + 30, y, "|cff8f8f8f" .. L["Recipe and mats"] .. "|r", "GameFontDisableSmall", 200)
-    Label(8 + COL_GROUP, y, "|cff8f8f8f" .. L["For the group"] .. "|r", "GameFontDisableSmall", COL_GROUP_W)
-    Label(8 + COL_TYPE, y, "|cff8f8f8f" .. L["Type"] .. "|r", "GameFontDisableSmall", COL_TYPE_W)
-    local ct = Label(LIST_W - 4 - COL_COST_W, y, "|cff8f8f8f" .. L["Mats cost"] .. "|r", "GameFontDisableSmall", COL_COST_W)
-    ct:SetJustifyH("RIGHT")
-    y = y - 16
+    y = y - Head(y, line, ("|cffffd100%s|r  |cff9d9d9d%s|r"):format(nameOf[line] or tostring(line),
+      ns.Plural(#list, "%d recipe", "%d recipes")))
+    if Collapsed(line) then list = {} end
+    if #list > 0 then
+      -- Column titles.
+      Label(8 + 30, y, "|cff8f8f8f" .. L["Recipe and mats"] .. "|r", "GameFontDisableSmall", 200)
+      Label(8 + COL_GROUP, y, "|cff8f8f8f" .. L["For the group"] .. "|r", "GameFontDisableSmall", COL_GROUP_W)
+      Label(8 + COL_TYPE, y, "|cff8f8f8f" .. L["Type"] .. "|r", "GameFontDisableSmall", COL_TYPE_W)
+      local ct = Label(LIST_W - 4 - COL_COST_W, y, "|cff8f8f8f" .. L["Mats cost"] .. "|r", "GameFontDisableSmall", COL_COST_W)
+      ct:SetJustifyH("RIGHT")
+      y = y - 16
+    end
     for _, e in ipairs(list) do
       PlaceRecipe(8, y, e, RecipeTags(e), L[e.category], own)
       y = y - RECIPE_H
@@ -1160,7 +1225,7 @@ function ns.RefreshWindow()
     ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
   end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
-  ReleaseAll(actionBtns) ReleaseAll(checks) ReleaseAll(toggles)
+  ReleaseAll(actionBtns) ReleaseAll(checks) ReleaseAll(toggles) ReleaseAll(heads)
   frame.addBox:Hide()
   RenderSide(ui.sel)
 

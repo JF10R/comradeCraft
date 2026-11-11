@@ -361,6 +361,13 @@ def main():
       ComradeCraftDB.ui.tab = "plan"
       ns.RefreshWindow()
       ns.SetRouteMode("Test-Realm", "cheap")
+      -- Collapse: a folded profession renders as one line in Plan and Can craft.
+      ComradeCraftDB.ui.collapsed = { [197] = true }
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.tab = "craft"
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.tab, ComradeCraftDB.ui.collapsed = "plan", nil
+      ns.RefreshWindow()
 
       -- Sources: LibProfessionDB npc ids + QuestieDB spawns; nearest friendly trainer gets the
       -- TomTom waypoint (same map as the player wins).
