@@ -319,6 +319,12 @@ local translations = {
       "%s : %s. Installe TomTom pour un point de passage.",
     ["Waypoint: %s"] =
       "Point de passage : %s",
+    ["Mats per craft:"] = "Mats par craft :",
+    ["+%d more"] = "+%d autres",
+    ["Recipe and mats"] = "Recette et mats",
+    ["For the group"] = "Pour le groupe",
+    ["Type"] = "Type",
+    ["Mats cost"] = "Coût des mats",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

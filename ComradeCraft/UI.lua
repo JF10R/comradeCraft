@@ -13,6 +13,8 @@ local RIGHT_W = LIST_W - PROF_W - 8
 local MAT_H, MAT_COLS = 40, 2
 local MAT_W = math.floor((RIGHT_W - 4) / MAT_COLS)
 local ROW_PAD, STEP_H, RECIPE_H = 8, 18, 32
+-- Can craft columns (x from the row's left): recipe + mats | for the group | type | cost.
+local COL_GROUP, COL_GROUP_W, COL_TYPE, COL_TYPE_W, COL_COST_W = 360, 150, 518, 72, 80
 local COLOR = { orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "808080" }
 
 local frame, content, side
@@ -109,6 +111,7 @@ end
 local function Label(x, y, text, font, width)
   local fs = Acquire(labels, CreateLabel)
   fs:SetFontObject(font or "GameFontHighlightSmall")
+  fs:SetJustifyH("LEFT")
   fs:ClearAllPoints()
   fs:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   fs:SetWidth(width or (LIST_W - x))
@@ -242,20 +245,37 @@ local function CreateRecipe()
   b.icon:SetPoint("TOPLEFT", 0, -2)
   b.name = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   b.name:SetPoint("TOPLEFT", 30, -2)
-  b.name:SetWidth(240)
+  b.name:SetWidth(COL_GROUP - 38)
   b.name:SetJustifyH("LEFT")
   b.name:SetWordWrap(false)
-  b.tags = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  b.tags:SetPoint("TOPLEFT", 276, -2)
-  b.tags:SetPoint("RIGHT", -4, 0)
-  b.tags:SetJustifyH("LEFT")
-  b.tags:SetWordWrap(false)
   b.mats = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   b.mats:SetPoint("TOPLEFT", 30, -16)
-  b.mats:SetPoint("RIGHT", -4, 0)
+  b.mats:SetWidth(COL_GROUP - 38)
   b.mats:SetJustifyH("LEFT")
   b.mats:SetWordWrap(false)
-  b:SetScript("OnEnter", function(self) ShowItemTooltip(self, self.item, self.spell) end)
+  b.tags = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.tags:SetPoint("TOPLEFT", COL_GROUP, -2)
+  b.tags:SetSize(COL_GROUP_W, RECIPE_H - 4)
+  b.tags:SetJustifyH("LEFT")
+  b.tags:SetJustifyV("TOP")
+  b.kind = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  b.kind:SetPoint("TOPLEFT", COL_TYPE, -2)
+  b.kind:SetWidth(COL_TYPE_W)
+  b.kind:SetJustifyH("LEFT")
+  b.kind:SetWordWrap(false)
+  b.cost = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.cost:SetPoint("TOPRIGHT", -4, -2)
+  b.cost:SetWidth(COL_COST_W)
+  b.cost:SetJustifyH("RIGHT")
+  b:SetScript("OnEnter", function(self)
+    ShowItemTooltip(self, self.item, self.spell)
+    -- The mats column is cut when long: the full list and cost go in the tooltip.
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["Mats per craft:"], 1, 0.82, 0)
+    GameTooltip:AddLine(ns.ReagentText(self.spell, 1), 1, 1, 1, true)
+    if self.costText then GameTooltip:AddLine(self.costText, 1, 0.82, 0) end
+    GameTooltip:Show()
+  end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
     if IsModifiedClick and IsModifiedClick("CHATLINK") then
@@ -268,7 +288,7 @@ local function CreateRecipe()
   return b
 end
 
-local function PlaceRecipe(x, y, e, tags, own)
+local function PlaceRecipe(x, y, e, tags, kind, own)
   local b = Acquire(recipes, CreateRecipe)
   b:ClearAllPoints()
   b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
@@ -279,8 +299,11 @@ local function PlaceRecipe(x, y, e, tags, own)
   b.icon:SetTexture(icon)
   b.name:SetText(("|cff%s%s|r"):format(COLOR[e.color] or "ffffff", e.name or ns.SpellName(e.spell)))
   b.tags:SetText(tags or "")
+  b.kind:SetText(kind or "")
   local cost = ns.CostText(ns.RecipeCost(e.spell, 1))
-  b.mats:SetText(ns.ReagentText(e.spell, 1) .. (cost and ("  |cffffd100" .. cost .. "|r") or ""))
+  b.costText = cost
+  b.cost:SetText(cost and ("|cffffd100" .. cost .. "|r") or "|cff6f6f6f-|r")
+  b.mats:SetText(ns.ReagentText(e.spell, 1))
   return b
 end
 
@@ -483,8 +506,9 @@ local function RecipeTags(e)
     t[#t + 1] = "|cff66ccff" .. (u.gain and L["upgrade for %s (+%d)"]:format(ShortName(u.key), math.floor(u.gain + 0.5))
       or L["gear for %s"]:format(ShortName(u.key))) .. "|r"
   end
-  t[#t + 1] = "|cff9d9d9d" .. L[e.category] .. "|r"
-  return table.concat(t, "  ")
+  -- Two lines fit in a row; the rest is summed up.
+  if #t > 2 then t = { t[1], L["+%d more"]:format(#t - 1) } end
+  return table.concat(t, "\n")
 end
 
 -- Can craft tab: known recipes by profession; helps-the-group and fits-someone first.
@@ -510,9 +534,16 @@ local function RenderCraft(key, c, filter)
     local list = byLine[line]
     local _, h = Label(0, y, ("|cffffd100%s|r  |cff9d9d9d%s|r"):format(nameOf[line] or tostring(line),
       ns.Plural(#list, "%d recipe", "%d recipes")), "GameFontNormal")
-    y = y - h - 4
+    y = y - h - 2
+    -- Column titles.
+    Label(8 + 30, y, "|cff8f8f8f" .. L["Recipe and mats"] .. "|r", "GameFontDisableSmall", 200)
+    Label(8 + COL_GROUP, y, "|cff8f8f8f" .. L["For the group"] .. "|r", "GameFontDisableSmall", COL_GROUP_W)
+    Label(8 + COL_TYPE, y, "|cff8f8f8f" .. L["Type"] .. "|r", "GameFontDisableSmall", COL_TYPE_W)
+    local ct = Label(LIST_W - 4 - COL_COST_W, y, "|cff8f8f8f" .. L["Mats cost"] .. "|r", "GameFontDisableSmall", COL_COST_W)
+    ct:SetJustifyH("RIGHT")
+    y = y - 16
     for _, e in ipairs(list) do
-      PlaceRecipe(8, y, e, RecipeTags(e), own)
+      PlaceRecipe(8, y, e, RecipeTags(e), L[e.category], own)
       y = y - RECIPE_H
     end
     y = y - 8
@@ -547,7 +578,7 @@ local function RenderGroup(filter)
     for _, f in ipairs(list) do
       any = true
       local e = { spell = f.e.spell, item = f.e.item, color = "yellow", name = f.e.name }
-      PlaceRecipe(8, y, e, table.concat(f.who, ", "), false).name:SetText(f.e.name)
+      PlaceRecipe(8, y, e, table.concat(f.who, ", "), nil, false).name:SetText(f.e.name)
       y = y - RECIPE_H
     end
     if not any then
