@@ -17,6 +17,8 @@ Optional, not embedded: Pawn (CC BY-NC-ND 3.0). If installed, its scales are que
 runtime (`PawnGetItemData`, `PawnGetSingleValueFromItem`); none of its weights are copied.
 TradeSkillMaster and Auctionator, if installed, are queried through their public APIs
 (`TSM_API.GetCustomPriceValue`; `Auctionator.API.v1`) for prices and shopping lists.
+Questie (QuestieDB's `LibQuestieDB.Npc`, Questie's ZoneDB) and TomTom (`TomTom:AddWaypoint`), if
+installed, are read for npc positions and waypoints; none of their data is copied.
 
 Disenchant yield estimates (`Disenchant.lua`) are facts compiled from the wow-professions.com
 Forever disenchanting guide and warcraft.wiki.gg "Disenchanting tables".

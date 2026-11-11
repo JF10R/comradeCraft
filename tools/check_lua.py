@@ -560,6 +560,29 @@ def main():
       assert(rqs["vz-1"] and ns.Requests.Role(rqs["vz-1"]) == "crafter" and not rqs["vz-2"] and not rqs["vz-3"],
         "requests: only valid ones for our characters")
       assert(ns.Requests.OpenCount() == 1, "requests: one to answer")
+      assert(rqs["vz-1"].item == ns.Recipes[2963][5], "requests: item set from our table")
+      -- A request for a character we do not have: acknowledged and declined (no endless resend).
+      sent = {}
+      From({ t = "Q", v = 1, id = "peerVez", q = { rid = "vz-4", from = "Vez-Realm", to = "Nobody-Realm", spell = 2963,
+        qty = 1, status = "pending", u = 1000 } }, "Vez")
+      assert(OfType("A")[1] and OfType("Q")[1] and OfType("Q")[1].msg.q.status == "declined", "requests: foreign target declined")
+      -- Escape codes rejected; roles enforced (Vez cannot mark our request cancelled-by-us states).
+      assert(ns.Requests.Clean({ rid = "x", from = "A|cffff0000", to = "B", spell = 2963, qty = 1, status = "pending", u = 1 }) == nil,
+        "requests: escape codes rejected")
+      From({ t = "Q", v = 1, id = "peerVez", q = { rid = "vz-1", from = "Vez-Realm", to = "Test-Realm", spell = 2963,
+        qty = 2, status = "done", u = 2000 } }, "Vez")
+      assert(rqs["vz-1"].status == "pending", "requests: requester cannot mark done")
+      -- Mail helper attaches the crafted bolts of an accepted request from Vez.
+      rqs["vz-1"].status = "accepted"
+      local bolt = ns.Recipes[2963][5]
+      local me = ns.CharData()
+      local savedBolt = me.bags[bolt]
+      me.bags[bolt] = 5
+      local gotBolt
+      for _, g in ipairs(ns.Mail.ItemsFor("Vez-Realm")) do if g.item == bolt then gotBolt = g.n end end
+      assert(gotBolt == 2, "requests: mail attaches the 2 crafted bolts, got " .. tostring(gotBolt))
+      me.bags[bolt] = savedBolt
+      rqs["vz-1"].status = "pending"
       ComradeCraftDB.ui.sel = "requests"
       ns.RefreshWindow()
       sent = {}

@@ -103,7 +103,8 @@ function ns.CraftQueue(c, p, extent)
         local q = bySpell[e.spell]
         if not q then
           q = { spell = e.spell, item = e.item, label = e.label, n = 0, entry = e,
-            enchant = ns.EnchantSlots and ns.EnchantSlots[e.spell] ~= nil }
+            enchant = ns.EnchantSlots and ns.EnchantSlots[e.spell] ~= nil,
+            other = ns.Recipes[e.spell] and ns.Recipes[e.spell][1] ~= p.skillLine or nil }
           bySpell[e.spell] = q
           out[#out + 1] = q
         end
@@ -121,7 +122,7 @@ end
 function ns.NextCraft(queue)
   for _, q in ipairs(queue) do
     if q.learn then return nil, q end
-    if not q.enchant and (q.ready or 0) > 0 then return q end
+    if not q.enchant and not q.other and (q.ready or 0) > 0 then return q end
   end
 end
 
@@ -273,7 +274,8 @@ function ns.RefreshTracker()
         if q.learn then
           text = "|cff66ccff" .. L["Learn %s"]:format(q.label or "") .. "|r"
         else
-          local ready = q.enchant and ("|cff9d9d9d" .. L["by hand (needs a target)"] .. "|r")
+          local ready = q.other and ("|cff9d9d9d" .. L["other profession"] .. "|r")
+            or q.enchant and ("|cff9d9d9d" .. L["by hand (needs a target)"] .. "|r")
             or ((q.ready or 0) >= q.n and ("|cff40ff40" .. L["ready"] .. "|r")
             or ("|cffff9933" .. L["%d ready"]:format(q.ready or 0) .. "|r"))
           text = ("%dx %s  %s"):format(q.n, q.label or "", ready)

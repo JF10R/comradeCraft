@@ -444,6 +444,21 @@ local translations = {
       "Par courrier",
     ["Craft requests by mail too: for players who are never online at the same time (you send the mail yourself, 30c postage)."] =
       "Demandes de craft aussi par courrier : pour les joueurs jamais en ligne en même temps (tu envoies le courrier toi-même, 30 pc de port).",
+    ["other profession"] = "autre profession",
+    ["Routes"] =
+      "Routes",
+    ["Each character picks Cheapest (least spent on mats) or Profitable (products sold back). The milestone table compares both: mats, what the products bring back (merchant, disenchant or AH) and the net cost."] =
+      "Chaque perso choisit Moins chère (le moins de mats) ou Rentable (produits revendus). Le tableau par palier compare les deux : mats, revente des produits (marchand, désenchant ou HV) et coût net.",
+    ["Learning recipes"] =
+      "Apprendre les recettes",
+    ["Hover a Learn line for its trainers, vendors and drops; click it for a TomTom waypoint (with Questie installed for positions)."] =
+      "Survole une ligne Apprendre pour ses maîtres, vendeurs et drops; clique-la pour un point TomTom (avec Questie pour les positions).",
+    ["Craft queue"] =
+      "File de craft",
+    ["In the step panel: the crafts of this step or of the whole milestone, what your bags allow, and Craft next (one batch per click, the game needs a click per craft)."] =
+      "Dans le panneau d'étape : les crafts de l'étape ou du palier, ce que tes sacs permettent, et Crafter le suivant (un lot par clic, le jeu exige un clic par craft).",
+    ["Click a recipe in a group member's Can craft tab to ask for it. Answer what you are asked in Craft requests. Requests reach the other player the next time you are both online (or by mail, if turned on in Manage group)."] =
+      "Clique une recette dans l'onglet Peut crafter d'un membre pour la demander. Réponds aux demandes dans Demandes de craft. Elles arrivent la prochaine fois que vous êtes en ligne ensemble (ou par courrier, si activé dans Gérer le groupe).",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

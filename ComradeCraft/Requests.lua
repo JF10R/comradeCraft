@@ -11,6 +11,7 @@ ns.Requests = Requests
 local RESEND = 60          -- seconds between two resends of unacknowledged changes to a peer
 local KEEP_DAYS = 14       -- finished requests are forgotten after this
 local STATUS = { pending = true, accepted = true, declined = true, done = true, cancelled = true }
+local BY_CRAFTER = { accepted = true, declined = true, done = true }
 
 local function Now() return (GetServerTime and GetServerTime()) or time() end
 local function DB()
@@ -52,13 +53,15 @@ end
 -- Pure: a request received from a peer, validated (nil if malformed).
 function Requests.Clean(q)
   if type(q) ~= "table" then return nil end
-  local function S(v, n) return type(v) == "string" and #v > 0 and #v <= n and v or nil end
+  -- No control characters and no "|" (color, texture and link codes) in text shown to the player.
+  local function S(v, n) return type(v) == "string" and #v > 0 and #v <= n and not v:find("[%c|]") and v or nil end
   local function N(v, lo, hi) return type(v) == "number" and v >= lo and v <= hi and math.floor(v) or nil end
   local out = { id = S(q.rid, 48), from = S(q.from, 80), to = S(q.to, 80), spell = N(q.spell, 1, 2 ^ 31),
     qty = N(q.qty, 1, 1000), note = S(q.note, 120), status = STATUS[q.status] and q.status or nil,
     updated = N(q.u, 0, 2 ^ 31), created = N(q.c, 0, 2 ^ 31) }
   if not (out.id and out.from and out.to and out.spell and ns.Recipes[out.spell] and out.qty and out.status
     and out.updated) then return nil end
+  out.item = ns.Recipes[out.spell][5]
   return out
 end
 
@@ -68,14 +71,30 @@ function Requests.OnRemote(id, q, sender)
   if not clean then return end
   local db = DB()
   local mine = db[clean.id]
+  local function Ack()
+    ns.Sync.Send({ t = "A", v = ns.Sync.PROTO, id = ComradeCraftDB.accountId, rid = clean.id, u = clean.updated },
+      "WHISPER", sender)
+  end
   if not mine then
-    -- New: only valid when it is for one of our characters and still open.
-    if not (ComradeCraftDB.chars[clean.to] and clean.status == "pending") then return end
+    -- New: only kept when it is for one of our characters and still open. Always acknowledged
+    -- (or it would be re-sent forever); one for a character we do not have is declined.
+    if not (ComradeCraftDB.chars[clean.to] and clean.status == "pending") then
+      Ack()
+      if clean.status == "pending" then
+        local back = Wire(clean)
+        back.status, back.u = "declined", Now()
+        ns.Sync.Send({ t = "Q", v = ns.Sync.PROTO, id = ComradeCraftDB.accountId, q = back }, "WHISPER", sender)
+      end
+      return
+    end
     clean.fromPeer, clean.acked = id, clean.updated
     db[clean.id] = clean
     ns.Print(L["%s asks %s to craft %dx %s."]:format(clean.from:match("^[^-]+") or clean.from,
       clean.to:match("^[^-]+") or clean.to, clean.qty, ns.SpellName(clean.spell)))
-  elseif clean.updated > (mine.updated or 0) and OtherPeer(mine) == id then
+  elseif clean.updated > (mine.updated or 0) and OtherPeer(mine) == id
+    -- Each side may only make its own moves: the requester cancels, the crafter answers.
+    and ((Requests.Role(mine) == "crafter" and clean.status == "cancelled")
+      or (Requests.Role(mine) == "requester" and BY_CRAFTER[clean.status])) then
     local before = mine.status
     mine.status, mine.updated, mine.note = clean.status, clean.updated, clean.note or mine.note
     mine.acked = mine.updated
@@ -83,8 +102,7 @@ function Requests.OnRemote(id, q, sender)
       ns.Print(L["Request %dx %s: %s."]:format(mine.qty, ns.SpellName(mine.spell), L[mine.status]))
     end
   end
-  ns.Sync.Send({ t = "A", v = ns.Sync.PROTO, id = ComradeCraftDB.accountId, rid = clean.id, u = clean.updated },
-    "WHISPER", sender)
+  Ack()
   if ns.RefreshWindow then ns.RefreshWindow() end
 end
 
@@ -196,7 +214,7 @@ function Requests.ScanInbox()
       local now = Now()
       db[rid] = { id = rid, from = from, to = ns.CharKey(), fromPeer = peer, spell = spell,
         item = ns.Recipes[spell][5], qty = math.max(1, math.min(1000, qty)), status = "pending",
-        created = now, updated = now, acked = now, byMail = true }
+        created = now, updated = 0, acked = 0, byMail = true }
       added = added + 1
       ns.Print(L["%s asks %s to craft %dx %s."]:format(from:match("^[^-]+") or from,
         ns.CharKey():match("^[^-]+"), qty, ns.SpellName(spell)) .. " " .. L["(by mail)"])

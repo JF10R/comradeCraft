@@ -42,9 +42,10 @@ Notes:
   frame so it does not cover them. If an addon replaces that frame, click an entry of
   "You can give" in the group window while the mailbox is open, or type `/comrade mail NAME`.
 
-Not yet verified in game: Questie positions and TomTom waypoints, the step panel's position, the TSM search text and group import, Pawn's scale names on Forever, the
-Auctionator export, the TSM and Auctionator disenchant values, and the mail helper next to
-other mail addons.
+Not yet verified in game: craft requests between two players (sync and mail), the craft
+queue's Craft next, Questie positions and TomTom waypoints, the TSM search text and group
+import, Pawn's scale names on Forever, the Auctionator export, the TSM and Auctionator
+disenchant values, and the mail helper next to other mail addons.
 
 ## Commands
 

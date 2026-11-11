@@ -1058,6 +1058,10 @@ end
 local HELP = {
   { L["The window"], L["Left: the group, then each character. Plan = how to level a profession; Can craft = what that character can make for the group. The chips filter by profession."] },
   { L["Plans"], L["Each step says what to learn at the trainer, what to craft first (bolts, bars...) and how many. Click a line to open the recipe, Shift+click to link it. Colors: orange always gives a point, yellow usually, green rarely, grey never. ~ marks a value taken from Classic."] },
+  { L["Routes"], L["Each character picks Cheapest (least spent on mats) or Profitable (products sold back). The milestone table compares both: mats, what the products bring back (merchant, disenchant or AH) and the net cost."] },
+  { L["Learning recipes"], L["Hover a Learn line for its trainers, vendors and drops; click it for a TomTom waypoint (with Questie installed for positions)."] },
+  { L["Craft queue"], L["In the step panel: the crafts of this step or of the whole milestone, what your bags allow, and Craft next (one batch per click, the game needs a click per craft)."] },
+  { L["Craft requests"], L["Click a recipe in a group member's Can craft tab to ask for it. Answer what you are asked in Craft requests. Requests reach the other player the next time you are both online (or by mail, if turned on in Manage group)."] },
   { L["Tooltips"], L["On any material: who in the group needs it, how many, and how soon (now, soon, later). Spare stock in the group is shown too."] },
   { L["Step panel"], L["Next to your profession window: the current step, the chance per craft, how many crafts your bags allow, and what comes next."] },
   { L["Giving and mail"], L["You can give lists what you hold that others need. At a mailbox, the button beside the send frame attaches it. Nothing is ever sent for you."] },
