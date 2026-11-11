@@ -512,12 +512,22 @@ local translations = {
       "ou à l'HV (~%s)",
     ["or at the AH"] =
       "ou à l'HV",
-    ["This rank comes from a quest; it is not in our data yet."] =
-      "Ce rang s'obtient par une quête; elle n'est pas encore dans nos données.",
     ["Learn it from a trainer of this profession (in Classic: skill %d and character level %d; unconfirmed on Forever)."] =
       "Apprends-le chez un maître de cette profession (en Classic : compétence %d et niveau %d; non confirmé sur Forever).",
     ["At the cap (%d)."] =
       "Au maximum (%d).",
+    ["Looking for the quest in Questie..."] =
+      "Recherche de la quête dans Questie...",
+    ["This rank comes from a quest (install Questie to find it)."] =
+      "Ce rang s'obtient par une quête (installe Questie pour la trouver).",
+    ["starts at %s"] =
+      "commence chez %s",
+    ["Quest: %s"] =
+      "Quête : %s",
+    ["Quests that need %d in this skill; the rank quest is among them."] =
+      "Quêtes qui demandent %d dans cette compétence; la quête de rang en fait partie.",
+    ["Click: waypoint to the quest giver."] =
+      "Clic : point de passage vers le donneur de quête.",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

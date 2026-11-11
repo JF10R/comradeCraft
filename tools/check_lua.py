@@ -401,7 +401,21 @@ def main():
         "rank: expert cookbook " .. tostring(ra and ra.entries[1] and ra.entries[1].detail))
       local rb = ns.RankAdvice({ skillLine = 197, rank = 150, max = 150 })
       assert(rb and #rb.entries == 0 and rb.notes[1]:find("trainer", 1, true), "rank: primary from a trainer")
-      assert(ns.RankAdvice({ skillLine = 185, rank = 225, max = 225 }).notes[1]:find("quest", 1, true), "rank: artisan cooking quest")
+      assert(ns.RankAdvice({ skillLine = 185, rank = 225, max = 225 }).notes[1]:find("Questie", 1, true), "rank: artisan needs Questie")
+      -- With QuestieDB: the quest needing Cooking 225, for our faction, nearest giver; waypoint on click.
+      LibQuestieDB = { Enum = { factionRaceMasks = { Alliance = 1, Horde = 2 } },
+        Quest = { GetAllIds = function() return { 10, 11, 12 } end,
+          requiredSkill = function(id) return ({ [10] = { 185, 225 }, [11] = { 185, 225 }, [12] = { 197, 225 } })[id] end,
+          requiredRaces = function(id) return id == 11 and 2 or 0 end,
+          name = function(id) return "Q" .. id end, requiredLevel = function() return 35 end,
+          startedBy = function() return { { 8125 } } end },
+        Npc = { name = function() return "Dirge" end, friendlyToFaction = function() return "AH" end,
+          spawns = function() return { [440] = { { 52, 28 } } } end } }
+      UnitFactionGroup = function() return "Alliance" end
+      local rq2 = ns.RankAdvice({ skillLine = 185, rank = 225, max = 225 })
+      assert(rq2.entries[1] and rq2.entries[1].kind == "quest" and rq2.entries[1].label == "Q10" and #rq2.entries == 1
+        and rq2.entries[1].detail:find("Dirge", 1, true), "rank: artisan quest found " .. tostring(rq2.entries[1] and rq2.entries[1].detail))
+      LibQuestieDB, UnitFactionGroup = nil, nil
       assert(ns.DescribeNeed({ skillLine = 185, rank = 150, max = 150 }, { known = { [185] = {} } }).rank, "rank: shown at the cap")
       -- A visited trainer (exact position) beats the capped LibProfessionDB list.
       ComradeCraftDB.trainerSpots = { [5482] = { name = "Stephen Ryback", line = 197, map = 1014, x = 51, y = 51 } }

@@ -186,6 +186,14 @@ local function CreateStep()
       return
     end
     if e.kind == "milestone" then return end
+    if e.kind == "quest" then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(e.label, 1, 0.82, 0)
+      if e.detail ~= "" then GameTooltip:AddLine(e.detail, 1, 1, 1, true) end
+      GameTooltip:AddLine(L["Click: waypoint to the quest giver."], 0.5, 0.8, 1)
+      GameTooltip:Show()
+      return
+    end
     ShowItemTooltip(self, e.item, e.spell)
     if e.kind == "learn" then
       ns.AddSourceLines(GameTooltip, e.spell)
@@ -198,6 +206,7 @@ local function CreateStep()
     if not e or e.kind == "range" or e.kind == "milestone" or LinkOnShiftClick(e.item) then return end
     if e.kind == "craft" and self.own then ns.OpenRecipe(e.spell) end
     if e.kind == "learn" then ns.WaypointRecipe(e.spell) end
+    if e.kind == "quest" then ns.WaypointQuest(e.quest) end
   end)
   return b
 end
@@ -230,13 +239,15 @@ local function PlaceStep(x, y, w, e, own)
     h = 16
   else
     s.icon:Show()
-    s.icon:SetTexture(e.item and e.item ~= 0 and select(3, ItemInfo(e.item))
+    s.icon:SetTexture(e.kind == "quest" and "Interface\\GossipFrame\\AvailableQuestIcon"
+      or e.item and e.item ~= 0 and select(3, ItemInfo(e.item))
       or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(e.spell)) or 134400)
     s.count:SetText(e.n and (e.n .. "x") or "")
     s.text:ClearAllPoints()
     s.text:SetPoint("TOPLEFT", 58, -3)
     s.text:SetWidth(w - 62)
     s.text:SetText(e.kind == "learn" and ("|cff66ccff" .. L["Learn %s"]:format(e.label or "") .. "|r")
+      or e.kind == "quest" and ("|cffffd100" .. L["Quest: %s"]:format(e.label or "") .. "|r")
       or (e.label or e.text))
     s.detail:ClearAllPoints()
     s.detail:SetPoint("TOPLEFT", s.text, "BOTTOMLEFT", 0, -1)

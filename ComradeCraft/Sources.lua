@@ -192,3 +192,102 @@ function ns.WaypointRecipe(spell)
   if ok then ns.Print(L["Waypoint: %s"]:format(PlaceText(pick))) end
   return ok
 end
+
+-- Quests that require a profession skill (QuestieDB): the Artisan quest of Cooking, First Aid
+-- and Fishing requires 225 in it. One pass over every quest, in small batches across frames
+-- (first call returns nil while it runs, then refreshes the window), indexed by "line:value".
+local skillIndex, scanning = nil, false
+local function ScanSkillQuests()
+  local Q = LibQuestieDB and LibQuestieDB.Quest
+  if scanning or not (Q and Q.GetAllIds and Q.requiredSkill) then return end
+  scanning = true
+  local ok, ids = pcall(Q.GetAllIds)
+  ids = ok and ids or {}
+  local index, i = {}, 1
+  local function Step()
+    local stop = math.min(#ids, i + 399)
+    for k = i, stop do
+      local okS, rs = pcall(Q.requiredSkill, ids[k])
+      if okS and type(rs) == "table" and rs[1] and rs[2] then
+        local key = rs[1] .. ":" .. rs[2]
+        index[key] = index[key] or {}
+        table.insert(index[key], ids[k])
+      end
+    end
+    i = stop + 1
+    if i <= #ids and C_Timer then
+      C_Timer.After(0, Step)
+    else
+      skillIndex, scanning = index, false
+      ns.Log(("quests: %d quest ids scanned for skill requirements"):format(#ids))
+      ns.RequestRefresh()
+    end
+  end
+  Step()
+end
+
+local function Band(a, b)
+  if bit and bit.band then return bit.band(a, b) end
+  local r, v = 0, 1
+  while a > 0 and b > 0 do
+    if a % 2 == 1 and b % 2 == 1 then r = r + v end
+    a, b, v = math.floor(a / 2), math.floor(b / 2), v * 2
+  end
+  return r
+end
+
+-- Quests for the player's faction that need `value` in skill `line`: { { id, name, level,
+-- npc, npcName, place, dist } }, nearest giver first. {} without Questie; nil while scanning.
+function ns.SkillQuests(line, value)
+  local Q = LibQuestieDB and LibQuestieDB.Quest
+  if not (Q and Q.GetAllIds) then return {} end
+  if not skillIndex then
+    ScanSkillQuests()
+    if not skillIndex then return nil end
+  end
+  local faction = UnitFactionGroup and UnitFactionGroup("player")
+  local masks = LibQuestieDB.Enum and LibQuestieDB.Enum.factionRaceMasks
+  local mine = masks and faction and masks[faction]
+  local map, px, py = PlayerPos()
+  local out = {}
+  for _, id in ipairs(skillIndex[line .. ":" .. value] or {}) do
+    local races = Q.requiredRaces and Q.requiredRaces(id)
+    if not (mine and races and races ~= 0 and Band(races, mine) == 0) then
+      local q = { id = id, name = Q.name and Q.name(id) or ("#" .. id), level = Q.requiredLevel and Q.requiredLevel(id) }
+      local by = Q.startedBy and Q.startedBy(id)
+      for _, npc in ipairs(type(by) == "table" and by[1] or {}) do
+        if Friendly(npc) then
+          for _, p in ipairs(Places(npc)) do
+            local d = Distance(p, map, px, py)
+            if not q.dist or d < q.dist then
+              q.npc, q.place, q.dist = npc, p, d
+              q.npcName = NpcDB() and NpcDB().name and NpcDB().name(npc)
+            end
+          end
+        end
+      end
+      out[#out + 1] = q
+    end
+  end
+  table.sort(out, function(a, b) return (a.dist or 2e9) < (b.dist or 2e9) end)
+  return out
+end
+
+-- Waypoint to a quest giver found by ns.SkillQuests.
+function ns.WaypointQuest(q)
+  if not (q and q.place and q.place.uiMap) then
+    ns.Print(L["No known location for %s."]:format(q and q.name or "?"))
+    return false
+  end
+  local where = PlaceText({ id = q.npc, name = q.npcName, place = q.place })
+  if not (TomTom and TomTom.AddWaypoint) then
+    ns.Print(L["%s: %s. Install TomTom for a waypoint."]:format(q.name, where))
+    return false
+  end
+  local ok = pcall(TomTom.AddWaypoint, TomTom, q.place.uiMap, q.place.x / 100, q.place.y / 100,
+    { title = ("%s: %s"):format(q.name, q.npcName or ""), persistent = false, from = "ComradeCraft" })
+  ns.Log(("waypoint: quest %d npc %s -> %s"):format(q.id, tostring(q.npc), ok and "ok" or "error"))
+  if ok then ns.Print(L["Waypoint: %s"]:format(where)) end
+  return ok
+end
+ns.SourcePlaceText = PlaceText

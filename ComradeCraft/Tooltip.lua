@@ -209,7 +209,23 @@ function ns.RankAdvice(p)
     out.entries[1] = { kind = "learn", spell = book, item = item, label = name or ItemName(item),
       text = ns.L["Learn %s"]:format(name or ItemName(item)), detail = table.concat(parts, " - ") }
   elseif SECONDARY[line] and max >= 225 then
-    out.notes[1] = ns.L["This rank comes from a quest; it is not in our data yet."]
+    -- Artisan comes from a quest that requires the current cap in the skill (QuestieDB).
+    local quests = ns.SkillQuests and ns.SkillQuests(line, max)
+    if quests == nil then
+      out.notes[1] = ns.L["Looking for the quest in Questie..."]
+    elseif #quests == 0 then
+      out.notes[1] = ns.L["This rank comes from a quest (install Questie to find it)."]
+    else
+      for i = 1, math.min(3, #quests) do
+        local q = quests[i]
+        local parts = {}
+        if q.level and q.level > 1 then parts[#parts + 1] = ns.L["level %d"]:format(q.level) end
+        if q.npcName then parts[#parts + 1] = ns.L["starts at %s"]:format(ns.SourcePlaceText({ id = q.npc, name = q.npcName, place = q.place })) end
+        out.entries[#out.entries + 1] = { kind = "quest", quest = q, label = q.name,
+          text = ns.L["Quest: %s"]:format(q.name), detail = table.concat(parts, " - ") }
+      end
+      if #quests > 1 then out.notes[1] = ns.L["Quests that need %d in this skill; the rank quest is among them."]:format(max) end
+    end
   else
     local req = CLASSIC_REQ[max]
     out.notes[1] = ns.L["Learn it from a trainer of this profession (in Classic: skill %d and character level %d; unconfirmed on Forever)."]
