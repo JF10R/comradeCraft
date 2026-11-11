@@ -379,6 +379,20 @@ def main():
       SlashCmdList.COMRADECRAFT("tracker")
       assert(ComradeCraftDB.settings.tracker == false, "tracker: toggled off")
       assert(not ns.TrackerOn() and #ns.SkillupStatsLines() >= 1, "manage: tracker state, stats lines")
+      -- Help view renders; the tour: Skip hides it for the session only, finishing marks it done.
+      ComradeCraftDB.ui.sel = "help"
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.sel = "group"
+      ComradeCraftDB.settings.tutorialDone = nil
+      ns.StartTutorial(true)
+      local tour = ComradeCraftTour
+      tour.skip.scripts.OnClick(tour.skip)
+      assert(not ComradeCraftDB.settings.tutorialDone and not tour:IsShown(), "tour: skip")
+      ns.StartTutorial()
+      assert(not tour:IsShown(), "tour: skipped stays hidden this session")
+      ns.StartTutorial(true)
+      for _ = 1, 5 do tour.next.scripts.OnClick(tour.next) end
+      assert(ComradeCraftDB.settings.tutorialDone == true and not tour:IsShown(), "tour: done after the last card")
       SlashCmdList.COMRADECRAFT("tracker")
       f.onEvent(f, "TRADE_SKILL_CLOSE")
       assert(not ComradeCraftTracker:IsShown() and ns.openLine == nil, "tracker: hidden on close")

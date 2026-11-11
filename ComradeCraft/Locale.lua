@@ -214,6 +214,76 @@ local translations = {
     ["Measured skill-up chances"] = "Chances de skill-up mesurées",
     ["Crafts logged by you and your group correct the Classic formula once a color has enough of them."] =
       "Les crafts enregistrés par toi et ton groupe corrigent la formule Classic dès qu'une couleur en a assez.",
+    ["The window"] =
+      "La fenêtre",
+    ["Left: the group, then each character. Plan = how to level a profession; Can craft = what that character can make for the group. The chips filter by profession."] =
+      "À gauche : le groupe, puis chaque perso. Plan = comment monter une profession; Peut crafter = ce que ce perso peut faire pour le groupe. Les puces filtrent par profession.",
+    ["Plans"] =
+      "Plans",
+    ["Each step says what to learn at the trainer, what to craft first (bolts, bars...) and how many. Click a line to open the recipe, Shift+click to link it. Colors: orange always gives a point, yellow usually, green rarely, grey never. ~ marks a value taken from Classic."] =
+      "Chaque étape dit quoi apprendre au maître, quoi crafter d'abord (bolts, barres...) et combien. Clic sur une ligne pour ouvrir la recette, Maj+clic pour la lier. Couleurs : orange donne toujours un point, jaune souvent, vert rarement, gris jamais. ~ marque une valeur reprise de Classic.",
+    ["Tooltips"] =
+      "Infobulles",
+    ["On any material: who in the group needs it, how many, and how soon (now, soon, later). Spare stock in the group is shown too."] =
+      "Sur chaque matériau : qui en a besoin dans le groupe, combien, et quand (maintenant, bientôt, plus tard). Le surplus du groupe est affiché aussi.",
+    ["Step panel"] =
+      "Panneau d'étape",
+    ["Next to your profession window: the current step, the chance per craft, how many crafts your bags allow, and what comes next."] =
+      "À côté de ta fenêtre de profession : l'étape en cours, la chance par craft, combien de crafts tes sacs permettent, et la suite.",
+    ["Giving and mail"] =
+      "Donner et courrier",
+    ["You can give lists what you hold that others need. At a mailbox, the button beside the send frame attaches it. Nothing is ever sent for you."] =
+      "Tu peux donner liste ce que tu as et dont d'autres ont besoin. À la boîte aux lettres, le bouton à côté de l'envoi l'attache. Rien n'est jamais envoyé à ta place.",
+    ["Disenchant or keep"] =
+      "Désenchanter ou garder",
+    ["Your green items: keep one per slot your enchanting plan needs, keep upgrades for group members, sell what is worth more than its mats, disenchant the rest."] =
+      "Tes objets verts : garder un par emplacement utile à ton plan d'enchantement, garder les upgrades pour le groupe, vendre ce qui vaut plus que ses mats, désenchanter le reste.",
+    ["Shopping"] =
+      "Achats",
+    ["The Shopping list button makes an Auctionator list, or a TSM search and group to paste. TSM groups that are done are pointed out."] =
+      "Le bouton Liste d'achat crée une liste Auctionator, ou une recherche et un groupe TSM à coller. Les groupes TSM terminés sont signalés.",
+    ["Sharing"] =
+      "Partage",
+    ["Nothing is shared until you check a character in Manage group, and only with players you added who added you back."] =
+      "Rien n'est partagé tant que tu ne coches pas un perso dans Gérer le groupe, et seulement avec les joueurs que tu as ajoutés et qui t'ont ajouté.",
+    ["Better with"] =
+      "Encore mieux avec",
+    ["TSM or Auctionator (prices), Pawn (upgrades for each class and spec). All optional."] =
+      "TSM ou Auctionator (prix), Pawn (upgrades par classe et spé). Tous optionnels.",
+    ["Replay the tour"] =
+      "Revoir la visite",
+    ["Welcome to ComradeCraft"] =
+      "Bienvenue dans ComradeCraft",
+    ["It answers one question: what should I do with what I have, for the group? 30 seconds to see the main parts."] =
+      "Il répond à une question : que faire avec ce que j'ai, pour le groupe? 30 secondes pour voir l'essentiel.",
+    ["Your group"] =
+      "Ton groupe",
+    ["Left: the group overview, the group management, then every character you share or receive."] =
+      "À gauche : la vue du groupe, la gestion du groupe, puis chaque perso que tu partages ou reçois.",
+    ["Plan and Can craft"] =
+      "Plan et Peut crafter",
+    ["Pick a character: Plan shows how to level each profession step by step; Can craft shows what it can make for others."] =
+      "Choisis un perso : Plan montre comment monter chaque profession étape par étape; Peut crafter montre ce qu'il peut faire pour les autres.",
+    ["While you play"] =
+      "Pendant que tu joues",
+    ["Item tooltips show who needs a material. A step panel opens next to your profession window."] =
+      "Les infobulles montrent qui a besoin d'un matériau. Un panneau d'étape s'ouvre à côté de ta fenêtre de profession.",
+    ["Sharing is opt-in"] =
+      "Le partage est volontaire",
+    ["Nothing leaves your computer until you check a character in Manage group. The ? button explains everything else."] =
+      "Rien ne quitte ton ordinateur tant que tu ne coches pas un perso dans Gérer le groupe. Le bouton ? explique le reste.",
+    ["Do not show again"] =
+      "Ne plus afficher",
+    ["Skip"] =
+      "Passer",
+    ["Done"] =
+      "Terminé",
+    ["Next"] =
+      "Suivant",
+    ["Help"] =
+      "Aide",
+    ["How ComradeCraft works, in short."] =
+      "Comment fonctionne ComradeCraft, en bref.",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

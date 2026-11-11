@@ -792,6 +792,114 @@ local function RenderManage()
   return -y
 end
 
+-- Help view ("?" button): one short paragraph per feature, plus a button to replay the tour.
+local HELP = {
+  { L["The window"], L["Left: the group, then each character. Plan = how to level a profession; Can craft = what that character can make for the group. The chips filter by profession."] },
+  { L["Plans"], L["Each step says what to learn at the trainer, what to craft first (bolts, bars...) and how many. Click a line to open the recipe, Shift+click to link it. Colors: orange always gives a point, yellow usually, green rarely, grey never. ~ marks a value taken from Classic."] },
+  { L["Tooltips"], L["On any material: who in the group needs it, how many, and how soon (now, soon, later). Spare stock in the group is shown too."] },
+  { L["Step panel"], L["Next to your profession window: the current step, the chance per craft, how many crafts your bags allow, and what comes next."] },
+  { L["Giving and mail"], L["You can give lists what you hold that others need. At a mailbox, the button beside the send frame attaches it. Nothing is ever sent for you."] },
+  { L["Disenchant or keep"], L["Your green items: keep one per slot your enchanting plan needs, keep upgrades for group members, sell what is worth more than its mats, disenchant the rest."] },
+  { L["Shopping"], L["The Shopping list button makes an Auctionator list, or a TSM search and group to paste. TSM groups that are done are pointed out."] },
+  { L["Sharing"], L["Nothing is shared until you check a character in Manage group, and only with players you added who added you back."] },
+  { L["Better with"], L["TSM or Auctionator (prices), Pawn (upgrades for each class and spec). All optional."] },
+}
+
+local function RenderHelp()
+  local y = 0
+  for _, h in ipairs(HELP) do
+    local _, th = Label(0, y, "|cffffd100" .. h[1] .. "|r", "GameFontNormal")
+    y = y - th - 2
+    local _, bh = Label(0, y, h[2])
+    y = y - bh - 10
+  end
+  Action(0, y, L["Replay the tour"], function() ns.StartTutorial(true) end)
+  return -y + 30
+end
+
+-- First-open tour: a few cards over the window. Skip = not again this session;
+-- "Do not show again" (or finishing it) = never again.
+local TOUR = {
+  { L["Welcome to ComradeCraft"], L["It answers one question: what should I do with what I have, for the group? 30 seconds to see the main parts."],
+    { "CENTER", 0, 40 } },
+  { L["Your group"], L["Left: the group overview, the group management, then every character you share or receive."],
+    { "TOPLEFT", SIDE_W + 10, -80 } },
+  { L["Plan and Can craft"], L["Pick a character: Plan shows how to level each profession step by step; Can craft shows what it can make for others."],
+    { "TOPLEFT", DETAIL_X + 260, -100 } },
+  { L["While you play"], L["Item tooltips show who needs a material. A step panel opens next to your profession window."],
+    { "CENTER", 0, 0 } },
+  { L["Sharing is opt-in"], L["Nothing leaves your computer until you check a character in Manage group. The ? button explains everything else."],
+    { "TOPRIGHT", -40, -50 } },
+}
+local tourSkipped, tourCard = false, nil
+
+local function TutorialCard()
+  if tourCard then return tourCard end
+  local t = CreateFrame("Frame", "ComradeCraftTour", frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+  t:SetSize(340, 150)
+  t:SetFrameLevel((frame:GetFrameLevel() or 1) + 50)
+  if t.SetBackdrop then
+    t:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    t:SetBackdropBorderColor(1, 0.82, 0, 1)
+  end
+  t:EnableMouse(true)
+  t.title = t:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  t.title:SetPoint("TOPLEFT", 14, -12)
+  t.count = t:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  t.count:SetPoint("TOPRIGHT", -14, -14)
+  t.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  t.text:SetPoint("TOPLEFT", 14, -36)
+  t.text:SetWidth(312)
+  t.text:SetJustifyH("LEFT")
+  t.never = CreateFrame("CheckButton", nil, t, "UICheckButtonTemplate")
+  t.never:SetSize(22, 22)
+  t.never:SetPoint("BOTTOMLEFT", 10, 8)
+  t.never.label = t.never:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  t.never.label:SetPoint("LEFT", t.never, "RIGHT", 2, 0)
+  t.never.label:SetText(L["Do not show again"])
+  t.next = CreateFrame("Button", nil, t, "UIPanelButtonTemplate")
+  t.next:SetSize(80, 22)
+  t.next:SetPoint("BOTTOMRIGHT", -10, 10)
+  t.skip = CreateFrame("Button", nil, t, "UIPanelButtonTemplate")
+  t.skip:SetSize(80, 22)
+  t.skip:SetPoint("RIGHT", t.next, "LEFT", -6, 0)
+  t.skip:SetText(L["Skip"])
+  local function Close(finished)
+    if finished or t.never:GetChecked() == true then ComradeCraftDB.settings.tutorialDone = true end
+    tourSkipped = true
+    t:Hide()
+  end
+  t.skip:SetScript("OnClick", function() Close(false) end)
+  t.next:SetScript("OnClick", function()
+    if t.step >= #TOUR then Close(true) else ns.ShowTutorialStep(t.step + 1) end
+  end)
+  tourCard = t
+  return t
+end
+
+function ns.ShowTutorialStep(i)
+  local t = TutorialCard()
+  local s = TOUR[i]
+  t.step = i
+  t.title:SetText(s[1])
+  t.text:SetText(s[2])
+  t.count:SetText(("%d/%d"):format(i, #TOUR))
+  t.next:SetText(i == #TOUR and L["Done"] or L["Next"])
+  t:ClearAllPoints()
+  t:SetPoint(s[3][1], frame, s[3][1], s[3][2], s[3][3])
+  t:Show()
+end
+
+-- Shown on the first opening (unless done, or skipped this session); `force` from Help.
+function ns.StartTutorial(force)
+  ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+  if not force and (ComradeCraftDB.settings.tutorialDone or tourSkipped) then return end
+  if not (frame and frame:IsShown()) then return end
+  ns.ShowTutorialStep(1)
+end
+
 -- Refresh ---------------------------------------------------------------------------------
 
 -- Filter row: "All" + one chip per profession present in the group, and "Hide gathering".
@@ -852,7 +960,7 @@ function ns.RefreshWindow()
   if not (frame and frame:IsShown()) then return end
   local ui = ComradeCraftDB.ui
   local chars = ns.AllChars()
-  if ui.sel ~= "group" and ui.sel ~= "manage" and not chars[ui.sel or ""] then
+  if ui.sel ~= "group" and ui.sel ~= "manage" and ui.sel ~= "help" and not chars[ui.sel or ""] then
     ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
   end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
@@ -862,7 +970,18 @@ function ns.RefreshWindow()
 
   local filter = (frame.search:GetText() or ""):lower()
   local h
-  if ui.sel == "manage" then
+  if ui.sel == "help" then
+    frame.title:SetText(L["Help"])
+    frame.sub:SetText(L["How ComradeCraft works, in short."])
+    frame.planTab:Hide()
+    frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
+    frame.search:Hide()
+    ReleaseAll(chips)
+    frame.gatherBox:Hide()
+    h = RenderHelp()
+  elseif ui.sel == "manage" then
     frame.title:SetText(L["Manage group"])
     frame.sub:SetText(L["Choose what you share, and with whom."])
     frame.planTab:Hide()
@@ -964,6 +1083,16 @@ local function CreateWindow()
   f.sub:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
   f.badge = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.badge:SetPoint("TOPRIGHT", -24, -68)
+  -- "?" opens the help view (click again to go back to the group).
+  f.helpBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.helpBtn:SetSize(24, 22)
+  f.helpBtn:SetPoint("TOPRIGHT", -24, -36)
+  f.helpBtn:SetText("?")
+  f.helpBtn:SetScript("OnClick", function()
+    local ui = ComradeCraftDB.ui
+    ui.sel = ui.sel == "help" and "group" or "help"
+    ns.RefreshWindow()
+  end)
 
   -- Flat tabs: the active one is gold, lighter and underlined; the other stays grey.
   local function Tab(text, tab, anchor)
@@ -1073,6 +1202,7 @@ function ns.ToggleWindow()
   ComradeCraftDB.ui = ComradeCraftDB.ui or {}
   frame = frame or CreateWindow()
   frame:SetShown(not frame:IsShown())
+  if frame:IsShown() then ns.StartTutorial() end
 end
 
 -- Item names load asynchronously; redraw once they arrive (coalesced).
