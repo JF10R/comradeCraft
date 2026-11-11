@@ -493,6 +493,7 @@ local translations = {
       "Une demande de craft arrive ou change.",
     ["A group member can craft an upgrade for you (off by default)."] =
       "Un membre du groupe peut crafter un upgrade pour toi (désactivé par défaut).",
+    ["visited"] = "visité",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

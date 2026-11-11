@@ -225,7 +225,7 @@ local function ScanTrainer()
   local lines = {}
   for name, p in pairs(ns.CharData().professions or {}) do lines[name] = p.skillLine end
   ComradeCraftDB.trainer = ComradeCraftDB.trainer or {}
-  local found = 0
+  local found, lineCount = 0, {}
   for i = 1, GetNumTrainerServices() do
     local name, _, kind = GetTrainerServiceInfo(i)
     if name and kind ~= "header" then
@@ -237,6 +237,7 @@ local function ScanTrainer()
         if not line or ns.Recipes[spell][1] == line then
           ComradeCraftDB.trainer[spell] = { cost = cost, req = req, t = time() }
           found = found + 1
+          lineCount[ns.Recipes[spell][1]] = (lineCount[ns.Recipes[spell][1]] or 0) + 1
         end
       end
     end
@@ -245,7 +246,22 @@ local function ScanTrainer()
     if not v then SetTrainerServiceTypeFilter(k, 0) end
   end
   scanningTrainer = false
-  ns.Log(("trainer: %d recipes recorded"):format(found))
+  -- Where this trainer stands (exact, unlike the capped lists of LibProfessionDB): used first
+  -- for "Learn" waypoints. Their position is the player's while the window is open.
+  local guid = UnitGUID and UnitGUID("npc")
+  local npc = guid and tonumber(select(6, strsplit("-", guid)))
+  local best, most = nil, 0
+  for l, n in pairs(lineCount) do if n > most then best, most = l, n end end
+  local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+  local pos = map and C_Map.GetPlayerMapPosition and C_Map.GetPlayerMapPosition(map, "player")
+  if npc and best and pos then
+    local x, y
+    if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
+    ComradeCraftDB.trainerSpots = ComradeCraftDB.trainerSpots or {}
+    ComradeCraftDB.trainerSpots[npc] = { name = UnitName("npc"), line = best, map = map,
+      x = math.floor(x * 10000) / 100, y = math.floor(y * 10000) / 100, t = time() }
+  end
+  ns.Log(("trainer: %d recipes recorded, npc %s line %s"):format(found, tostring(npc), tostring(best)))
   ns.RequestRefresh()
 end
 ns.On("TRAINER_SHOW", ScanTrainer)

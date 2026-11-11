@@ -394,6 +394,12 @@ def main():
       ns.AddSourceLines({ AddLine = function(_, l) tl[#tl + 1] = l end, AddDoubleLine = function(_, l, r) tl[#tl + 1] = l .. "=" .. r end }, 3915)
       assert(table.concat(tl, "|"):find("Near (Zone14 50, 52)", 1, true) and table.concat(tl, "|"):find("and 3 more", 1, true),
         "sources: tooltip " .. table.concat(tl, "|"))
+      -- A visited trainer (exact position) beats the capped LibProfessionDB list.
+      ComradeCraftDB.trainerSpots = { [5482] = { name = "Stephen Ryback", line = 197, map = 1014, x = 51, y = 51 } }
+      ComradeCraftDB.trainer = ComradeCraftDB.trainer or {}
+      local src2 = ns.RecipeSources(3915)
+      assert(src2.trainer.list[1].name == "Stephen Ryback" and src2.trainer.list[1].visited, "sources: visited trainer first")
+      ComradeCraftDB.trainerSpots = nil
       lib.GetRecipeSources, LibQuestieDB, QuestieLoader, TomTom, C_Map, UnitFactionGroup = oldSrc, nil, nil, nil, nil, nil
 
       -- Shopping: biggest need first; Auctionator list built from exact search terms.

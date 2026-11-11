@@ -41,6 +41,21 @@ local function PlayerPos()
   return map, x and x * 100, y and y * 100
 end
 
+-- Distance in yards between the player and a place (uiMap, x, y in 0-100) through
+-- HereBeDragons (embedded by TomTom): works across zones of a continent; nil if unknown.
+local function HBD() return LibStub and LibStub("HereBeDragons-2.0", true) end
+local function Distance(place, map, px, py)
+  local hbd = HBD()
+  if hbd and place.uiMap then
+    local ok, wx, wy, inst = pcall(hbd.GetWorldCoordinatesFromZone, hbd, place.x / 100, place.y / 100, place.uiMap)
+    local ok2, ox, oy, pinst = pcall(hbd.GetPlayerWorldPosition, hbd)
+    if ok and ok2 and wx and ox and inst == pinst then return ((wx - ox) ^ 2 + (wy - oy) ^ 2) ^ 0.5 end
+    if ok and ok2 and wx and ox then return 1e8 end -- other continent
+  end
+  if place.uiMap == map and px then return ((place.x - px) ^ 2 + (place.y - py) ^ 2) ^ 0.5 end
+  return 1e9
+end
+
 -- Places of one npc: { { areaId, uiMap, x, y } } (x, y in 0-100), or {} without QuestieDB.
 local function Places(npc)
   local db, zdb = NpcDB(), ZoneDB()
@@ -60,11 +75,21 @@ end
 function ns.RecipeSources(spell)
   local lib = Lib()
   local src = lib and lib.GetRecipeSources and lib:GetRecipeSources(spell)
-  if not src then return nil end
+  local r = ns.Recipes[spell]
+  -- Trainers you visited of this profession (exact Forever positions) join the trainer list.
+  local visited = {}
+  if r and (src and src.trainer or ns.TrainerSeen(spell)) then
+    for npc, t in pairs(ComradeCraftDB and ComradeCraftDB.trainerSpots or {}) do
+      if t.line == r[1] then visited[#visited + 1] = { id = npc, name = t.name, visited = true,
+        place = { uiMap = t.map, x = t.x, y = t.y } } end
+    end
+  end
+  if not src and #visited == 0 then return nil end
+  src = src or {}
   local map, px, py = PlayerPos()
   local out = {}
   for _, kind in ipairs(KINDS) do
-    local list = src[kind]
+    local list = src[kind] or (kind == "trainer" and #visited > 0 and {} or nil)
     if list then
       local entries = {}
       for _, e in ipairs(list) do
@@ -74,7 +99,7 @@ function ns.RecipeSources(spell)
           if x then
             local best, bestD
             for _, p in ipairs(Places(e.id)) do
-              local d = (p.uiMap == map and px) and ((p.x - px) ^ 2 + (p.y - py) ^ 2) or 1e9
+              local d = Distance(p, map, px, py)
               if not best or d < bestD then best, bestD = p, d end
             end
             x.place, x.dist = best, bestD or 2e9
@@ -85,8 +110,17 @@ function ns.RecipeSources(spell)
         end
         if x then entries[#entries + 1] = x end
       end
+      if kind == "trainer" then
+        local seen = {}
+        for _, e in ipairs(entries) do seen[e.id] = e end
+        for _, v in ipairs(visited) do
+          v.dist = Distance(v.place, map, px, py)
+          if seen[v.id] then seen[v.id].visited, seen[v.id].place, seen[v.id].dist = true, v.place, v.dist
+          else entries[#entries + 1] = v end
+        end
+      end
       table.sort(entries, function(a, b) return (a.dist or 0) < (b.dist or 0) end)
-      if #entries > 0 then out[kind] = { total = list.total or #entries, list = entries } end
+      if #entries > 0 then out[kind] = { total = math.max(list.total or 0, #entries), list = entries } end
     end
   end
   return next(out) and out or nil
@@ -94,7 +128,12 @@ end
 
 local function PlaceText(x)
   if not (x.place) then return x.name or ("#" .. x.id) end
-  local zone = ZoneName(x.place.areaId)
+  local zone = x.place.areaId and ZoneName(x.place.areaId)
+  if not zone and x.place.uiMap and C_Map and C_Map.GetMapInfo then
+    local info = C_Map.GetMapInfo(x.place.uiMap)
+    zone = info and info.name
+  end
+  if x.visited then zone = (zone or "?") .. ", " .. L["visited"] end
   return ("%s (%s %d, %d)"):format(x.name or ("#" .. x.id), zone or "?", x.place.x, x.place.y)
 end
 
