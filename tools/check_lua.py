@@ -366,6 +366,31 @@ def main():
       assert(not ns.AllChars()["Vez-Realm"], "sync: excluded peer hidden")
       ns.RefreshWindow()
 
+      -- Specialization: Classic talent tabs (name, icon, points) and Wrath shape (id, name, desc, icon, points).
+      GetNumTalentTabs = function() return 3 end
+      GetTalentTabInfo = function(t) return ({ "Arcane", "Fire", "Frost" })[t], "icon" .. t, ({ 2, 0, 14 })[t] end
+      assert(ns.ScanSpec() == "Frost", "spec: classic shape")
+      GetTalentTabInfo = function(t) return t, ({ "Balance", "Feral Combat", "Restoration" })[t], "", "i", ({ 0, 11, 3 })[t] end
+      assert(ns.ScanSpec() == "Feral Combat", "spec: wrath shape")
+      ns.ScanAll()
+      assert(c.spec == "Feral Combat", "spec stored")
+      assert(ns.Sync.CleanSummary({ sp = "Frost", p = {} }).sp == "Frost", "spec synced")
+      GetNumTalentTabs, GetTalentTabInfo = nil, nil
+
+      -- Manage view and filters render; the profession filter hides other professions.
+      ComradeCraftDB.ui.sel = "manage"
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.sel, ComradeCraftDB.ui.tab = "Test-Realm", "plan"
+      ComradeCraftDB.ui.prof = 197
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.prof = 333 -- not a profession of anyone: reset to all
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      assert(ComradeCraftDB.ui.prof == nil, "filter: unknown profession resets to all")
+      ComradeCraftDB.ui.hideGathering = false
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.hideGathering = nil
+
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log
       local joined = table.concat(log, " / ")

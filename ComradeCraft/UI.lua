@@ -62,6 +62,23 @@ end
 
 local function ShortName(key) return key:match("^[^-]+") or key end
 
+-- Profession filter (ui.prof = a skill line, nil = all) and "hide gathering" (default on).
+local function LineVisible(line)
+  local ui = ComradeCraftDB.ui
+  if ui.hideGathering ~= false and line and ns.GATHERING[line] then return false end
+  if ui.prof and ui.prof ~= line then return false end
+  return true
+end
+
+-- "Lvl 20 Frost Mage" (spec when known).
+local function LevelSpecClass(c)
+  local parts = {}
+  if c.level then parts[#parts + 1] = L["Lvl %d"]:format(c.level) end
+  if c.spec then parts[#parts + 1] = c.spec end
+  parts[#parts + 1] = ClassName(c)
+  return table.concat(parts, " ")
+end
+
 local function LinkOnShiftClick(item)
   if IsModifiedClick and IsModifiedClick("CHATLINK") and item and item ~= 0 then
     local _, link = ItemInfo(item)
@@ -334,7 +351,13 @@ local function RenderPlan(key, c)
     return h
   end
   for _, pname in ipairs(plist) do
-    y = y - LayoutProfession(y, pname, c.professions[pname], c, own)
+    if LineVisible(c.professions[pname].skillLine) then
+      y = y - LayoutProfession(y, pname, c.professions[pname], c, own)
+    end
+  end
+  if y == 0 then
+    local _, h = Label(0, 0, "|cff9d9d9d" .. L["No profession matches the filter."] .. "|r")
+    return h
   end
   return -y
 end
@@ -366,7 +389,7 @@ local function RenderCraft(key, c, filter)
     if p.skillLine then nameOf[p.skillLine] = pname end
   end
   for _, e in ipairs(ns.CraftCatalog(key)) do
-    if Matches(e, filter) then
+    if Matches(e, filter) and LineVisible(e.line) then
       byLine[e.line] = byLine[e.line] or {}
       table.insert(byLine[e.line], e)
     end
@@ -401,7 +424,7 @@ local function RenderGroup(filter)
     local found, any = {}, false
     for _, key in ipairs(keys) do
       for _, e in ipairs(ns.CraftCatalog(key)) do
-        if Matches(e, filter) then
+        if Matches(e, filter) and LineVisible(e.line) then
           local f = found[e.spell]
           if not f then
             f = { e = e, who = {} }
@@ -435,17 +458,20 @@ local function RenderGroup(filter)
     local parts = {}
     for _, pname in ipairs(SortedKeys(c.professions or {})) do
       local p = c.professions[pname]
-      parts[#parts + 1] = ("%s %d/%d"):format(pname, p.rank or 0, p.max or 0)
+      if LineVisible(p.skillLine) then parts[#parts + 1] = ("%s %d/%d"):format(pname, p.rank or 0, p.max or 0) end
     end
-    Label(0, y, ns.ClassColored(key, c.class), "GameFontHighlight", 130)
-    local _, h2 = Label(140, y, table.concat(parts, "   "), "GameFontHighlightSmall", LIST_W - 140)
-    y = y - math.max(16, h2) - 4
+    if #parts > 0 or not ComradeCraftDB.ui.prof then
+      Label(0, y, ns.ClassColored(key, c.class) .. (c.spec and ("  |cff9d9d9d" .. c.spec .. "|r") or ""),
+        "GameFontHighlight", 170)
+      local _, h2 = Label(180, y, table.concat(parts, "   "), "GameFontHighlightSmall", LIST_W - 180)
+      y = y - math.max(16, h2) - 4
+    end
   end
 
   y = y - 10
   local _, h3 = Label(0, y, "|cffffd100" .. L["Most wanted materials"] .. "|r", "GameFontNormal")
   y = y - h3 - 6
-  local mats_ = ns.GroupMaterials()
+  local mats_ = ns.GroupMaterials(LineVisible)
   if #mats_ == 0 then
     local _, h4 = Label(0, y, "|cff9d9d9d" .. L["Nothing missing yet."] .. "|r")
     return -y + h4
@@ -511,52 +537,251 @@ local function RenderSide(sel)
     y = y - h - 4
   end
   Add("group", L["Group"], ns.Plural(#SortedKeys(chars), "%d member", "%d members"))
+  local inGroup, requests = 0, 0
+  for _, peer in pairs(ComradeCraftDB.peers or {}) do
+    if peer.included then inGroup = inGroup + 1 elseif peer.asked then requests = requests + 1 end
+  end
+  Add("manage", L["Manage group"], ns.Plural(inGroup, "%d player", "%d players")
+    .. (requests > 0 and ("  |cff80ff80" .. ns.Plural(requests, "%d request", "%d requests") .. "|r") or ""))
   for _, key in ipairs(SortedKeys(chars)) do
     local c = chars[key]
-    local lines = { ("%s %s"):format(c.level and L["Lvl %d"]:format(c.level) or "", ClassName(c)) }
+    local lines = { LevelSpecClass(c) }
     if c.peer then
       lines[#lines + 1] = "|cff66ccff" .. L["via %s"]:format(PeerName(c) or "?") .. "|r"
     elseif not c.shared then
       lines[#lines + 1] = "|cff9d9d9d" .. L["not shared"] .. "|r"
     end
+    local shown = 0
     for _, pname in ipairs(SortedKeys(c.professions or {})) do
       local p = c.professions[pname]
-      local pct = (p.max or 0) > 0 and (p.rank or 0) / p.max or 0
-      lines[#lines + 1] = ("%s |cff%s%d/%d|r"):format(pname, pct >= 1 and "40c040" or "ffd100", p.rank or 0, p.max or 0)
+      if LineVisible(p.skillLine) then
+        shown = shown + 1
+        local pct = (p.max or 0) > 0 and (p.rank or 0) / p.max or 0
+        lines[#lines + 1] = ("%s |cff%s%d/%d|r"):format(pname, pct >= 1 and "40c040" or "ffd100", p.rank or 0, p.max or 0)
+      end
     end
-    Add(key, ns.ClassColored(key, c.class), table.concat(lines, "\n"))
-  end
-  -- Suggestions: players running ComradeCraft (guild, friends) not in the group yet.
-  local suggestions = {}
-  for id, peer in pairs(ComradeCraftDB.peers or {}) do
-    if not peer.included and peer.name then suggestions[#suggestions + 1] = { id = id, peer = peer } end
-  end
-  table.sort(suggestions, function(a, b) return a.peer.name < b.peer.name end)
-  if #suggestions > 0 then
-    Add(nil, "|cff9d9d9d" .. L["Suggestions"] .. "|r", L["Click to add to the group."])
-    for _, s in ipairs(suggestions) do
-      local n = 0
-      for _ in pairs(s.peer.chars or {}) do n = n + 1 end
-      Add(nil, "|cff80ff80+ " .. s.peer.name .. "|r", ns.Plural(n, "%d character", "%d characters")
-        .. (s.peer.asked and (" - " .. L["wants to join"]) or ""), s.id)
+    -- With a profession filter, characters without that profession are left out.
+    if shown > 0 or not ComradeCraftDB.ui.prof or sel == key then
+      Add(key, ns.ClassColored(key, c.class), table.concat(lines, "\n"))
     end
   end
   side:SetHeight(math.max(1, -y))
 end
 
+-- Manage group view ------------------------------------------------------------------------
+
+local actionBtns, checks = {}, {}
+
+local function CreateActionBtn()
+  local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+  b:SetSize(96, 22)
+  b:SetScript("OnClick", function(self) if self.fn then self.fn() end end)
+  return b
+end
+
+local function Action(x, y, text, fn)
+  local b = Acquire(actionBtns, CreateActionBtn)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b:SetText(text)
+  b.fn = fn
+  return b
+end
+
+local function CreateCheck()
+  local b = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+  b:SetSize(24, 24)
+  b:SetScript("OnClick", function(self) if self.fn then self.fn(self:GetChecked() and true or false) end end)
+  return b
+end
+
+local function Check(x, y, checked, fn)
+  local b = Acquire(checks, CreateCheck)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b:SetChecked(checked and true or false)
+  b.fn = fn
+  return b
+end
+
+-- Section title + one-line explanation; returns the new y.
+local function Section(y, title, help)
+  local _, h = Label(0, y, "|cffffd100" .. title .. "|r", "GameFontNormalLarge")
+  y = y - h - 2
+  if help then
+    local _, h2 = Label(0, y, "|cff9d9d9d" .. help .. "|r")
+    y = y - h2
+  end
+  return y - 8
+end
+
+local function CharCount(peer)
+  local n = 0
+  for _ in pairs(peer.chars or {}) do n = n + 1 end
+  return n
+end
+
+-- Your characters (share boxes), players in the group (remove), requests and suggestions
+-- (add), add by name, options. Everything sync-related is done from here.
+local function RenderManage()
+  local db = ComradeCraftDB
+  local Sync = ns.Sync
+  local y = 0
+
+  y = Section(y, L["Your characters"], L["Only checked characters are shared, and only with the players in your group."])
+  for _, key in ipairs(SortedKeys(db.chars)) do
+    local c = db.chars[key]
+    Check(0, y + 2, c.shared, function(on) Sync.SetShared(key, on) end)
+    Label(30, y - 4, ns.ClassColored(key, c.class) .. "  |cff9d9d9d" .. LevelSpecClass(c) .. "|r", "GameFontHighlight")
+    y = y - 28
+  end
+
+  local inGroup, others = {}, {}
+  for id, peer in pairs(db.peers or {}) do
+    if peer.name then
+      table.insert(peer.included and inGroup or others, { id = id, peer = peer })
+    end
+  end
+  local byName = function(a, b) return a.peer.name < b.peer.name end
+  table.sort(inGroup, byName)
+  table.sort(others, function(a, b)
+    if (a.peer.asked and 1 or 0) ~= (b.peer.asked and 1 or 0) then return a.peer.asked and true or false end
+    return a.peer.name < b.peer.name
+  end)
+
+  y = Section(y - 10, L["Players in your group"], L["They receive your shared characters and you see theirs."])
+  if #inGroup == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["Nobody yet."] .. "|r")
+    y = y - h - 8
+  end
+  for _, e in ipairs(inGroup) do
+    Label(0, y - 4, "|cff80ff80" .. e.peer.name .. "|r  |cff9d9d9d" .. ns.Plural(CharCount(e.peer), "%d character", "%d characters")
+      .. " - " .. L["seen %s"]:format(Ago(e.peer.seen)) .. "|r", "GameFontHighlight", LIST_W - 110)
+    Action(LIST_W - 100, y, L["Remove"], function() Sync.Exclude(e.id) end)
+    y = y - 28
+  end
+
+  y = Section(y - 10, L["Requests and suggestions"],
+    L["Players with ComradeCraft in your guild, or who added you. Add them to share both ways."])
+  if #others == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["Nobody yet."] .. "|r")
+    y = y - h - 8
+  end
+  for _, e in ipairs(others) do
+    local status = e.peer.asked and ("|cff80ff80" .. L["wants to join"] .. "|r") or ("|cff9d9d9d" .. L["suggested"] .. "|r")
+    Label(0, y - 4, e.peer.name .. "  " .. status .. (CharCount(e.peer) > 0 and ("  |cff9d9d9d"
+      .. ns.Plural(CharCount(e.peer), "%d character", "%d characters") .. "|r") or ""), "GameFontHighlight", LIST_W - 110)
+    Action(LIST_W - 100, y, L["Add"], function() Sync.Include(e.id) end)
+    y = y - 28
+  end
+
+  y = Section(y - 10, L["Add a player by name"], L["For friends outside your guild. They must add you back."])
+  frame.addBox:ClearAllPoints()
+  frame.addBox:SetPoint("TOPLEFT", content, "TOPLEFT", 6, y)
+  frame.addBox:Show()
+  Action(200, y + 1, L["Add"], function()
+    local name = frame.addBox:GetText()
+    if name and name ~= "" then
+      ns.commands.add(name)
+      frame.addBox:SetText("")
+    end
+  end)
+  y = y - 34
+
+  y = Section(y - 6, L["Options"])
+  db.settings = db.settings or {}
+  Check(0, y + 2, db.settings.guildPing ~= false, function(on)
+    db.settings.guildPing = on
+  end)
+  local _, h = Label(30, y - 4, L["Send a presence signal to the guild at login (no character data)."], nil, LIST_W - 30)
+  y = y - math.max(28, h + 10)
+  return -y
+end
+
 -- Refresh ---------------------------------------------------------------------------------
+
+-- Filter row: "All" + one chip per profession present in the group, and "Hide gathering".
+local chips = {}
+local function CreateChip()
+  local b = CreateFrame("Button", nil, frame)
+  b:SetHeight(20)
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints()
+  b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.label:SetPoint("CENTER")
+  b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  b:SetScript("OnClick", function(self)
+    ComradeCraftDB.ui.prof = self.line
+    ns.RefreshWindow()
+  end)
+  return b
+end
+
+local function RenderChips(chars)
+  ReleaseAll(chips)
+  local ui = ComradeCraftDB.ui
+  local names, lines = {}, {}
+  for _, c in pairs(chars) do
+    for pname, p in pairs(c.professions or {}) do
+      local line = p.skillLine
+      if line and not names[line] and not (ui.hideGathering ~= false and ns.GATHERING[line]) then
+        names[line] = pname
+        lines[#lines + 1] = line
+      end
+    end
+  end
+  table.sort(lines, function(a, b) return names[a] < names[b] end)
+  if ui.prof and not names[ui.prof] then ui.prof = nil end
+  local x = DETAIL_X
+  local function Chip(line, text)
+    local b = Acquire(chips, CreateChip)
+    b.line = line
+    b.label:SetText(text)
+    local active = ui.prof == line
+    b.label:SetTextColor(active and 1 or 0.75, active and 0.82 or 0.75, active and 0 or 0.75)
+    b.bg:SetColorTexture(active and 0.35 or 0.12, active and 0.27 or 0.1, active and 0.12 or 0.08, 0.9)
+    local w = math.max(40, (b.label:GetStringWidth() or 40) + 16)
+    b:SetWidth(w)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -140)
+    x = x + w + 4
+  end
+  Chip(nil, L["All"])
+  for _, line in ipairs(lines) do Chip(line, names[line]) end
+  frame.gatherBox:ClearAllPoints()
+  frame.gatherBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 8, -138)
+  frame.gatherBox:SetChecked(ui.hideGathering ~= false)
+  frame.gatherBox:Show()
+end
 
 function ns.RefreshWindow()
   if not (frame and frame:IsShown()) then return end
   local ui = ComradeCraftDB.ui
   local chars = ns.AllChars()
-  if ui.sel ~= "group" and not chars[ui.sel or ""] then ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group" end
+  if ui.sel ~= "group" and ui.sel ~= "manage" and not chars[ui.sel or ""] then
+    ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
+  end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
+  ReleaseAll(actionBtns) ReleaseAll(checks)
+  frame.addBox:Hide()
   RenderSide(ui.sel)
 
   local filter = (frame.search:GetText() or ""):lower()
   local h
-  if ui.sel == "group" then
+  if ui.sel == "manage" then
+    frame.title:SetText(L["Manage group"])
+    frame.sub:SetText(L["Choose what you share, and with whom."])
+    frame.planTab:Hide()
+    frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
+    frame.search:Hide()
+    ReleaseAll(chips)
+    frame.gatherBox:Hide()
+    h = RenderManage()
+  elseif ui.sel == "group" then
+    frame.search:Show()
+    RenderChips(chars)
     frame.title:SetText(L["Group"])
     frame.sub:SetText(L["Skill levels and the materials the group still needs. Type to find who can craft something."])
     frame.planTab:Hide()
@@ -565,9 +790,11 @@ function ns.RefreshWindow()
     frame.shareBox:Hide()
     h = RenderGroup(filter)
   else
+    frame.search:Show()
+    RenderChips(chars)
     local c = chars[ui.sel]
     frame.title:SetText(ns.ClassColored(ui.sel, c.class))
-    frame.sub:SetText(("%s %s - %s%s"):format(c.level and L["Lvl %d"]:format(c.level) or "", ClassName(c),
+    frame.sub:SetText(("%s - %s%s"):format(LevelSpecClass(c),
       L["updated %s"]:format(Ago(c.updated)), c.peer and (" - " .. L["via %s"]:format(PeerName(c) or "?")) or ""))
     frame.removeBtn.peerID = c.peer
     frame.removeBtn:SetShown(c.peer ~= nil)
@@ -706,12 +933,37 @@ local function CreateWindow()
   search:HookScript("OnTextChanged", function() ns.RefreshWindow() end)
   f.search = search
 
+  -- "Hide gathering" next to the profession chips (placed by RenderChips).
+  f.gatherBox = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+  f.gatherBox:SetSize(22, 22)
+  f.gatherBox.label = f.gatherBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.gatherBox.label:SetPoint("LEFT", f.gatherBox, "RIGHT", 2, 0)
+  f.gatherBox.label:SetText(L["Hide gathering"])
+  f.gatherBox:SetScript("OnClick", function(self)
+    ComradeCraftDB.ui.hideGathering = self:GetChecked() and true or false
+    ns.RefreshWindow()
+  end)
+
   local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT", DETAIL_X, -142)
+  scroll:SetPoint("TOPLEFT", DETAIL_X, -166)
   scroll:SetPoint("BOTTOMRIGHT", -34, 36)
   content = CreateFrame("Frame", nil, scroll)
   content:SetSize(LIST_W, 1)
   scroll:SetScrollChild(content)
+
+  -- Manage view: add a player by name (Enter or the Add button).
+  f.addBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+  f.addBox:SetSize(180, 20)
+  f.addBox:SetAutoFocus(false)
+  f.addBox:SetScript("OnEnterPressed", function(self)
+    local name = self:GetText()
+    if name and name ~= "" then
+      ns.commands.add(name)
+      self:SetText("")
+    end
+    self:ClearFocus()
+  end)
+  f.addBox:Hide()
 
   f.foot = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.foot:SetPoint("BOTTOMLEFT", 20, 14)

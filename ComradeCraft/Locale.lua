@@ -113,8 +113,34 @@ local translations = {
     ["Sync: %d players in the group, %d suggested. skill ~N: value taken from Classic, unconfirmed."] =
       "Sync : %d joueurs dans le groupe, %d suggérés. skill ~N : valeur reprise de Classic, non confirmée.",
     ["via %s"] = "via %s",
-    ["Suggestions"] = "Suggestions",
-    ["Click to add to the group."] = "Clic pour ajouter au groupe.",
+    ["Manage group"] = "Gérer le groupe",
+    ["Choose what you share, and with whom."] = "Choisis ce que tu partages, et avec qui.",
+    ["%d player"] = "%d joueur",
+    ["%d players"] = "%d joueurs",
+    ["%d request"] = "%d demande",
+    ["%d requests"] = "%d demandes",
+    ["Your characters"] = "Tes persos",
+    ["Only checked characters are shared, and only with the players in your group."] =
+      "Seuls les persos cochés sont partagés, et seulement avec les joueurs de ton groupe.",
+    ["Players in your group"] = "Joueurs de ton groupe",
+    ["They receive your shared characters and you see theirs."] =
+      "Ils reçoivent tes persos partagés et tu vois les leurs.",
+    ["Nobody yet."] = "Personne pour l'instant.",
+    ["seen %s"] = "vu %s",
+    ["Remove"] = "Retirer",
+    ["Requests and suggestions"] = "Demandes et suggestions",
+    ["Players with ComradeCraft in your guild, or who added you. Add them to share both ways."] =
+      "Joueurs de ta guilde qui ont ComradeCraft, ou qui t'ont ajouté. Ajoute-les pour partager dans les deux sens.",
+    ["Add"] = "Ajouter",
+    ["Add a player by name"] = "Ajouter un joueur par son nom",
+    ["For friends outside your guild. They must add you back."] =
+      "Pour les amis hors guilde. Ils doivent t'ajouter aussi.",
+    ["Options"] = "Options",
+    ["Send a presence signal to the guild at login (no character data)."] =
+      "Envoyer un signal de présence à la guilde à la connexion (aucune donnée de perso).",
+    ["All"] = "Toutes",
+    ["Hide gathering"] = "Cacher la récolte",
+    ["No profession matches the filter."] = "Aucune profession ne correspond au filtre.",
     ["%d character"] = "%d perso",
     ["%d characters"] = "%d persos",
     ["Remove from group"] = "Retirer du groupe",

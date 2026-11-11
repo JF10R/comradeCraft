@@ -68,9 +68,38 @@ local function BankIndexes()
   return list
 end
 
+-- Specialization: the modern API if present, else the talent tree with the most points
+-- (Classic talent tabs; return shapes differ between clients, both handled). nil if none.
+function ns.ScanSpec()
+  if GetSpecialization and GetSpecializationInfo then
+    local i = GetSpecialization()
+    if i then
+      local _, name, _, icon = GetSpecializationInfo(i)
+      if name then return name, icon end
+    end
+  end
+  if GetNumTalentTabs and GetTalentTabInfo then
+    local bestName, bestIcon, bestPoints = nil, nil, 0
+    for t = 1, GetNumTalentTabs() or 0 do
+      local r = { GetTalentTabInfo(t) }
+      local name, icon, points
+      if type(r[1]) == "string" then
+        name, icon, points = r[1], r[2], r[3]       -- name, icon, pointsSpent, ...
+      else
+        name, icon, points = r[2], r[4], r[5]       -- id, name, description, icon, pointsSpent, ...
+      end
+      if type(points) == "number" and points > bestPoints then
+        bestName, bestIcon, bestPoints = name, icon, points
+      end
+    end
+    return bestName, bestIcon
+  end
+end
+
 function ns.ScanAll()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
   local c = ns.CharData()
+  c.spec, c.specIcon = ns.ScanSpec()
   c.professions = ScanProfessions()
   c.bags = ScanBags(BagIndexes())
   c.updated = time()
@@ -114,6 +143,10 @@ ns.On("PLAYER_ENTERING_WORLD", ns.ScanAll)
 ns.On("SKILL_LINES_CHANGED", ns.ScanAll)
 ns.On("BAG_UPDATE_DELAYED", ns.ScanAll)
 ns.On("CHAT_MSG_SKILL", ns.ScanAll) -- "Your skill in X has increased to N"
+for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE_TALENT_GROUP_CHANGED",
+  "PLAYER_SPECIALIZATION_CHANGED" }) do
+  ns.On(e, ns.ScanAll) -- talents change the specialization
+end
 ns.On("BANKFRAME_OPENED", ScanBank)
 ns.On("TRADE_SKILL_LIST_UPDATE", ScanKnownRecipes)
 
@@ -301,8 +334,9 @@ ns.commands.api = function()
     "GetProfessions", "GetProfessionInfo", "GetSkillLineInfo",
     "C_Container", "C_TradeSkillUI", "C_TooltipInfo", "TooltipDataProcessor",
     "ProfessionsFrame", "TradeSkillFrame", "GetTrainerServiceCost", "GetTrainerServiceSkillReq",
-    "SetTrainerServiceTypeFilter",
+    "SetTrainerServiceTypeFilter", "GetSpecialization", "GetTalentTabInfo",
   }
+  Print(("  spec : %s"):format(tostring((ns.ScanSpec()))))
   for _, k in ipairs({ "OpenRecipe", "OpenTradeSkill", "SetRecipeItemNameFilter" }) do
     Print(("  C_TradeSkillUI.%s : %s"):format(k, (C_TradeSkillUI and C_TradeSkillUI[k]) and ns.L["yes"] or ns.L["no"]))
   end

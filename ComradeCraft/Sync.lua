@@ -60,7 +60,7 @@ end
 -- Summary: { u = updated, cl = class, lv = level, p = { [skillLine] = { rank, max, name } } }
 function Sync.CleanSummary(s)
   if type(s) ~= "table" then return nil end
-  local out = { u = Num(s.u, 0, 2 ^ 31) or 0, cl = Class(s.cl), lv = Num(s.lv, 1, 200), p = {} }
+  local out = { u = Num(s.u, 0, 2 ^ 31) or 0, cl = Class(s.cl), lv = Num(s.lv, 1, 200), sp = Str(s.sp, 40), p = {} }
   local n = 0
   for line, x in pairs(type(s.p) == "table" and s.p or {}) do
     line = Num(line, 1, 2 ^ 24)
@@ -78,6 +78,7 @@ end
 function Sync.CleanRecord(r)
   if type(r) ~= "table" then return nil end
   local out = { class = Class(r.class), level = Num(r.level, 1, 200), updated = Num(r.updated, 0, 2 ^ 31) or 0,
+    spec = Str(r.spec, 40), specIcon = Num(r.specIcon, 1, 2 ^ 31) or Str(r.specIcon, 120),
     professions = {}, known = {}, bags = {} }
   local n = 0
   for name, p in pairs(type(r.professions) == "table" and r.professions or {}) do
@@ -122,7 +123,7 @@ local function Summary(c)
   for name, x in pairs(c.professions or {}) do
     if x.skillLine then p[x.skillLine] = { x.rank, x.max, name } end
   end
-  return { u = c.updated or 0, cl = c.class, lv = c.level, p = p }
+  return { u = c.updated or 0, cl = c.class, lv = c.level, sp = c.spec, p = p }
 end
 
 local function Record(c)
@@ -142,7 +143,8 @@ local function Record(c)
   for name, p in pairs(c.professions or {}) do
     profs[name] = { rank = p.rank, max = p.max, skillLine = p.skillLine, icon = p.icon }
   end
-  return { class = c.class, level = c.level, updated = c.updated, professions = profs, known = known, owned = owned }
+  return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon, updated = c.updated,
+    professions = profs, known = known, owned = owned }
 end
 
 local function DB()

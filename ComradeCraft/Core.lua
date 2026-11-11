@@ -77,10 +77,11 @@ end)
 frame:RegisterEvent("ADDON_LOADED")
 
 -- Lets other files register events: ns.On("EVENT", fn)
+-- Events missing on this client are skipped (RegisterEvent errors on unknown events).
 function ns.On(event, fn)
   local prev = handlers[event]
   handlers[event] = prev and function(...) prev(...) fn(...) end or fn
-  frame:RegisterEvent(event)
+  pcall(frame.RegisterEvent, frame, event)
 end
 
 -- Recomputes the current character's needs and redraws the window, coalesced: a burst

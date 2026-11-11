@@ -312,11 +312,12 @@ function ns.CraftCatalog(key)
 end
 
 -- Group-wide missing materials: { { item, total, by = { {key, n} } } }, most needed first.
-function ns.GroupMaterials()
+-- lineOK (optional): function(skillLine) -> bool, to follow the profession filter.
+function ns.GroupMaterials(lineOK)
   local acc = {}
   for key, c in pairs(ns.AllChars()) do
-    for _, need in pairs(c.needs or {}) do
-      for item, n in pairs(need.items or {}) do
+    for line, need in pairs(c.needs or {}) do
+      for item, n in pairs((not lineOK or lineOK(line)) and need.items or {}) do
         local a = acc[item] or { item = item, total = 0, by = {} }
         acc[item] = a
         a.total = a.total + n
