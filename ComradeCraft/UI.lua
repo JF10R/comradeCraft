@@ -480,7 +480,9 @@ local function RenderGroup(filter)
   for i = 1, math.min(#mats_, 30) do
     local a = mats_[i]
     local by = {}
-    for _, b in ipairs(a.by) do by[#by + 1] = ("%s %d"):format(ShortName(b.key), b.n) end
+    for _, b in ipairs(a.by) do
+      by[#by + 1] = ("%s %d %s"):format(ShortName(b.key), b.n, ns.UrgencyText(b.step))
+    end
     local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
     PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, a.total, table.concat(by, ", "), width)
   end

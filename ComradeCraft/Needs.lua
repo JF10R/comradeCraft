@@ -321,15 +321,53 @@ function ns.GroupMaterials(lineOK)
         local a = acc[item] or { item = item, total = 0, by = {} }
         acc[item] = a
         a.total = a.total + n
-        a.by[#a.by + 1] = { key = key, n = n }
+        local step = need.when and need.when[item]
+        a.by[#a.by + 1] = { key = key, n = n, step = step }
+        if step and (not a.step or step < a.step) then a.step = step end
       end
     end
   end
   local list = {}
-  for _, a in pairs(acc) do list[#list + 1] = a end
-  table.sort(list, function(a, b) return a.total > b.total or (a.total == b.total and a.item < b.item) end)
+  for _, a in pairs(acc) do
+    table.sort(a.by, function(x, y) return (x.step or 99) < (y.step or 99) end)
+    list[#list + 1] = a
+  end
+  -- Most urgent first (now, soon, later), then the biggest quantity.
+  table.sort(list, function(a, b)
+    local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
+    if ua ~= ub then return ua < ub end
+    return a.total > b.total or (a.total == b.total and a.item < b.item)
+  end)
   return list
 end
+
+-- When a material is needed, from the first plan step using it: step 1 = "now",
+-- steps 2-4 = "soon", 5+ (or unknown) = "later". Locale keys.
+function ns.Urgency(step)
+  if step == 1 then return "now" end
+  if step and step <= 4 then return "soon" end
+  return "later"
+end
+function ns.UrgencyRank(step)
+  return ({ now = 1, soon = 2, later = 3 })[ns.Urgency(step)]
+end
+
+-- [itemID] = index of the first plan step whose crafts (main recipe or intermediates) use it.
+local function FirstStepOf(plan)
+  local when = {}
+  for i, step in ipairs(plan or {}) do
+    local spells = { step.spell }
+    for sub in pairs(step.subs or {}) do spells[#spells + 1] = sub end
+    for _, spell in ipairs(spells) do
+      local reag = ns.Recipes[spell] and ns.Recipes[spell][7] or {}
+      for j = 1, #reag, 2 do
+        if not when[reag[j]] then when[reag[j]] = i end
+      end
+    end
+  end
+  return when
+end
+ns.FirstStepOf = FirstStepOf
 
 -- Gathering professions level by gathering, not crafting: no needs computed.
 ns.GATHERING = { [356] = "Fishing", [182] = "Herbalism", [393] = "Skinning", [186] = "Mining" }
@@ -436,7 +474,7 @@ function ns.UpdateNeeds(c)
       end
       c.needs[p.skillLine] = { name = name, items = net, vendor = vendor, gross = gross, have = have,
         reached = reached, target = p.max, plan = plan, reason = info.reason,
-        bestGain = info.bestGain, used = info.used,
+        bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
         knownOnly = { reached = kReached, reason = kInfo.reason } }
     end
   end
@@ -454,7 +492,9 @@ function ns.NeedRows(c, itemID)
   local rows = {}
   for _, need in pairs(c.needs or {}) do
     local n = need.items[itemID]
-    if n and n > 0 then rows[#rows + 1] = { prof = need.name, n = n } end
+    if n and n > 0 then
+      rows[#rows + 1] = { prof = need.name, n = n, step = need.when and need.when[itemID] }
+    end
   end
   return rows
 end

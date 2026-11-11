@@ -95,7 +95,7 @@ def main():
     for a, b in re.findall(r'ns\.Plural\([^,]+,\s*"([^"]*)",\s*"([^"]*)"\)', code):
         used.update((a, b))
     used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container",
-                 "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other"])
+                 "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other", "now", "soon", "later"])
     loc = open(os.path.join(ADDON, "Locale.lua"), encoding="utf-8").read()
     fr = set(re.findall(r'^\s*\["((?:[^"\\]|\\.)*)"\]\s*=', loc, re.M))
     missing, stale = sorted(used - fr), sorted(fr - used)
@@ -390,6 +390,21 @@ def main():
       ComradeCraftDB.ui.hideGathering = false
       ns.RefreshWindow()
       ComradeCraftDB.ui.hideGathering = nil
+
+      -- Urgency: first plan step using an item; most-wanted sorts now < soon < later, then size.
+      local when = ns.FirstStepOf({ { spell = 2963, subs = {} }, { spell = 2385, subs = { [2963] = 1 } } })
+      assert(when[2589] == 1 and when[2320] == 2, "urgency: first step per item")
+      assert(ns.Urgency(1) == "now" and ns.Urgency(4) == "soon" and ns.Urgency(5) == "later"
+        and ns.Urgency(nil) == "later", "urgency buckets")
+      local saved = ComradeCraftDB.chars
+      ComradeCraftDB.chars = {
+        ["A-R"] = { needs = { [197] = { name = "T", items = { [111] = 100 }, when = { [111] = 6 } } } },
+        ["B-R"] = { needs = { [197] = { name = "T", items = { [222] = 5, [111] = 3 }, when = { [222] = 1, [111] = 3 } } } },
+      }
+      local gm2 = ns.GroupMaterials()
+      assert(gm2[1].item == 222 and gm2[2].item == 111, "urgency: urgent small need first")
+      assert(gm2[2].step == 3 and gm2[2].by[1].key == "B-R", "urgency: soonest needer first in the breakdown")
+      ComradeCraftDB.chars = saved
 
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log

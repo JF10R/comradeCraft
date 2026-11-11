@@ -42,6 +42,9 @@ local translations = {
     -- Tooltip / needs text
     ["needs %d"] = "besoin de %d",
     ["Group total"] = "Total du groupe",
+    ["now"] = "maintenant",
+    ["soon"] = "bientôt",
+    ["later"] = "plus tard",
     ["trainer"] = "formateur",
     ["vendor"] = "vendeur",
     ["quest"] = "quête",

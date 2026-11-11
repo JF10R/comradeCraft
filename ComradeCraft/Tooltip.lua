@@ -8,22 +8,34 @@ function ns.ClassColored(key, class)
   return color and ("|c%s%s|r"):format(color.colorStr, name) or name
 end
 
+-- "(now)" green, "(soon)" yellow, "(later)" grey: when the material is first needed.
+local URGENCY_COLOR = { now = "40ff40", soon = "ffd100", later = "9d9d9d" }
+function ns.UrgencyText(step)
+  local u = ns.Urgency(step)
+  return ("|cff%s(%s)|r"):format(URGENCY_COLOR[u], ns.L[u])
+end
+
 local function AddNeeds(tooltip, itemID)
   if not (itemID and ComradeCraftDB and ComradeCraftDB.chars) then return end
   local rows, total = {}, 0
   for key, c in pairs(ns.AllChars()) do
     for _, r in ipairs(ns.NeedRows(c, itemID)) do
-      rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, n = r.n }
+      rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, n = r.n, step = r.step }
       total = total + r.n
     end
   end
   if #rows == 0 then return end
-  table.sort(rows, function(a, b) return a.n > b.n end)
+  -- Most urgent first, then the biggest quantity.
+  table.sort(rows, function(a, b)
+    local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
+    if ua ~= ub then return ua < ub end
+    return a.n > b.n
+  end)
   tooltip:AddLine(" ")
   tooltip:AddLine("ComradeCraft", 1, 0.82, 0)
   for _, r in ipairs(rows) do
     tooltip:AddDoubleLine(("%s |cff9d9d9d%s|r"):format(ns.ClassColored(r.key, r.class), r.prof or ""),
-      ns.L["needs %d"]:format(r.n), 1, 1, 1, 1, 0.82, 0.4)
+      ns.L["needs %d"]:format(r.n) .. " " .. ns.UrgencyText(r.step), 1, 1, 1, 1, 0.82, 0.4)
   end
   if #rows > 1 then
     tooltip:AddDoubleLine(ns.L["Group total"], tostring(total), 0.8, 0.8, 0.8, 1, 0.82, 0)
