@@ -287,7 +287,37 @@ end
 -- Views ---------------------------------------------------------------------------------
 
 -- Plan tab: one block per profession (status, clickable plan, cost, mats, vendor, blocked).
-local actionBtns, checks = {}, {}
+local actionBtns, checks, toggles = {}, {}, {}
+
+-- Flat two-state button (like the Plan / Can craft tabs): gold and underlined when active.
+local function CreateToggle()
+  local b = CreateFrame("Button", nil, content)
+  b:SetSize(110, 22)
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints()
+  b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  b.label:SetPoint("CENTER")
+  b.under = b:CreateTexture(nil, "ARTWORK")
+  b.under:SetHeight(2)
+  b.under:SetPoint("BOTTOMLEFT")
+  b.under:SetPoint("BOTTOMRIGHT")
+  b.under:SetColorTexture(1, 0.82, 0, 1)
+  b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  b:SetScript("OnClick", function(self) if self.fn and not self.active then self.fn() end end)
+  return b
+end
+
+local function Toggle(x, y, text, active, enabled, fn)
+  local b = Acquire(toggles, CreateToggle)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b.label:SetText(text)
+  b.active, b.fn = active, enabled and fn or nil
+  b.bg:SetColorTexture(active and 0.35 or 0.12, active and 0.27 or 0.1, active and 0.12 or 0.08, 0.9)
+  b.label:SetTextColor(active and 1 or 0.6, active and 0.82 or 0.6, active and 0 or 0.6)
+  b.under:SetShown(active)
+  return b
+end
 
 local function CreateActionBtn()
   local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -410,15 +440,13 @@ local function RenderPlan(key, c)
   -- Only its owner can change it; everything else (tooltips, give list, mail) follows it.
   local mode = ns.RouteMode(c)
   Label(0, y - 5, L["Route:"], "GameFontNormal", 60)
-  local cheap = Action(60, y, L["Cheapest"], function() ns.SetRouteMode(key, "cheap") end)
-  local profit = Action(160, y, L["Profitable"], function() ns.SetRouteMode(key, "profit") end)
-  cheap:SetEnabled(not c.peer and mode ~= "cheap")
-  profit:SetEnabled(not c.peer and mode ~= "profit")
+  Toggle(60, y, L["Cheapest"], mode == "cheap", not c.peer, function() ns.SetRouteMode(key, "cheap") end)
+  Toggle(174, y, L["Profitable"], mode == "profit", not c.peer, function() ns.SetRouteMode(key, "profit") end)
   local why = mode == "profit"
     and L["Picks recipes whose products sell back well. More crafts, so more mats: tooltips, the give list, mail and shopping all follow this route."]
     or L["Spends the least on mats."]
   if c.peer then why = why .. " " .. L["Chosen by its owner."] end
-  local _, hh = Label(262, y - 5, "|cff9d9d9d" .. why .. "|r", nil, LIST_W - 262)
+  local _, hh = Label(296, y - 5, "|cff9d9d9d" .. why .. "|r", nil, LIST_W - 296)
   y = y - math.max(30, hh + 12)
   local own = key == ns.CharKey()
   local plist = SortedKeys(c.professions or {})
@@ -863,7 +891,14 @@ local function TutorialCard()
   if tourCard then return tourCard end
   local t = CreateFrame("Frame", "ComradeCraftTour", frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
   t:SetSize(340, 150)
-  t:SetFrameLevel((frame:GetFrameLevel() or 1) + 50)
+  t:SetFrameStrata("DIALOG")
+  t:SetToplevel(true)
+  -- Opaque: the dialog background texture is see-through on its own.
+  local solid = t:CreateTexture(nil, "BACKGROUND", nil, -8)
+  solid:SetPoint("TOPLEFT", 4, -4)
+  solid:SetPoint("BOTTOMRIGHT", -4, 4)
+  solid:SetColorTexture(0.06, 0.05, 0.04, 0.97)
+
   if t.SetBackdrop then
     t:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
       edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
@@ -990,7 +1025,7 @@ function ns.RefreshWindow()
     ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
   end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
-  ReleaseAll(actionBtns) ReleaseAll(checks)
+  ReleaseAll(actionBtns) ReleaseAll(checks) ReleaseAll(toggles)
   frame.addBox:Hide()
   RenderSide(ui.sel)
 

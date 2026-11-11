@@ -292,6 +292,7 @@ local translations = {
       "Route :",
     ["Picks recipes whose products sell back well. More crafts, so more mats: tooltips, the give list, mail and shopping all follow this route."] =
       "Choisit les recettes dont les produits se revendent bien. Plus de crafts, donc plus de mats : infobulles, Tu peux donner, courrier et achats suivent cette route.",
+    ["%s: %s of mats; nothing to sell back"] = "%s : %s de mats; rien à revendre",
     ["Chosen by its owner."] = "Choisi par son propriétaire.",
     ["Spends the least on mats."] =
       "Dépense le moins possible en mats.",

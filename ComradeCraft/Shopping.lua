@@ -189,6 +189,12 @@ local function ShowCopy(search, group, warnings)
         insets = { left = 11, right = 12, top = 12, bottom = 11 } })
     end
     copy:EnableMouse(true)
+    copy:SetToplevel(true)
+  -- Opaque: the dialog background texture is see-through on its own.
+  local solid = copy:CreateTexture(nil, "BACKGROUND", nil, -8)
+  solid:SetPoint("TOPLEFT", 11, -11)
+  solid:SetPoint("BOTTOMRIGHT", -11, 11)
+  solid:SetColorTexture(0.06, 0.05, 0.04, 0.97)
     copy.title = copy:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     copy.title:SetPoint("TOP", 0, -16)
     copy.title:SetText(L["TSM shopping (Ctrl+C to copy)"])

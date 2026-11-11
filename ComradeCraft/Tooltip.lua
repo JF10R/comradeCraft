@@ -330,8 +330,11 @@ function ns.MilestoneText(need)
       local m = routes[mode][b]
       local name = ns.L[mode == "cheap" and "Cheapest" or "Profitable"]
       if mode == need.mode then name = "|cffffd100" .. name .. "|r" end
-      rows[#rows + 1] = "  " .. (m and ns.L["%s: %s of mats; back: vendor %s, disenchant %s, AH %s"]:format(name,
-        ns.Money(math.floor(m.mats)), Back(m, "vendor"), Back(m, "de"), Back(m, "ah")) or (name .. ": -"))
+      local nothing = m and m.vendor == 0 and m.de == 0 and m.ah == 0
+      rows[#rows + 1] = "  " .. (not m and (name .. ": -")
+        or nothing and ns.L["%s: %s of mats; nothing to sell back"]:format(name, ns.Money(math.floor(m.mats)))
+        or ns.L["%s: %s of mats; back: vendor %s, disenchant %s, AH %s"]:format(name,
+          ns.Money(math.floor(m.mats)), Back(m, "vendor"), Back(m, "de"), Back(m, "ah")))
     end
   end
   local header = ns.PriceSource and ns.L["Cost by milestone (%s prices):"]:format(ns.PriceSourceName)
