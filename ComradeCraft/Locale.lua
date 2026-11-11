@@ -198,8 +198,15 @@ local translations = {
       "Rien à acheter.",
     ["Step panel hidden. /comrade tracker shows it again."] =
       "Panneau d'étape masqué. /comrade tracker le réaffiche.",
-    ["TSM: Ctrl+C, then paste in the search box of TSM's Shopping tab."] =
-      "TSM : Ctrl+C, puis colle dans la barre de recherche de l'onglet Shopping de TSM.",
+    ["TSM shopping (Ctrl+C to copy)"] = "Achats TSM (Ctrl+C pour copier)",
+    ["Search: paste in the search box of TSM's Shopping tab."] =
+      "Recherche : colle dans la barre de recherche de l'onglet Shopping de TSM.",
+    ["Group: TSM, Groups, Import. Quantities are in the search above (recomputed on each click)."] =
+      "Groupe : TSM, Groups, Import. Les quantités sont dans la recherche ci-dessus (recalculée à chaque clic).",
+    ["TSM group \"%s\": everything bought, delete it in TSM (Groups, right-click)."] =
+      "Groupe TSM \"%s\" : tout est acheté, supprime-le dans TSM (Groups, clic droit).",
+    ["TSM group \"%s\": replaced by a newer one, delete it in TSM (Groups, right-click)."] =
+      "Groupe TSM \"%s\" : remplacé par un plus récent, supprime-le dans TSM (Groups, clic droit).",
     ["Shopping list"] =
       "Liste d'achat",
     ["Full plan"] =

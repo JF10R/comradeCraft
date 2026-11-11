@@ -341,12 +341,24 @@ def main():
       local ts, tskip = ns.TSMSearchString({ { item = 1, n = 124 }, { item = 2, n = 60 }, { item = 3, n = 1 }, { item = 4, n = 2 } },
         function(id) return ({ "Linen Cloth", "Wool Cloth", "A/B" })[id] end)
       assert(ts == "Linen Cloth/exact/x124;Wool Cloth/exact/x60" and tskip == 2, "tsm search text: " .. ts)
-      local shown
-      StaticPopupDialogs, StaticPopup_Show = {}, function(_, _, _, data) shown = data end
+      -- TSM group: unique path per import; import text; stale = all bought, or replaced.
+      local gp = ns.TSMGroupPath("Vez", "Tailoring", 80, 125)
+      assert(gp == "ComradeCraft`Vez`Tailoring 80-125", "tsm group path")
+      assert(ns.TSMGroupString(gp, { { item = 2589 }, { item = 2320 } }) == "group:" .. gp .. ",i:2589,i:2320", "tsm group text")
+      local stale = ns.TSMStaleGroups({
+        ["ComradeCraft`Vez`Tailoring 80-125"] = { 2589 },   -- replaced by 95-125
+        ["ComradeCraft`Vez`Tailoring 95-125"] = { 2589 },   -- current
+        ["ComradeCraft`Vez`Cooking 1-50"] = { 2672 },       -- all bought
+        ["Other`Group"] = { 1 },
+      }, function(_, _, id) return id == 2589 end)
+      assert(#stale == 2 and stale[1].path:find("Cooking") and stale[1].reason == "done"
+        and stale[2].path:find("80%-125") and stale[2].reason == "replaced", "tsm stale groups")
       TSM_API = {}
       ns.ShoppingAction("Test-Realm", 197)
-      assert(shown and shown:find("/exact/x", 1, true), "tsm: copy box shown")
-      TSM_API, StaticPopupDialogs, StaticPopup_Show = nil, nil, nil
+      assert(ComradeCraftCopyFrame and ComradeCraftCopyFrame.search.value:find("/exact/x", 1, true)
+        and ComradeCraftCopyFrame.group.value:find("^group:ComradeCraft`Test`Tailoring %d+%-%d+,i:"), "tsm: copy window "
+        .. tostring(ComradeCraftCopyFrame and ComradeCraftCopyFrame.group.value))
+      TSM_API = nil
       -- Step panel: opens with the profession window, shows the first step; bags allow N crafts.
       assert(ns.CraftableNow(2963, { [2589] = 7 }) == 3 and ns.CraftableNow(2963, {}) == 0, "craftable now")
       f.onEvent(f, "TRADE_SKILL_LIST_UPDATE")
