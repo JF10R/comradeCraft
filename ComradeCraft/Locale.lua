@@ -8,8 +8,8 @@ ns.L = L
 local translations = {
   frFR = {
     -- Core
-    ["commands: /comrade (window) | scan | needs | stats | dump | api | audit | log clear"] =
-      "commandes : /comrade (fenêtre) | scan | needs | stats | dump | api | audit | log clear",
+    ["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | scan | needs | stats | api | audit | log clear"] =
+      "commandes : /comrade (fenêtre) | share [off] | add NOM | remove NOM | peers | sync | guildping [off] | scan | needs | stats | api | audit | log clear",
     ["log cleared"] = "log vidé",
     ["%d lines in the log (written to disk on /reload or logout)"] =
       "%d lignes dans le log (écrit sur disque au /reload ou à la déconnexion)",
@@ -110,8 +110,30 @@ local translations = {
     ["Armor"] = "Armure",
     ["Reagent"] = "Composant",
     ["Other"] = "Autre",
-    ["Local data (characters on this account). skill ~N: value taken from Classic, unconfirmed."] =
-      "Données locales (persos de ce compte). skill ~N : valeur reprise de Classic, non confirmée.",
+    ["Sync: %d players in the group, %d suggested. skill ~N: value taken from Classic, unconfirmed."] =
+      "Sync : %d joueurs dans le groupe, %d suggérés. skill ~N : valeur reprise de Classic, non confirmée.",
+    ["via %s"] = "via %s",
+    ["Suggestions"] = "Suggestions",
+    ["Click to add to the group."] = "Clic pour ajouter au groupe.",
+    ["%d character"] = "%d perso",
+    ["%d characters"] = "%d persos",
+    ["Remove from group"] = "Retirer du groupe",
+    -- Sync
+    ["sync: sent to the players in your group"] = "sync : envoyé aux joueurs de ton groupe",
+    ["%s is shared with your group"] = "%s est partagé avec ton groupe",
+    ["%s is no longer shared"] = "%s n'est plus partagé",
+    ["guild presence signal: on"] = "signal de présence à la guilde : activé",
+    ["guild presence signal: off"] = "signal de présence à la guilde : désactivé",
+    ["Share this character with the group"] = "Partager ce perso avec le groupe",
+    ["not shared"] = "non partagé",
+    ["  %s: %d characters, %s"] = "  %s : %d persos, %s",
+    ["in the group"] = "dans le groupe",
+    ["wants to join"] = "veut se joindre",
+    ["suggested"] = "suggéré",
+    ["no peer seen yet (they need ComradeCraft)"] = "aucun joueur vu pour l'instant (il faut ComradeCraft)",
+    ["%s added to the group"] = "%s ajouté au groupe",
+    ["%s contacted; added as soon as they answer"] = "%s contacté; ajouté dès qu'il répond",
+    ["%s removed from the group"] = "%s retiré du groupe",
     ["Click: group needs"] = "Clic : besoins du groupe",
   },
 }

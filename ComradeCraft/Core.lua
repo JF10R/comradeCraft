@@ -45,6 +45,20 @@ function ns.CharData()
   return c
 end
 
+-- Every character the group views show: this account's characters plus the ones received
+-- from peers the player included (Sync.lua). Local characters always win on a key clash.
+function ns.AllChars()
+  local all = {}
+  local db = ComradeCraftDB
+  if not db then return all end
+  for key, rec in pairs(db.remote or {}) do
+    local peer = db.peers and db.peers[rec.peer]
+    if peer and peer.included then all[key] = rec end
+  end
+  for key, c in pairs(db.chars or {}) do all[key] = c end
+  return all
+end
+
 local handlers = {}
 ns.handlers = handlers
 
@@ -78,6 +92,7 @@ function ns.RequestRefresh()
     refreshPending = false
     if ComradeCraftDB and ComradeCraftDB.chars then ns.UpdateNeeds(ns.CharData()) end
     if ns.RefreshWindow then ns.RefreshWindow() end
+    if ns.Sync then ns.Sync.MarkDirty() end -- peers hear about the change (debounced)
   end
   if C_Timer and C_Timer.After then
     refreshPending = true
@@ -106,7 +121,7 @@ SlashCmdList.COMRADECRAFT = function(msg)
       error(err, 0)
     end
   else
-    Print(ns.L["commands: /comrade (window) | scan | needs | stats | dump | api | audit | log clear"])
+    Print(ns.L["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | scan | needs | stats | api | audit | log clear"])
   end
 end
 

@@ -276,7 +276,7 @@ end
 -- { spell, line, item, color, category, needers = { {key, n} }, fits = { key } }.
 -- Sorted: helps someone first, then fits someone, then by name.
 function ns.CraftCatalog(key)
-  local chars = ComradeCraftDB.chars
+  local chars = ns.AllChars()
   local c = chars[key]
   local rankOf = {}
   for _, p in pairs(c.professions or {}) do
@@ -314,7 +314,7 @@ end
 -- Group-wide missing materials: { { item, total, by = { {key, n} } } }, most needed first.
 function ns.GroupMaterials()
   local acc = {}
-  for key, c in pairs(ComradeCraftDB.chars) do
+  for key, c in pairs(ns.AllChars()) do
     for _, need in pairs(c.needs or {}) do
       for item, n in pairs(need.items or {}) do
         local a = acc[item] or { item = item, total = 0, by = {} }

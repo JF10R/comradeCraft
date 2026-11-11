@@ -12,7 +12,7 @@ local PROF_W = 190
 local RIGHT_W = LIST_W - PROF_W - 8
 local MAT_H, MAT_COLS = 40, 2
 local MAT_W = math.floor((RIGHT_W - 4) / MAT_COLS)
-local ROW_PAD, STEP_H, RECIPE_H = 8, 18, 20
+local ROW_PAD, STEP_H, RECIPE_H = 8, 18, 32
 local COLOR = { orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "808080" }
 
 local frame, content, side
@@ -195,29 +195,40 @@ local function PlaceMat(x, y, item, count, sub, width)
   return m
 end
 
--- One known recipe in the "can craft" lists: icon, name in its difficulty color, category,
--- and who it helps. Click opens it (own character), shift-click links it.
+-- One known recipe in the "can craft" lists. Line 1: icon, name in its difficulty color,
+-- who it helps and its category. Line 2: reagents and the estimated cost of one craft.
+-- Click opens it (own character only); shift-click links it in chat (any character).
 local function CreateRecipe()
   local b = CreateFrame("Button", nil, content)
   b:SetHeight(RECIPE_H)
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
   b.icon = b:CreateTexture(nil, "ARTWORK")
-  b.icon:SetSize(18, 18)
-  b.icon:SetPoint("LEFT", 0, 0)
+  b.icon:SetSize(24, 24)
+  b.icon:SetPoint("TOPLEFT", 0, -2)
   b.name = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  b.name:SetPoint("LEFT", 24, 0)
+  b.name:SetPoint("TOPLEFT", 30, -2)
   b.name:SetWidth(240)
   b.name:SetJustifyH("LEFT")
   b.name:SetWordWrap(false)
   b.tags = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  b.tags:SetPoint("LEFT", 270, 0)
+  b.tags:SetPoint("TOPLEFT", 276, -2)
   b.tags:SetPoint("RIGHT", -4, 0)
   b.tags:SetJustifyH("LEFT")
   b.tags:SetWordWrap(false)
+  b.mats = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  b.mats:SetPoint("TOPLEFT", 30, -16)
+  b.mats:SetPoint("RIGHT", -4, 0)
+  b.mats:SetJustifyH("LEFT")
+  b.mats:SetWordWrap(false)
   b:SetScript("OnEnter", function(self) ShowItemTooltip(self, self.item, self.spell) end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
-    if not LinkOnShiftClick(self.item) and self.own then ns.OpenRecipe(self.spell) end
+    if IsModifiedClick and IsModifiedClick("CHATLINK") then
+      local link = ns.RecipeLink(self.spell, self.item)
+      if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+    elseif self.own then
+      ns.OpenRecipe(self.spell)
+    end
   end)
   return b
 end
@@ -233,6 +244,8 @@ local function PlaceRecipe(x, y, e, tags, own)
   b.icon:SetTexture(icon)
   b.name:SetText(("|cff%s%s|r"):format(COLOR[e.color] or "ffffff", e.name or ns.SpellName(e.spell)))
   b.tags:SetText(tags or "")
+  local cost = ns.CostText(ns.RecipeCost(e.spell, 1))
+  b.mats:SetText(ns.ReagentText(e.spell, 1) .. (cost and ("  |cffffd100" .. cost .. "|r") or ""))
   return b
 end
 
@@ -379,7 +392,7 @@ end
 
 -- Group view: skill table, most wanted materials, or "who can craft" search results.
 local function RenderGroup(filter)
-  local chars = ComradeCraftDB.chars
+  local chars = ns.AllChars()
   local keys = SortedKeys(chars)
   local y = 0
   if filter ~= "" then
@@ -465,19 +478,29 @@ local function CreateSideBtn()
   b.sub:SetWidth(SIDE_LIST_W - 16)
   b.sub:SetJustifyH("LEFT")
   b:SetScript("OnClick", function(self)
-    ComradeCraftDB.ui.sel = self.key
-    ns.RefreshWindow()
+    if self.peerID then
+      ns.Sync.Include(self.peerID) -- a suggestion: click adds that player to the group
+    elseif self.key then
+      ComradeCraftDB.ui.sel = self.key
+      ns.RefreshWindow()
+    end
   end)
   return b
 end
 
+-- Name of the peer a remote character came from.
+local function PeerName(c)
+  local peer = c.peer and ComradeCraftDB.peers and ComradeCraftDB.peers[c.peer]
+  return peer and peer.name
+end
+
 local function RenderSide(sel)
   ReleaseAll(sideBtns)
-  local chars = ComradeCraftDB.chars
+  local chars = ns.AllChars()
   local y = -2
-  local function Add(key, name, sub)
+  local function Add(key, name, sub, peerID)
     local b = Acquire(sideBtns, CreateSideBtn)
-    b.key = key
+    b.key, b.peerID = key, peerID
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", side, "TOPLEFT", 4, y)
     b.name:SetText(name)
@@ -491,12 +514,32 @@ local function RenderSide(sel)
   for _, key in ipairs(SortedKeys(chars)) do
     local c = chars[key]
     local lines = { ("%s %s"):format(c.level and L["Lvl %d"]:format(c.level) or "", ClassName(c)) }
+    if c.peer then
+      lines[#lines + 1] = "|cff66ccff" .. L["via %s"]:format(PeerName(c) or "?") .. "|r"
+    elseif not c.shared then
+      lines[#lines + 1] = "|cff9d9d9d" .. L["not shared"] .. "|r"
+    end
     for _, pname in ipairs(SortedKeys(c.professions or {})) do
       local p = c.professions[pname]
       local pct = (p.max or 0) > 0 and (p.rank or 0) / p.max or 0
       lines[#lines + 1] = ("%s |cff%s%d/%d|r"):format(pname, pct >= 1 and "40c040" or "ffd100", p.rank or 0, p.max or 0)
     end
     Add(key, ns.ClassColored(key, c.class), table.concat(lines, "\n"))
+  end
+  -- Suggestions: players running ComradeCraft (guild, friends) not in the group yet.
+  local suggestions = {}
+  for id, peer in pairs(ComradeCraftDB.peers or {}) do
+    if not peer.included and peer.name then suggestions[#suggestions + 1] = { id = id, peer = peer } end
+  end
+  table.sort(suggestions, function(a, b) return a.peer.name < b.peer.name end)
+  if #suggestions > 0 then
+    Add(nil, "|cff9d9d9d" .. L["Suggestions"] .. "|r", L["Click to add to the group."])
+    for _, s in ipairs(suggestions) do
+      local n = 0
+      for _ in pairs(s.peer.chars or {}) do n = n + 1 end
+      Add(nil, "|cff80ff80+ " .. s.peer.name .. "|r", ns.Plural(n, "%d character", "%d characters")
+        .. (s.peer.asked and (" - " .. L["wants to join"]) or ""), s.id)
+    end
   end
   side:SetHeight(math.max(1, -y))
 end
@@ -506,7 +549,7 @@ end
 function ns.RefreshWindow()
   if not (frame and frame:IsShown()) then return end
   local ui = ComradeCraftDB.ui
-  local chars = ComradeCraftDB.chars
+  local chars = ns.AllChars()
   if ui.sel ~= "group" and not chars[ui.sel or ""] then ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group" end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
   RenderSide(ui.sel)
@@ -518,12 +561,19 @@ function ns.RefreshWindow()
     frame.sub:SetText(L["Skill levels and the materials the group still needs. Type to find who can craft something."])
     frame.planTab:Hide()
     frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
     h = RenderGroup(filter)
   else
     local c = chars[ui.sel]
     frame.title:SetText(ns.ClassColored(ui.sel, c.class))
-    frame.sub:SetText(("%s %s - %s"):format(c.level and L["Lvl %d"]:format(c.level) or "", ClassName(c),
-      L["updated %s"]:format(Ago(c.updated))))
+    frame.sub:SetText(("%s %s - %s%s"):format(c.level and L["Lvl %d"]:format(c.level) or "", ClassName(c),
+      L["updated %s"]:format(Ago(c.updated)), c.peer and (" - " .. L["via %s"]:format(PeerName(c) or "?")) or ""))
+    frame.removeBtn.peerID = c.peer
+    frame.removeBtn:SetShown(c.peer ~= nil)
+    frame.shareBox.key = not c.peer and ui.sel or nil
+    frame.shareBox:SetShown(c.peer == nil)
+    frame.shareBox:SetChecked(c.shared and true or false)
     frame.planTab:Show()
     frame.craftTab:Show()
     frame.planTab:SetActive(ui.tab ~= "craft")
@@ -543,6 +593,13 @@ function ns.RefreshWindow()
   end
   frame.badge:SetText(ns.Plural(members, "%d member", "%d members") .. " - "
     .. ns.Plural(profs, "%d profession", "%d professions"))
+
+  local inGroup, suggested = 0, 0
+  for _, peer in pairs(ComradeCraftDB.peers or {}) do
+    if peer.included then inGroup = inGroup + 1 elseif peer.name then suggested = suggested + 1 end
+  end
+  frame.foot:SetText(L["Sync: %d players in the group, %d suggested. skill ~N: value taken from Classic, unconfirmed."]
+    :format(inGroup, suggested))
 end
 
 local function CreateWindow()
@@ -617,6 +674,30 @@ local function CreateWindow()
   f.planTab = Tab(L["Plan"], "plan", { "TOPLEFT", DETAIL_X, -112 })
   f.craftTab = Tab(L["Can craft"], "craft", { "TOPLEFT", DETAIL_X + 126, -112 })
 
+  -- Shown on this account's characters: opt-in sharing (nothing is sent until checked).
+  f.shareBox = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+  f.shareBox:SetSize(22, 22)
+  f.shareBox:SetPoint("TOPRIGHT", -230, -88)
+  f.shareBox.label = f.shareBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.shareBox.label:SetPoint("LEFT", f.shareBox, "RIGHT", 2, 0)
+  f.shareBox.label:SetText(L["Share this character with the group"])
+  f.shareBox:SetScript("OnClick", function(self)
+    if self.key then ns.Sync.SetShared(self.key, self:GetChecked() and true or false) end
+  end)
+
+  -- Shown on a character received from another player: stops sharing with that player.
+  f.removeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.removeBtn:SetSize(150, 22)
+  f.removeBtn:SetText(L["Remove from group"])
+  f.removeBtn:SetPoint("TOPRIGHT", -24, -88)
+  f.removeBtn:SetScript("OnClick", function(self)
+    if self.peerID then
+      ns.Sync.Exclude(self.peerID)
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+    end
+  end)
+
   local ok2, search = pcall(CreateFrame, "EditBox", nil, f, "SearchBoxTemplate")
   if not ok2 or not search then search = CreateFrame("EditBox", nil, f, "InputBoxTemplate") end
   search:SetSize(200, 20)
@@ -632,9 +713,8 @@ local function CreateWindow()
   content:SetSize(LIST_W, 1)
   scroll:SetScrollChild(content)
 
-  local foot = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  foot:SetPoint("BOTTOMLEFT", 20, 14)
-  foot:SetText(L["Local data (characters on this account). skill ~N: value taken from Classic, unconfirmed."])
+  f.foot = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.foot:SetPoint("BOTTOMLEFT", 20, 14)
   local foot2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   foot2:SetPoint("BOTTOMRIGHT", -20, 14)
   foot2:SetText("/comrade")

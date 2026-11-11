@@ -38,4 +38,5 @@ Needs.lua
 Scan.lua
 SkillLog.lua
 Tooltip.lua
+Sync.lua
 UI.lua

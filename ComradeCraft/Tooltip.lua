@@ -11,7 +11,7 @@ end
 local function AddNeeds(tooltip, itemID)
   if not (itemID and ComradeCraftDB and ComradeCraftDB.chars) then return end
   local rows, total = {}, 0
-  for key, c in pairs(ComradeCraftDB.chars) do
+  for key, c in pairs(ns.AllChars()) do
     for _, r in ipairs(ns.NeedRows(c, itemID)) do
       rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, n = r.n }
       total = total + r.n
@@ -73,6 +73,52 @@ function ns.Money(copper)
   return table.concat(parts, " ")
 end
 
+-- "16 Bolt of Woolen Cloth, 8 Fine Thread (vendor)" for `mult` crafts of a recipe.
+function ns.ReagentText(spell, mult)
+  local s, list = ns.Recipes[spell], {}
+  for i = 1, #s[7], 2 do
+    local item, n = s[7][i], Up(s[7][i + 1] * (mult or 1))
+    list[#list + 1] = ns.IsVendorItem(item) and ns.L["%d %s (vendor)"]:format(n, ItemName(item))
+      or ("%d %s"):format(n, ItemName(item))
+  end
+  return table.concat(list, ", ")
+end
+
+-- Buying cost of the mats of `mult` crafts, skipping items in `skip`. Returns copper and
+-- whether every mat had a price. Without a price source, returns nil.
+function ns.RecipeCost(spell, mult, skip)
+  if not ns.PriceSource then return nil end
+  local s, sum, complete = ns.Recipes[spell], 0, true
+  for i = 1, #s[7], 2 do
+    local item = s[7][i]
+    if not (skip and skip[item]) then
+      local v = ns.BuyCost(item, s[7][i + 1] * (mult or 1))
+      if v then sum = sum + v else complete = false end
+    end
+  end
+  return sum, complete
+end
+
+-- "~1s 20c" (all mats priced) or ">1s 20c" (some unpriced); nil without a price source.
+function ns.CostText(copper, complete)
+  if not copper then return nil end
+  return (complete and "~" or ">") .. ns.Money(math.floor(copper))
+end
+
+-- Chat link of a recipe's product, or of the recipe itself (enchants have no product).
+function ns.RecipeLink(spell, item)
+  if item and item ~= 0 then
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local _, link = get(item)
+    if link then return link end
+  end
+  local T = C_TradeSkillUI
+  local link = T and T.GetRecipeLink and select(2, pcall(T.GetRecipeLink, spell))
+  if type(link) == "string" then return link end
+  link = (C_Spell and C_Spell.GetSpellLink and C_Spell.GetSpellLink(spell)) or (GetSpellLink and GetSpellLink(spell))
+  return link
+end
+
 -- Opens the profession window on a recipe the character knows. Tries the modern API first,
 -- then the older frames; logs which path worked so it can be checked on Forever.
 function ns.OpenRecipe(spell)
@@ -114,29 +160,13 @@ function ns.DescribeNeed(p, c)
   -- the main craft. out.steps = { { range, entries = { { kind, spell, item, text } } } };
   -- out.plan is the same as flat text lines (for /comrade needs).
   local out = { plan = {}, steps = {} }
-  -- "16 Bolt of Woolen Cloth, 8 Fine Thread (vendor)" for `mult` crafts of a recipe.
-  local function ReagentList(spell, mult)
-    local s, list = ns.Recipes[spell], {}
-    for i = 1, #s[7], 2 do
-      local item, n = s[7][i], Up(s[7][i + 1] * mult)
-      list[#list + 1] = ns.IsVendorItem(item) and ns.L["%d %s (vendor)"]:format(n, ItemName(item))
-        or ("%d %s"):format(n, ItemName(item))
-    end
-    return table.concat(list, ", ")
-  end
-  -- Costs (only with a real price source): mats of `mult` crafts, skipping items listed in
-  -- `skip` (made by another entry of the same step). Returns copper, complete?.
+  local ReagentList = ns.ReagentText
+  -- Costs exist only with a real price source; `skip` = items made by another entry of
+  -- the same step. Returns copper (0 without prices) and whether every mat had a price.
   local priced = ns.PriceSource ~= nil
   local function MatsCost(spell, mult, skip)
-    local s, sum, complete = ns.Recipes[spell], 0, true
-    for i = 1, #s[7], 2 do
-      local item = s[7][i]
-      if not (skip and skip[item]) then
-        local v = ns.BuyCost(item, s[7][i + 1] * mult)
-        if v then sum = sum + v else complete = false end
-      end
-    end
-    return sum, complete
+    local v, ok = ns.RecipeCost(spell, mult, skip)
+    return v or 0, ok or false
   end
   local stock = {}
   for item, n in pairs(need.used or {}) do stock[item] = n end

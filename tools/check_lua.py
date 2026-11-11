@@ -111,7 +111,8 @@ def main():
     for name, fn in chunks:
         # Third-party libs are syntax-checked only (the addon must tolerate their absence),
         # except LibStub + LibProfessionDB, whose data the addon reads.
-        if name.startswith("Libs/") and not name.startswith(("Libs/LibStub/", "Libs/LibProfessionDB-1.0/")):
+        if name.startswith("Libs/") and not name.startswith(("Libs/LibStub/", "Libs/LibProfessionDB-1.0/",
+                                                              "Libs/LibSerialize/", "Libs/LibDeflate/")):
             continue
         try:
             fn("ComradeCraft", ns)
@@ -299,6 +300,71 @@ def main():
       assert(dc.steps[1].range:find("c", 1, true), "cost: step range has a price, got " .. dc.steps[1].range)
       TSM_API, ns.PriceSource, ns.PriceSourceName = nil, nil, nil
       ns.UpdateNeeds(c)
+
+      -- Sync, simulated with a captured transport: privacy by default, mutual add, cleaning.
+      local sent = {}
+      ns.Sync.transport = function(text, dist, target)
+        sent[#sent + 1] = { msg = ns.Sync.Decode(text), dist = dist, target = target }
+      end
+      IsInGuild = function() return true end
+      IsInInstance = function() return false end
+      Ambiguate = function(n) return n end
+      local rt = ns.Sync.Decode(ns.Sync.Encode({ t = "H", x = { 1, "a" } }))
+      assert(rt and rt.t == "H" and rt.x[2] == "a", "sync: encode/decode roundtrip")
+      local cnt = 0
+      for _ in pairs(ns.Sync.Hello().c) do cnt = cnt + 1 end
+      assert(cnt == 0, "sync: no character leaves unless shared")
+      sent = {}
+      ns.Sync.Announce()
+      assert(#sent == 1 and sent[1].dist == "GUILD" and sent[1].msg.t == "P" and sent[1].msg.c == nil,
+        "sync: login sends only a presence ping to the guild")
+      local function From(msg, sender) ns.Sync.OnMessage(ns.Sync.Encode(msg), "WHISPER", sender) end
+      sent = {}
+      From({ t = "P", v = 1, id = "peerVez" }, "Vez")
+      local pv = ComradeCraftDB.peers.peerVez
+      assert(pv and not pv.included and #sent == 0, "sync: a ping makes a suggestion, no reply")
+      From({ t = "H", v = 1, id = "peerVez", c = { ["Vez-Realm"] = { u = 100, cl = "DRUID", lv = 20,
+        p = { [197] = { 50, 75, "Tailoring" } } }, ["bad|key"] = { u = 1 } } }, "Vez")
+      assert(pv.asked and pv.chars["Vez-Realm"] and not pv.chars["bad|key"], "sync: hello stored, bad key dropped")
+      assert(#sent == 0, "sync: no reply to a player we did not add")
+      c.shared = true
+      From({ t = "R", v = 1, id = "peerVez", k = { "Test-Realm" } }, "Vez")
+      assert(#sent == 0, "sync: requests from non-added players are refused")
+      ns.Sync.Include("peerVez")
+      assert(sent[1] and sent[1].msg.t == "H" and sent[1].msg.c["Test-Realm"] and sent[1].target == "Vez",
+        "sync: adding whispers our shared summaries")
+      assert(sent[2] and sent[2].msg.t == "R" and sent[2].msg.k[1] == "Vez-Realm", "sync: adding requests their data")
+      sent = {}
+      From({ t = "D", v = 1, id = "peerVez", key = "Vez-Realm", rec = { class = "DRUID", level = 20, updated = 100,
+        professions = { Tailoring = { rank = 1, max = 75, skillLine = 197 } }, known = { [197] = { 2963, 999999 } },
+        owned = { [2589] = 3, [123456789] = 5 } } }, "Vez")
+      local vr = ComradeCraftDB.remote["Vez-Realm"]
+      assert(vr and vr.known[197][2963] and not vr.known[197][999999], "sync: unknown spell dropped")
+      assert(vr.bags[2589] == 3 and not vr.bags[123456789], "sync: unknown item dropped")
+      assert(ns.AllChars()["Vez-Realm"] and vr.needs and vr.needs[197], "sync: remote character visible with needs")
+      From({ t = "R", v = 1, id = "peerVez", k = { "Test-Realm", "Nope-Realm" } }, "Vez")
+      assert(#sent == 1 and sent[1].msg.t == "D" and sent[1].msg.key == "Test-Realm", "sync: added player gets data")
+      c.shared = nil
+      sent = {}
+      From({ t = "R", v = 1, id = "peerVez", k = { "Test-Realm" } }, "Vez")
+      assert(#sent == 0, "sync: unshared character never sent")
+      From({ t = "D", v = 1, id = "peerVez", key = "Test-Realm", rec = { class = "MAGE" } }, "Vez")
+      assert(not ComradeCraftDB.remote["Test-Realm"], "sync: our own characters cannot be overwritten")
+      assert(ns.Sync.CleanRecord({ class = "<b>" }).class == nil, "sync: bad class rejected")
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      IsInInstance = function() return true end
+      sent = {}
+      ns.Sync.AnnounceToGroup()
+      assert(#sent == 0 and ns.Sync.QueueSize() == 1, "sync: queued inside an instance")
+      IsInInstance = function() return false end
+      f.onEvent(f, "ZONE_CHANGED_NEW_AREA")
+      assert(#sent == 1 and ns.Sync.QueueSize() == 0, "sync: flushed after leaving")
+      From({ t = "H", v = 1, id = "peerVez", c = {} }, "Vez")
+      assert(not ComradeCraftDB.remote["Vez-Realm"], "sync: a character they stop sharing disappears")
+      ns.Sync.Exclude("peerVez")
+      assert(not ns.AllChars()["Vez-Realm"], "sync: excluded peer hidden")
+      ns.RefreshWindow()
 
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log
