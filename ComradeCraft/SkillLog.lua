@@ -92,22 +92,34 @@ ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spell)
   if unit == "player" then ns.OnCraft(spell) end
 end)
 
--- Calibration factor per color: observed skill-ups / formula expectation.
-function ns.Calibration(color)
+-- Totals for a color: this account's crafts plus those shared by players in the group.
+function ns.SkillupTotals(color)
+  local n, gained, expected = 0, 0, 0
   local s = ComradeCraftDB and ComradeCraftDB.skillups
   local c = s and s.colors[color]
-  if not c or c.n < MIN_SAMPLES or c.expected <= 0 then return nil end
-  return c.gained / c.expected
+  if c then n, gained, expected = c.n, c.gained, c.expected end
+  for _, peer in pairs(ComradeCraftDB and ComradeCraftDB.peers or {}) do
+    local p = peer.included and peer.skillups and peer.skillups[color]
+    if p then n, gained, expected = n + p.n, gained + p.gained, expected + p.expected end
+  end
+  return n, gained, expected
+end
+
+-- Calibration factor per color: observed skill-ups / formula expectation (group-wide).
+function ns.Calibration(color)
+  local n, gained, expected = ns.SkillupTotals(color)
+  if n < MIN_SAMPLES or expected <= 0 then return nil end
+  return gained / expected
 end
 
 ns.commands.stats = function()
   local s = DB()
   Print(ns.L["%d crafts recorded (calibration from %d per color)"]:format(#s.raw, MIN_SAMPLES))
   for _, color in ipairs({ "orange", "yellow", "green", "grey" }) do
-    local c = s.colors[color]
-    if c then
+    local n, gained, expected = ns.SkillupTotals(color) -- includes players in the group
+    if n > 0 then
       local f = ns.Calibration(color)
-      Print(ns.L["  %s: %d crafts, %d points, Classic formula %.1f%s"]:format(ns.L[color], c.n, c.gained, c.expected,
+      Print(ns.L["  %s: %d crafts, %d points, Classic formula %.1f%s"]:format(ns.L[color], n, gained, expected,
         f and ns.L[" -> factor %.2f applied"]:format(f) or ""))
     end
   end

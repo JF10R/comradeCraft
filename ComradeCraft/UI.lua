@@ -269,7 +269,7 @@ end
 -- Views ---------------------------------------------------------------------------------
 
 -- Plan tab: one block per profession (status, clickable plan, cost, mats, vendor, blocked).
-local function LayoutProfession(y, name, p, c, own)
+local function LayoutProfession(y, name, p, c, own, key)
   local r = Acquire(rows, CreateRow)
   r:ClearAllPoints()
   r:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
@@ -324,8 +324,10 @@ local function LayoutProfession(y, name, p, c, own)
   local items = need and SortedKeys(need.items) or {}
   for i, item in ipairs(items) do
     local col, line = (i - 1) % MAT_COLS, math.floor((i - 1) / MAT_COLS)
+    local spare = ns.GroupSupply(item, key)
     PlaceMat(PROF_W + col * (MAT_W + 4), y - yy - line * (MAT_H + 4), item, need.items[item],
-      L["Owned: %d / %d"]:format(need.have[item] or 0, need.gross[item] or 0))
+      L["Owned: %d / %d"]:format(need.have[item] or 0, need.gross[item] or 0)
+        .. (spare > 0 and ("  |cff80ccff" .. L["group: %d"]:format(spare) .. "|r") or ""))
   end
   if #items > 0 then yy = yy + math.ceil(#items / MAT_COLS) * (MAT_H + 4) + 2 end
 
@@ -352,7 +354,7 @@ local function RenderPlan(key, c)
   end
   for _, pname in ipairs(plist) do
     if LineVisible(c.professions[pname].skillLine) then
-      y = y - LayoutProfession(y, pname, c.professions[pname], c, own)
+      y = y - LayoutProfession(y, pname, c.professions[pname], c, own, key)
     end
   end
   if y == 0 then
@@ -483,6 +485,8 @@ local function RenderGroup(filter)
     for _, b in ipairs(a.by) do
       by[#by + 1] = ("%s %d %s"):format(ShortName(b.key), b.n, ns.UrgencyText(b.step))
     end
+    local spare = ns.GroupSupply(a.item)
+    if spare > 0 then by[#by + 1] = "|cff80ccff" .. L["group: %d"]:format(spare) .. "|r" end
     local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
     PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, a.total, table.concat(by, ", "), width)
   end

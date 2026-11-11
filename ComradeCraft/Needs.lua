@@ -341,6 +341,31 @@ function ns.GroupMaterials(lineOK)
   return list
 end
 
+-- What a character can give away: owned (bags + bank) minus what its own plans use.
+function ns.Surplus(c, item)
+  local owned = ((c.bags or {})[item] or 0) + ((c.bank or {})[item] or 0)
+  if owned == 0 then return 0 end
+  local used = 0
+  for _, need in pairs(c.needs or {}) do used = used + ((need.gross or {})[item] or 0) end
+  return math.max(0, owned - used)
+end
+
+-- Who in the group has spare `item`: total and { {key, n} } (largest first), `except` left out.
+function ns.GroupSupply(item, except)
+  local total, list = 0, {}
+  for key, c in pairs(ns.AllChars()) do
+    if key ~= except then
+      local n = ns.Surplus(c, item)
+      if n > 0 then
+        total = total + n
+        list[#list + 1] = { key = key, n = n }
+      end
+    end
+  end
+  table.sort(list, function(a, b) return a.n > b.n end)
+  return total, list
+end
+
 -- When a material is needed, from the first plan step using it: step 1 = "now",
 -- steps 2-4 = "soon", 5+ (or unknown) = "later". Locale keys.
 function ns.Urgency(step)

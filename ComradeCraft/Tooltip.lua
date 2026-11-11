@@ -25,6 +25,7 @@ local function AddNeeds(tooltip, itemID)
     end
   end
   if #rows == 0 then return end
+  local supply, holders = ns.GroupSupply(itemID)
   -- Most urgent first, then the biggest quantity.
   table.sort(rows, function(a, b)
     local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
@@ -39,6 +40,14 @@ local function AddNeeds(tooltip, itemID)
   end
   if #rows > 1 then
     tooltip:AddDoubleLine(ns.L["Group total"], tostring(total), 0.8, 0.8, 0.8, 1, 0.82, 0)
+  end
+  -- Spare stock elsewhere in the group: who could give it.
+  if supply > 0 then
+    local who = {}
+    for i = 1, math.min(#holders, 4) do
+      who[#who + 1] = ("%s %d"):format(holders[i].key:match("^[^-]+") or holders[i].key, holders[i].n)
+    end
+    tooltip:AddDoubleLine(ns.L["Spare in the group"], table.concat(who, ", "), 0.5, 0.8, 1, 0.5, 0.8, 1)
   end
   tooltip:Show()
 end

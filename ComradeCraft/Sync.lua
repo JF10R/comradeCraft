@@ -57,6 +57,32 @@ local function Class(v)
   return v and v:match("^[A-Z]+$") and v or nil
 end
 
+-- Skill-up totals per color ({ [color] = { n, gained, expected } }), for the shared calibration.
+local COLORS = { orange = true, yellow = true, green = true, grey = true }
+function Sync.CleanSkillups(s)
+  if type(s) ~= "table" then return nil end
+  local out = {}
+  for color, x in pairs(s) do
+    if COLORS[color] and type(x) == "table" then
+      local n = Num(x[1], 0, 1000000)
+      local gained = Num(x[2], 0, n or 0)
+      local expected = tonumber(x[3])
+      if n and gained and expected and expected == expected and expected >= 0 and expected <= n then
+        out[color] = { n = n, gained = gained, expected = expected }
+      end
+    end
+  end
+  return out
+end
+
+local function SkillupTotals()
+  local s = ComradeCraftDB.skillups
+  if not (s and s.colors) then return nil end
+  local out = {}
+  for color, c in pairs(s.colors) do out[color] = { c.n, c.gained, c.expected } end
+  return out
+end
+
 -- Summary: { u = updated, cl = class, lv = level, p = { [skillLine] = { rank, max, name } } }
 function Sync.CleanSummary(s)
   if type(s) ~= "table" then return nil end
@@ -202,7 +228,7 @@ function Sync.Hello(reply)
       n = n + 1
     end
   end
-  return { t = "H", v = PROTO, id = DB().accountId, r = reply or nil, c = chars }
+  return { t = "H", v = PROTO, id = DB().accountId, r = reply or nil, c = chars, sk = SkillupTotals() }
 end
 
 local function RequestChanged(id)
@@ -307,6 +333,7 @@ function Sync.OnMessage(text, dist, sender)
       end
     end
     peer.chars = chars
+    peer.skillups = Sync.CleanSkillups(msg.sk)
     if Sync.pendingAdd and Sync.pendingAdd[sender:lower()] then
       Sync.pendingAdd[sender:lower()] = nil
       peer.included = true

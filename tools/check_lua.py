@@ -391,6 +391,29 @@ def main():
       ns.RefreshWindow()
       ComradeCraftDB.ui.hideGathering = nil
 
+      -- Group supply: spare = owned - own planned use; the asker is left out.
+      local saved2 = ComradeCraftDB.chars
+      ComradeCraftDB.chars = {
+        ["A-R"] = { bags = { [2592] = 50 }, needs = { [197] = { gross = { [2592] = 20 }, items = {} } } },
+        ["B-R"] = { bags = { [2592] = 5 }, bank = { [2592] = 5 }, needs = { [197] = { gross = { [2592] = 30 }, items = { [2592] = 20 } } } },
+      }
+      local tot, who = ns.GroupSupply(2592, "B-R")
+      assert(tot == 30 and who[1].key == "A-R" and who[1].n == 30, "supply: A spares 30, B excluded")
+      assert(ns.Surplus(ComradeCraftDB.chars["B-R"], 2592) == 0, "supply: B uses all its stock")
+      local tt2 = { AddLine = function() end, Show = function() end, lines = {} }
+      tt2.AddDoubleLine = function(self, l, r) self.lines[#self.lines + 1] = l .. "|" .. r end
+      ns.AddNeeds(tt2, 2592)
+      assert(tt2.lines[#tt2.lines]:find("A 30", 1, true), "supply: tooltip line, got " .. tostring(tt2.lines[#tt2.lines]))
+      ComradeCraftDB.chars = saved2
+      -- Shared calibration: an added peer's skill-up totals count, a non-added one does not.
+      ComradeCraftDB.skillups = { raw = {}, colors = { green = { n = 30, gained = 10, expected = 15 } } }
+      ComradeCraftDB.peers.calib = { included = true, skillups = ns.Sync.CleanSkillups({ green = { 30, 20, 15 } }) }
+      ComradeCraftDB.peers.other = { included = false, skillups = { green = { n = 100, gained = 0, expected = 50 } } }
+      assert(ns.Calibration("green") == 1, "calibration: 60 crafts, 30 gained / 30 expected")
+      assert(next(ns.Sync.CleanSkillups({ green = { 10, 50, 5 }, purple = { 1, 1, 1 } })) == nil,
+        "calibration: gained > n and unknown colors rejected")
+      ComradeCraftDB.peers.calib, ComradeCraftDB.peers.other, ComradeCraftDB.skillups = nil, nil, nil
+
       -- Urgency: first plan step using an item; most-wanted sorts now < soon < later, then size.
       local when = ns.FirstStepOf({ { spell = 2963, subs = {} }, { spell = 2385, subs = { [2963] = 1 } } })
       assert(when[2589] == 1 and when[2320] == 2, "urgency: first step per item")
