@@ -268,10 +268,9 @@ local translations = {
       "Pendant que tu joues",
     ["Item tooltips show who needs a material. A step panel opens next to your profession window."] =
       "Les infobulles montrent qui a besoin d'un matériau. Un panneau d'étape s'ouvre à côté de ta fenêtre de profession.",
-    ["Sharing is opt-in"] =
-      "Le partage est volontaire",
-    ["Nothing leaves your computer until you check a character in Manage group. The ? button explains everything else."] =
-      "Rien ne quitte ton ordinateur tant que tu ne coches pas un perso dans Gérer le groupe. Le bouton ? explique le reste.",
+    ["Sharing is off until you check a box"] = "Le partage est désactivé tant que tu ne coches rien",
+    ["Nothing is shared yet. Here, in Manage group, check the box next to each character you want to share under Your characters (on the left of this card). Unchecked characters never leave your computer. Then add your friends below, or accept guildmates who appear there. The ? button explains the rest."] =
+      "Rien n'est partagé pour l'instant. Ici, dans Gérer le groupe, coche la case à côté de chaque perso à partager sous Tes persos (à gauche de cette carte). Un perso non coché ne quitte jamais ton ordinateur. Ajoute ensuite tes amis plus bas, ou accepte les guildmates qui y apparaissent. Le bouton ? explique le reste.",
     ["Do not show again"] =
       "Ne plus afficher",
     ["Skip"] =

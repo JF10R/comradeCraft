@@ -877,13 +877,13 @@ local TOUR = {
   { L["Welcome to ComradeCraft"], L["It answers one question: what should I do with what I have, for the group? 30 seconds to see the main parts."],
     { "CENTER", 0, 40 } },
   { L["Your group"], L["Left: the group overview, the group management, then every character you share or receive."],
-    { "TOPLEFT", SIDE_W + 10, -80 } },
+    { "TOPLEFT", SIDE_W + 10, -80 }, "group" },
   { L["Plan and Can craft"], L["Pick a character: Plan shows how to level each profession step by step; Can craft shows what it can make for others."],
-    { "TOPLEFT", DETAIL_X + 260, -100 } },
+    { "TOPLEFT", DETAIL_X + 260, -100 }, "self" },
   { L["While you play"], L["Item tooltips show who needs a material. A step panel opens next to your profession window."],
     { "CENTER", 0, 0 } },
-  { L["Sharing is opt-in"], L["Nothing leaves your computer until you check a character in Manage group. The ? button explains everything else."],
-    { "TOPRIGHT", -40, -50 } },
+  { L["Sharing is off until you check a box"], L["Nothing is shared yet. Here, in Manage group, check the box next to each character you want to share under Your characters (on the left of this card). Unchecked characters never leave your computer. Then add your friends below, or accept guildmates who appear there. The ? button explains the rest."],
+    { "TOPLEFT", DETAIL_X + 330, -150 }, "manage" },
 }
 local tourSkipped, tourCard = false, nil
 
@@ -948,6 +948,13 @@ function ns.ShowTutorialStep(i)
   t.text:SetText(s[2])
   t.count:SetText(("%d/%d"):format(i, #TOUR))
   t.next:SetText(i == #TOUR and L["Done"] or L["Next"])
+  -- Each step opens the view it talks about.
+  if s[4] then
+    ComradeCraftDB.ui.sel = s[4] == "self" and ns.CharKey() or s[4]
+    ComradeCraftDB.ui.tab = "plan"
+    ns.RefreshWindow()
+  end
+  t:SetHeight(i == #TOUR and 200 or 150)
   t:ClearAllPoints()
   t:SetPoint(s[3][1], frame, s[3][1], s[3][2], s[3][3])
   t:Show()
