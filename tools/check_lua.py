@@ -97,6 +97,15 @@ def main():
         used.update((a, b))
     used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container",
                  "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other", "now", "soon", "later"])
+    # A lone backslash before a letter ("Interface\DialogFrame" typed with one) is not a
+    # path separator in Lua: the texture silently fails to load.
+    for n in files:
+        if n.startswith("Libs/"):
+            continue
+        for i, line in enumerate(open(os.path.join(ADDON, n), encoding="utf-8"), 1):
+            if re.search(r'(?<!\\)\\(?![\\nrt"\'0-9])[A-Za-z]', line):
+                print(f"BACKSLASH {n}:{i}: {line.strip()[:80]}")
+                return 1
     loc = open(os.path.join(ADDON, "Locale.lua"), encoding="utf-8").read()
     fr = set(re.findall(r'^\s*\["((?:[^"\\]|\\.)*)"\]\s*=', loc, re.M))
     missing, stale = sorted(used - fr), sorted(fr - used)

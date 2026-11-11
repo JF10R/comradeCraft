@@ -161,15 +161,18 @@ end
 
 -- Copy window: TSM search text and group import text, each selected on click.
 local copy
-local function CopyBox(parent, y, label)
+local COPY_W = 520
+
+local function CopyLabel(parent)
   local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  fs:SetPoint("TOPLEFT", 16, y)
-  fs:SetWidth(408)
+  fs:SetWidth(COPY_W - 32)
   fs:SetJustifyH("LEFT")
-  fs:SetText(label)
+  return fs
+end
+
+local function CopyBox(parent)
   local eb = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-  eb:SetSize(400, 20)
-  eb:SetPoint("TOPLEFT", 22, y - 16)
+  eb:SetSize(COPY_W - 44, 20)
   eb:SetAutoFocus(false)
   eb:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
   eb:SetScript("OnEscapePressed", function() parent:Hide() end)
@@ -177,41 +180,66 @@ local function CopyBox(parent, y, label)
   return eb
 end
 
-local function ShowCopy(search, group, warnings)
-  if not copy then
-    copy = CreateFrame("Frame", "ComradeCraftCopyFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    copy:SetSize(440, 190)
-    copy:SetPoint("CENTER", 0, 120)
-    copy:SetFrameStrata("DIALOG")
-    if copy.SetBackdrop then
-      copy:SetBackdrop({ bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 } })
-    end
-    copy:EnableMouse(true)
-    copy:SetToplevel(true)
-  -- Opaque: the dialog background texture is see-through on its own.
+local function CreateCopy()
+  copy = CreateFrame("Frame", "ComradeCraftCopyFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+  copy:SetWidth(COPY_W)
+  copy:SetPoint("CENTER", 0, 120)
+  copy:SetFrameStrata("DIALOG")
+  copy:SetToplevel(true)
+  copy:EnableMouse(true)
+  copy:SetMovable(true)
+  copy:RegisterForDrag("LeftButton")
+  copy:SetScript("OnDragStart", copy.StartMoving)
+  copy:SetScript("OnDragStop", copy.StopMovingOrSizing)
+  -- Solid color background (opaque whatever textures exist), gold tooltip border.
   local solid = copy:CreateTexture(nil, "BACKGROUND", nil, -8)
-  solid:SetPoint("TOPLEFT", 11, -11)
-  solid:SetPoint("BOTTOMRIGHT", -11, 11)
+  solid:SetPoint("TOPLEFT", 4, -4)
+  solid:SetPoint("BOTTOMRIGHT", -4, 4)
   solid:SetColorTexture(0.06, 0.05, 0.04, 0.97)
-    copy.title = copy:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    copy.title:SetPoint("TOP", 0, -16)
-    copy.title:SetText(L["TSM shopping (Ctrl+C to copy)"])
-    copy.close = CreateFrame("Button", nil, copy, "UIPanelCloseButton")
-    copy.close:SetPoint("TOPRIGHT", -4, -4)
-    copy.search = CopyBox(copy, -40, L["Search: paste in the search box of TSM's Shopping tab."])
-    copy.group = CopyBox(copy, -84, L["Group: TSM, Groups, Import. Quantities are in the search above (recomputed on each click)."])
-    copy.warn = copy:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    copy.warn:SetPoint("TOPLEFT", 16, -130)
-    copy.warn:SetWidth(408)
-    copy.warn:SetJustifyH("LEFT")
-    if UISpecialFrames then tinsert(UISpecialFrames, "ComradeCraftCopyFrame") end
+  if copy.SetBackdrop then
+    copy:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    copy:SetBackdropBorderColor(1, 0.82, 0, 1)
   end
+  copy.title = copy:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  copy.title:SetPoint("TOPLEFT", 16, -14)
+  copy.title:SetText(L["TSM shopping (Ctrl+C to copy)"])
+  copy.close = CreateFrame("Button", nil, copy, "UIPanelCloseButton")
+  copy.close:SetPoint("TOPRIGHT", -2, -2)
+  copy.searchLabel, copy.search = CopyLabel(copy), CopyBox(copy)
+  copy.groupLabel, copy.group = CopyLabel(copy), CopyBox(copy)
+  copy.searchLabel:SetText(L["Search: paste in the search box of TSM's Shopping tab."])
+  copy.groupLabel:SetText(L["Group: TSM, Groups, Import. Quantities are in the search above (recomputed on each click)."])
+  copy.warn = copy:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  copy.warn:SetWidth(COPY_W - 32)
+  copy.warn:SetJustifyH("LEFT")
+  if UISpecialFrames then tinsert(UISpecialFrames, "ComradeCraftCopyFrame") end
+end
+
+-- Stacks label, box, label, box, warnings from the top; the height follows the text.
+local function LayoutCopy()
+  local y = -42
+  for _, pair in ipairs({ { copy.searchLabel, copy.search }, { copy.groupLabel, copy.group } }) do
+    pair[1]:ClearAllPoints()
+    pair[1]:SetPoint("TOPLEFT", 16, y)
+    y = y - (pair[1]:GetStringHeight() or 12) - 4
+    pair[2]:ClearAllPoints()
+    pair[2]:SetPoint("TOPLEFT", 22, y)
+    y = y - 28
+  end
+  copy.warn:ClearAllPoints()
+  copy.warn:SetPoint("TOPLEFT", 16, y)
+  local wh = (copy.warn:GetText() or "") ~= "" and ((copy.warn:GetStringHeight() or 12) + 8) or 0
+  copy:SetHeight(-y + wh + 12)
+end
+
+local function ShowCopy(search, group, warnings)
+  if not copy then CreateCopy() end
   copy.search.value, copy.group.value = search, group
   copy.search:SetText(search)
   copy.group:SetText(group)
   copy.warn:SetText(#warnings > 0 and ("|cffff9933" .. table.concat(warnings, "\n") .. "|r") or "")
+  LayoutCopy()
   copy:Show()
   copy.search:SetFocus()
 end
