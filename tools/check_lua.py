@@ -90,7 +90,7 @@ def main():
     # Locale completeness: every key the code uses (ns.L["..."], ns.Plural(n, "...", "..."))
     # must have a frFR translation, and frFR must not keep keys the code no longer uses.
     code = "".join(open(os.path.join(ADDON, n), encoding="utf-8").read()
-                   for n in files if not n.startswith("Libs/") and n != "Locale.lua")
+                   for n in files if not n.startswith(("Libs/", "Locales/")) and n != "Locale.lua")
     # ns.L["..."] and a file-local alias L["..."]; Plural keys; plus keys built at runtime.
     used = set(re.findall(r'(?<![\w.])(?:ns\.)?L\["((?:[^"\\]|\\.)*)"\]', code))
     for a, b in re.findall(r'ns\.Plural\([^,]+,\s*"([^"]*)",\s*"([^"]*)"\)', code):
@@ -108,14 +108,25 @@ def main():
             if re.search(r'(?<!\\)\\(?![\\nrt"\'0-9])[A-Za-z]', line):
                 print(f"BACKSLASH {n}:{i}: {line.strip()[:80]}")
                 return 1
-    loc = open(os.path.join(ADDON, "Locale.lua"), encoding="utf-8").read()
-    fr = set(re.findall(r'^\s*\["((?:[^"\\]|\\.)*)"\]\s*=', loc, re.M))
-    missing, stale = sorted(used - fr), sorted(fr - used)
-    for k in missing:
-        print(f"LOCALE missing frFR: {k}")
-    for k in stale:
-        print(f"LOCALE unused frFR key: {k}")
-    if missing or stale:
+    # Each language: exactly the used keys, and the same format specifiers in the same order.
+    locs = {"frFR": "Locale.lua"}
+    for n in files:
+        if n.startswith("Locales/"):
+            locs[os.path.splitext(os.path.basename(n))[0]] = n
+    bad = False
+    for code, n in locs.items():
+        src = open(os.path.join(ADDON, n), encoding="utf-8").read()
+        pairs = re.findall(r'^\s*\["((?:[^"\\]|\\.)*)"\]\s*=\s*"((?:[^"\\]|\\.)*)"', src, re.M | re.S)
+        keys = set(re.findall(r'^\s*\["((?:[^"\\]|\\.)*)"\]\s*=', src, re.M))
+        for k in sorted(used - keys):
+            print(f"LOCALE missing {code}: {k}"); bad = True
+        for k in sorted(keys - used):
+            print(f"LOCALE unused {code} key: {k}"); bad = True
+        spec = re.compile(r'%[-+ #0]*\d*(?:\.\d+)?[dsfx%]')
+        for k, v in pairs:
+            if spec.findall(k) != spec.findall(v):
+                print(f"LOCALE {code} format mismatch: {k!r} -> {v!r}"); bad = True
+    if bad:
         return 1
 
     lua.execute(STUBS)

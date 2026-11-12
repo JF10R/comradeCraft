@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="WoW Forever 1.60.1" src="https://img.shields.io/badge/WoW%20Forever-1.60.1-d4a017?style=flat-square&labelColor=7a1414">
   <img alt="Interface 16001" src="https://img.shields.io/badge/Interface-16001-d4a017?style=flat-square&labelColor=7a1414">
-  <img alt="English and French" src="https://img.shields.io/badge/lang-EN%20%7C%20FR-d4a017?style=flat-square&labelColor=7a1414">
+  <img alt="7 languages" src="https://img.shields.io/badge/languages-7-d4a017?style=flat-square&labelColor=7a1414">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-d4a017?style=flat-square&labelColor=7a1414">
 </p>
 
@@ -36,7 +36,9 @@
   trainer for primary professions.
 - **Sharing** with the friends and guildmates you add, opt-in per character.
 
-English and French (follows the game's language).
+English, French, German, Spanish (Spain and Mexico), Italian, Brazilian Portuguese and
+Russian (follows the game's language). French is reviewed; the others are machine
+translations, corrections welcome.
 
 ---
 

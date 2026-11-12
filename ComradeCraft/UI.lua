@@ -1445,7 +1445,7 @@ local function CreateWindow()
   if ButtonFrameTemplate_HideButtonBar then pcall(ButtonFrameTemplate_HideButtonBar, f) end
   if f.SetTitle then f:SetTitle("ComradeCraft")
   elseif f.TitleText then f.TitleText:SetText("ComradeCraft") end
-  if f.SetPortraitToAsset then pcall(f.SetPortraitToAsset, f, "Interface\\Icons\\INV_Misc_Bag_10") end
+  if f.SetPortraitToAsset then pcall(f.SetPortraitToAsset, f, ns.LOGO) end
   tinsert(UISpecialFrames, "ComradeCraftFrame") -- Escape closes it
 
   -- Left: character list.
@@ -1642,7 +1642,7 @@ ns.On("PLAYER_LOGIN", function()
   if not (LDB and Icon) then return end
   local obj = LDB:NewDataObject("ComradeCraft", {
     type = "launcher",
-    icon = "Interface\\Icons\\INV_Misc_Bag_10",
+    icon = ns.LOGO,
     OnClick = function() ns.ToggleWindow() end,
     OnTooltipShow = function(tt)
       tt:AddLine("ComradeCraft")

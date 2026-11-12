@@ -1,12 +1,12 @@
--- Locale: English is the key and the default; other client languages override below.
--- tools/check_lua.py fails if a key used in the code has no frFR translation.
+-- Locale: English is the key and the default. frFR is below; other languages are in
+-- Locales\*.lua (loaded first, each only for its client). tools/check_lua.py checks all of them.
 local _, ns = ...
 
 local L = setmetatable({}, { __index = function(_, k) return k end })
 ns.L = L
 
-local translations = {
-  frFR = {
+local translations = ns.Translations or {}
+translations.frFR = {
     -- Core
     ["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"] =
       "commandes : /comrade (fenêtre) | share [off] | add NOM | remove NOM | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NOM | scan | needs | stats | api | audit | log clear",
@@ -541,7 +541,6 @@ local translations = {
     ["Step panel: on (shown with the profession window)"] =
       "Panneau d'étape : activé (affiché avec la fenêtre de profession)",
     ["Click: group needs"] = "Clic : besoins du groupe",
-  },
 }
 ns.Translations = translations
 

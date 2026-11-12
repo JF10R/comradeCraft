@@ -2,12 +2,18 @@
 ## Title: ComradeCraft
 ## Notes: Group profession needs: who needs which materials, and what to craft next.
 ## Notes-frFR: Besoins de professions du groupe : qui a besoin de quels mats, et quoi crafter ensuite.
+## Notes-deDE: Gruppenberufe: wer welche Materialien braucht und was als Nächstes herzustellen ist.
+## Notes-esES: Necesidades de profesión del grupo: quién necesita qué materiales y qué fabricar a continuación.
+## Notes-esMX: Necesidades de profesión del grupo: quién necesita qué materiales y qué fabricar a continuación.
+## Notes-itIT: Esigenze di professione del gruppo: chi ha bisogno di quali materiali e cosa creare dopo.
+## Notes-ptBR: Necessidades de profissão do grupo: quem precisa de quais materiais e o que criar a seguir.
+## Notes-ruRU: Профессии группы: кому какие материалы нужны и что создавать дальше.
 ## Author: JHF
 ## X-License: MIT
 ## Version: @project-version@
 ## SavedVariables: ComradeCraftDB
 ## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom
-## IconTexture: Interface\Icons\INV_Misc_Bag_10
+## IconTexture: Interface\AddOns\ComradeCraft\Media\Logo
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
@@ -34,6 +40,11 @@ Libs\LibProfessionDB-1.0\Data\AcquireMethods.lua
 Libs\LibProfessionDB-1.0\Data\Sources.lua
 Libs\LibProfessionDB-1.0\Data\SourceNames.lua
 
+Locales\deDE.lua
+Locales\esES.lua
+Locales\itIT.lua
+Locales\ptBR.lua
+Locales\ruRU.lua
 Locale.lua
 Core.lua
 Data\Recipes.lua

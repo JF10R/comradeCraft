@@ -1,6 +1,7 @@
 -- Core: events, SavedVariables, slash command.
 local ADDON, ns = ...
 ns.name = ADDON
+ns.LOGO = "Interface\\AddOns\\ComradeCraft\\Media\\Logo" -- 64x64 TGA (minimap, window, addon list)
 
 local frame = CreateFrame("Frame")
 ns.frame = frame
