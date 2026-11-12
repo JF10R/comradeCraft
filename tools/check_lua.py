@@ -370,12 +370,12 @@ def main():
         "routes: milestone rows")
       local ro = ns.ResaleOptions(2996)
       assert(ro.vendor >= 0 and ro.ah == nil and ro.de == nil, "resale: no AH, cloth not disenchantable")
-      -- Lesser Magic Wand: merchant 1s10, AH 1s49 -> 1s41 after the cut, minus half the 1s
-      -- estimated deposit = 92c: the merchant wins. A measured deposit replaces the estimate.
+      -- Lesser Magic Wand: merchant 1s10, AH 1s49 -> 1s41 after the cut, minus a quarter of the 1s
+      -- estimated deposit = 1s16, under 1s10 + 10%: the merchant wins. A measured deposit replaces the estimate.
       local oldPS = ns.PriceSource
       ns.PriceSource = function(i) return i == 11287 and 149 or nil end
       local rw = ns.ResaleOptions(11287)
-      assert(rw.vendor == 110 and rw.deposit == 100 and math.abs(rw.ah - (149 * 0.95 - 50)) < 0.01
+      assert(rw.vendor == 110 and rw.deposit == 100 and math.abs(rw.ah - (149 * 0.95 - 25)) < 0.01
         and ns.ResaleValue(11287) == 110, "resale: deposit risk, merchant wins " .. tostring(rw.ah))
       ns.LearnDeposit(11287, 130, 13)
       assert(ns.ResaleOptions(11287).deposit == 10 and ns.AuctionDeposit(11288) == 100, "resale: measured deposit")
