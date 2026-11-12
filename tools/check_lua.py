@@ -677,7 +677,15 @@ def main():
       ns.Alerts.CheckCooldowns()
       ns.Alerts.CheckCooldowns()
       assert(#notes == 1 and notes[1].title:find("Cooldown ready", 1, true), "alerts: cooldown announced once")
-      GetSpellCooldown, GetTime = nil, nil
+      -- Combat: secret numbers cannot be compared; the scan keeps the old value, no error.
+      issecretvalue = function() return true end
+      ns.Alerts.ScanCooldowns()
+      assert(me.cooldowns[2963] == 900, "alerts: secret cooldown skipped")
+      InCombatLockdown = function() return true end
+      issecretvalue = nil
+      ns.Alerts.ScanCooldowns()
+      assert(me.cooldowns[2963] == 900, "alerts: no cooldown scan in combat")
+      GetSpellCooldown, GetTime, InCombatLockdown = nil, nil, nil
       -- mats: no alert on the first look, one when the next craft becomes ready
       local origQ, origN = ns.CraftQueue, ns.NextCraft
       local readyNow = false

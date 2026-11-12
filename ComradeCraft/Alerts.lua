@@ -152,28 +152,33 @@ end
 
 -- Profession cooldowns --------------------------------------------------------------------
 
+-- nil when unknown: in combat the client returns "secret" numbers that addons cannot compare.
+local function Secret(v) return issecretvalue and issecretvalue(v) end
 local function Cooldown(spell)
+  local start, duration
   if C_Spell and C_Spell.GetSpellCooldown then
     local cd = C_Spell.GetSpellCooldown(spell)
-    if type(cd) == "table" then return cd.startTime or 0, cd.duration or 0 end
+    if type(cd) == "table" then start, duration = cd.startTime, cd.duration end
+  elseif GetSpellCooldown then
+    start, duration = GetSpellCooldown(spell)
   end
-  if GetSpellCooldown then
-    local start, duration = GetSpellCooldown(spell)
-    return start or 0, duration or 0
-  end
-  return 0, 0
+  if Secret(start) or Secret(duration) then return nil end
+  return start or 0, duration or 0
 end
 
 -- Records, for this character, when each known recipe with a long cooldown is ready again
 -- (server time), so alts' cooldowns can be announced from any character.
 function Alerts.ScanCooldowns()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  if InCombatLockdown and InCombatLockdown() then return end -- rescanned on PLAYER_REGEN_ENABLED
   local c = ns.CharData()
   c.cooldowns = c.cooldowns or {}
   for _, set in pairs(c.known or {}) do
     for spell in pairs(set) do
       local start, duration = Cooldown(spell)
-      if duration > LONG_CD then
+      if not duration then
+        -- unknown now (secret value): keep what we had
+      elseif duration > LONG_CD then
         c.cooldowns[spell] = math.floor(Now() + (start + duration - (GetTime and GetTime() or 0)))
       elseif duration == 0 and c.cooldowns[spell] and c.cooldowns[spell] > Now() + 60 then
         c.cooldowns[spell] = Now() -- reset early (a game change): ready
@@ -272,6 +277,7 @@ ns.On("SPELL_UPDATE_COOLDOWN", function()
   cdPending = true
   C_Timer.After(2, function() cdPending = false Alerts.ScanCooldowns() end)
 end)
+ns.On("PLAYER_REGEN_ENABLED", function() Alerts.ScanCooldowns() end)
 ns.On("PLAYER_LOGIN", function()
   if not C_Timer then return end
   C_Timer.After(20, function()

@@ -215,11 +215,15 @@ local function ScanTrainer()
   if scanningTrainer or not (ComradeCraftDB and GetNumTrainerServices and GetTrainerServiceInfo) then return end
   scanningTrainer = true
   -- Show every service (available, unavailable, already known), then restore the filters.
+  -- Forever takes a boolean on/off (Classic took 1/0).
+  local function SetFilter(k, on)
+    if not pcall(SetTrainerServiceTypeFilter, k, on) then pcall(SetTrainerServiceTypeFilter, k, on and 1 or 0) end
+  end
   local saved = {}
   if GetTrainerServiceTypeFilter and SetTrainerServiceTypeFilter then
     for _, k in ipairs({ "available", "unavailable", "used" }) do
       saved[k] = GetTrainerServiceTypeFilter(k)
-      if not saved[k] then SetTrainerServiceTypeFilter(k, 1) end
+      if not saved[k] then SetFilter(k, true) end
     end
   end
   local lines = {}
@@ -243,7 +247,7 @@ local function ScanTrainer()
     end
   end
   for k, v in pairs(saved) do
-    if not v then SetTrainerServiceTypeFilter(k, 0) end
+    if not v then SetFilter(k, false) end
   end
   scanningTrainer = false
   -- Where this trainer stands (exact, unlike the capped lists of LibProfessionDB): used first
