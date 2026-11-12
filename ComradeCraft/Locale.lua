@@ -246,8 +246,6 @@ translations.frFR = {
       "Rien n'est partagé tant que tu ne coches pas un perso dans Gérer le groupe, et seulement avec les joueurs que tu as ajoutés et qui t'ont ajouté.",
     ["Better with"] =
       "Encore mieux avec",
-    ["TSM or Auctionator (prices), Pawn (upgrades for each class and spec). All optional."] =
-      "TSM ou Auctionator (prix), Pawn (upgrades par classe et spé). Tous optionnels.",
     ["Replay the tour"] =
       "Revoir la visite",
     ["Welcome to ComradeCraft"] =
@@ -541,6 +539,28 @@ translations.frFR = {
     ["Step panel: on (shown with the profession window)"] =
       "Panneau d'étape : activé (affiché avec la fenêtre de profession)",
     ["Click: group needs"] = "Clic : besoins du groupe",
+    ["Keep for your group"] =
+      "À garder pour ton groupe",
+    ["%s: %d for %s"] =
+      "%s : %d pour %s",
+    ["and %d more"] =
+      "et %d autres",
+    ["You sold %s"] =
+      "Tu as vendu %s",
+    ["Buy back"] =
+      "Racheter",
+    ["you"] =
+      "toi",
+    ["At a merchant or the auction house: items in your bags that your group needs."] =
+      "Chez un marchand ou à l'hôtel des ventes : les objets de tes sacs dont ton groupe a besoin.",
+    ["Next rank"] =
+      "Prochain rang",
+    ["At the skill cap: the Expert book (vendor or AH), the Artisan quest found in Questie (click for a waypoint to its giver), or the trainer."] =
+      "Au maximum de compétence : le livre Expert (marchand ou HV), la quête Artisan trouvée dans Questie (clic : point vers son donneur) ou le maître.",
+    ["Mats ready, profession cooldowns ready on any of your characters, craft requests, items your group needs when you open a merchant or the AH (with Buy back after a sale), and opt-in upgrades. Each one can be turned off in Manage group."] =
+      "Mats prêts, cooldowns de métier prêts sur n'importe quel perso, requêtes de craft, objets dont ton groupe a besoin quand tu ouvres un marchand ou l'HV (avec Racheter après une vente), et améliorations (au choix). Chacune se désactive dans Gérer le groupe.",
+    ["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] =
+      "TSM ou Auctionator (prix), Questie (positions), TomTom (points de passage), Pawn (améliorations pour chaque classe et spé). Tous optionnels.",
 }
 ns.Translations = translations
 

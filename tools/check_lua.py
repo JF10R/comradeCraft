@@ -686,6 +686,33 @@ def main():
       ns.Alerts.ScanCooldowns()
       assert(me.cooldowns[2963] == 900, "alerts: no cooldown scan in combat")
       GetSpellCooldown, GetTime, InCombatLockdown = nil, nil, nil
+      -- Keep: at a merchant, bag items another character needs; after a sale, a Buy back offer.
+      local other = { needs = { [197] = { name = "Tailoring", items = { [2589] = 12 } } } }
+      ComradeCraftDB.chars["Mira-Realm"] = other
+      me.bags = { [2589] = 30, [159] = 5 }
+      local before = #notes
+      ns.Alerts.CheckKeep()
+      assert(#notes == before + 1 and notes[#notes].title == "Keep for your group", "keep: notice at the merchant")
+      local mira
+      for _, w in ipairs(ns.Alerts.Wanted(2589)) do if w.name == "Mira" then mira = w.n end end
+      assert(mira == 12, "keep: who needs it " .. tostring(mira))
+      assert(#ns.Alerts.Wanted(159) == 0, "keep: unneeded item")
+      local bb = {}
+      GetNumBuybackItems = function() return #bb end
+      GetBuybackItemLink = function(i) return bb[i] end
+      local bought
+      BuybackItem = function(i) bought = i end
+      ns.Alerts.CheckBuyback(true)
+      bb = { "|cffffffff|Hitem:2589::|h[Linen Cloth]|h|r" }
+      ns.Alerts.CheckBuyback()
+      local bn = notes[#notes]
+      assert(#notes == before + 2 and bn.buttons and bn.buttons[1][1] == "Buy back", "keep: buy back offer")
+      bn.buttons[1][2]()
+      assert(bought == 1, "keep: buy back clicks the right slot")
+      ns.Alerts.CheckBuyback()
+      assert(#notes == before + 2, "keep: one offer per sale")
+      ComradeCraftDB.chars["Mira-Realm"], me.bags = nil, nil
+      GetNumBuybackItems, GetBuybackItemLink, BuybackItem = nil, nil, nil
       -- mats: no alert on the first look, one when the next craft becomes ready
       local origQ, origN = ns.CraftQueue, ns.NextCraft
       local readyNow = false

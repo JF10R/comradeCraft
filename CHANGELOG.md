@@ -29,6 +29,9 @@ First version for WoW Forever (Interface 16001):
   requests, and opt-in upgrades a group member can craft (with Pawn score or stats).
 - Next rank at the skill cap: Expert book (vendor or AH), Artisan quest from Questie with a
   TomTom waypoint to its giver, or the trainer.
+- Keep for the group: at a merchant or the AH, the bag items your group needs; Buy back
+  after selling one.
+- Auction values count the 5% cut and the deposit risk (refunded on sale on Forever).
 - German, Spanish, Italian, Brazilian Portuguese and Russian translations.
 - Addon logo as the minimap button, window portrait and addon list icon.
 - Trainers you visit are remembered and come first in waypoints; distances work across

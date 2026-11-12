@@ -1070,6 +1070,7 @@ local function RenderManage()
   for _, a in ipairs({ { "mats", L["Your bags hold the mats for your next craft."] },
     { "cooldown", L["A profession cooldown is ready on one of your characters."] },
     { "requests", L["A craft request arrives or changes."] },
+    { "keep", L["At a merchant or the auction house: items in your bags that your group needs."] },
     { "upgrade", L["A group member can craft an upgrade for you (off by default)."] } }) do
     Check(0, y + 2, ns.Alerts.On(a[1]), function(on) ns.Alerts.Set(a[1], on) end)
     local _, ah = Label(30, y - 4, a[2], nil, LIST_W - 30)
@@ -1099,7 +1100,9 @@ local HELP = {
   { L["Disenchant or keep"], L["Your green items: keep one per slot your enchanting plan needs, keep upgrades for group members, sell what is worth more than its mats, disenchant the rest."] },
   { L["Shopping"], L["The Shopping list button makes an Auctionator list, or a TSM search and group to paste. TSM groups that are done are pointed out."] },
   { L["Sharing"], L["Nothing is shared until you check a character in Manage group, and only with players you added who added you back."] },
-  { L["Better with"], L["TSM or Auctionator (prices), Pawn (upgrades for each class and spec). All optional."] },
+  { L["Next rank"], L["At the skill cap: the Expert book (vendor or AH), the Artisan quest found in Questie (click for a waypoint to its giver), or the trainer."] },
+  { L["Alerts"], L["Mats ready, profession cooldowns ready on any of your characters, craft requests, items your group needs when you open a merchant or the AH (with Buy back after a sale), and opt-in upgrades. Each one can be turned off in Manage group."] },
+  { L["Better with"], L["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] },
 }
 
 local function RenderHelp()

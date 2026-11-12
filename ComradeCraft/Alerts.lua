@@ -4,13 +4,14 @@
 --   cooldown  a profession cooldown (Mooncloth, transmutes...) is ready on one of your characters
 --   requests  a craft request arrived or changed (printed by Requests.lua)
 --   upgrade   a group member's character can craft an upgrade for you (opt-in)
+--   keep      at a merchant or the AH: bag items the group needs; buy back one just sold
 local _, ns = ...
 local L = ns.L
 
 local Alerts = {}
 ns.Alerts = Alerts
 
-local DEFAULTS = { mats = true, cooldown = true, requests = true, upgrade = false }
+local DEFAULTS = { mats = true, cooldown = true, requests = true, upgrade = false, keep = true }
 local LONG_CD = 600 -- seconds: shorter cooldowns (the global one) are not profession cooldowns
 local TOAST_TIME = 12
 
@@ -287,3 +288,88 @@ ns.On("PLAYER_LOGIN", function()
   end)
   if C_Timer.NewTicker then C_Timer.NewTicker(60, Alerts.CheckCooldowns) end
 end)
+
+-- Keep for the group -----------------------------------------------------------------------
+
+local function ItemName(id)
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  return get and get(id) or ("item:" .. id)
+end
+
+-- Who needs an item: { { name, n } }, most first; merchant-sold items never count.
+function Alerts.Wanted(item)
+  local out = {}
+  if ns.IsVendorItem and ns.IsVendorItem(item) then return out end
+  local me = ns.CharKey()
+  for key, c in pairs(ns.AllChars()) do
+    local n = ns.NeedOf(c, item)
+    if n > 0 then out[#out + 1] = { name = key == me and L["you"] or key:match("^[^-]+"), n = n } end
+  end
+  table.sort(out, function(a, b) return a.n > b.n end)
+  return out
+end
+
+local function WantedText(item)
+  local w = Alerts.Wanted(item)
+  if #w == 0 then return nil end
+  local names = {}
+  for i = 1, math.min(2, #w) do names[i] = w[i].name end
+  return L["%s: %d for %s"]:format(ItemName(item), w[1].n, table.concat(names, ", ")), w[1].n
+end
+
+-- On opening a merchant or the AH: bag items the group needs (one notice per visit).
+function Alerts.CheckKeep()
+  if not (ComradeCraftDB and ComradeCraftDB.chars and Alerts.On("keep")) then return end
+  local lines, total = {}, 0
+  for item in pairs(ns.CharData().bags or {}) do
+    local text = WantedText(item)
+    if text then
+      total = total + 1
+      if #lines < 4 then lines[#lines + 1] = text end
+    end
+  end
+  if total == 0 then return end
+  table.sort(lines)
+  if total > #lines then lines[#lines + 1] = L["and %d more"]:format(total - #lines) end
+  Alerts.Notify({ title = L["Keep for your group"], text = table.concat(lines, "\n") })
+end
+
+-- After a sale: an item the group needs in the merchant's buyback list gets a Buy back button.
+local buybackSeen = {}
+local function BuybackItems()
+  local out = {}
+  for i = 1, (GetNumBuybackItems and GetNumBuybackItems() or 0) do
+    local link = GetBuybackItemLink and GetBuybackItemLink(i)
+    local id = link and tonumber(link:match("item:(%d+)"))
+    if id then out[#out + 1] = { index = i, id = id, link = link } end
+  end
+  return out
+end
+
+function Alerts.CheckBuyback(prime)
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  for _, b in ipairs(BuybackItems()) do
+
+    if not buybackSeen[b.link] then
+      buybackSeen[b.link] = true
+      local text = not prime and Alerts.On("keep") and WantedText(b.id)
+      if text then
+        local id = b.id
+        Alerts.Notify({ title = L["You sold %s"]:format(ItemName(id)), text = text, item = id, sticky = true,
+          buttons = { { L["Buy back"], function()
+            for _, x in ipairs(BuybackItems()) do
+              if x.id == id then BuybackItem(x.index) return end
+            end
+          end } } })
+      end
+    end
+  end
+end
+
+ns.On("MERCHANT_SHOW", function()
+  buybackSeen = {}
+  Alerts.CheckBuyback(true) -- earlier sales: no notice
+  Alerts.CheckKeep()
+end)
+ns.On("MERCHANT_UPDATE", function() Alerts.CheckBuyback() end)
+ns.On("AUCTION_HOUSE_SHOW", function() Alerts.CheckKeep() end)

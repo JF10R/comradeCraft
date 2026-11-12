@@ -358,8 +358,6 @@ ns.Translations[loc] = {
       "Nada é compartilhado até você marcar um personagem em Gerenciar grupo, e só com jogadores que você adicionou e que adicionaram você.",
     ["Better with"] =
       "Melhor com",
-    ["TSM or Auctionator (prices), Pawn (upgrades for each class and spec). All optional."] =
-      "TSM ou Auctionator (preços), Pawn (melhorias por classe e especialização). Tudo opcional.",
     ["Replay the tour"] =
       "Rever o tour",
     ["Welcome to ComradeCraft"] =
@@ -666,4 +664,26 @@ ns.Translations[loc] = {
       "Painel de etapa: ativado (exibido com a janela de profissão)",
     ["Click: group needs"] =
       "Clique: necessidades do grupo",
+    ["Keep for your group"] =
+      "Guarde para seu grupo",
+    ["%s: %d for %s"] =
+      "%s: %d para %s",
+    ["and %d more"] =
+      "e mais %d",
+    ["You sold %s"] =
+      "Você vendeu %s",
+    ["Buy back"] =
+      "Recomprar",
+    ["you"] =
+      "você",
+    ["At a merchant or the auction house: items in your bags that your group needs."] =
+      "Num vendedor ou na casa de leilões: itens nas suas bolsas que seu grupo precisa.",
+    ["Next rank"] =
+      "Próximo nível",
+    ["At the skill cap: the Expert book (vendor or AH), the Artisan quest found in Questie (click for a waypoint to its giver), or the trainer."] =
+      "No máximo da perícia: o livro de Especialista (vendedor ou leilão), a missão de Artífice achada no Questie (clique: ponto até quem a dá) ou o instrutor.",
+    ["Mats ready, profession cooldowns ready on any of your characters, craft requests, items your group needs when you open a merchant or the AH (with Buy back after a sale), and opt-in upgrades. Each one can be turned off in Manage group."] =
+      "Materiais prontos, recargas de profissão prontas em qualquer personagem seu, pedidos de criação, itens que seu grupo precisa ao abrir um vendedor ou o leilão (com Recomprar após uma venda) e melhorias opcionais. Cada um pode ser desligado em Gerenciar grupo.",
+    ["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] =
+      "TSM ou Auctionator (preços), Questie (posições), TomTom (pontos de rota), Pawn (melhorias para cada classe e especialização). Todos opcionais.",
 }

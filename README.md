@@ -31,6 +31,8 @@
 - **Alerts** (each can be turned off): mats ready for your next craft, profession cooldowns
   ready on any of your characters, craft requests, and (opt-in) upgrades a group member can
   craft for you, with a button to ask for it.
+- **Keep for the group**: opening a merchant or the auction house lists the items in your
+  bags that your group needs; sell one anyway and a Buy back button appears.
 - **Next rank**: at the skill cap, how to get the next one: the Expert book of Cooking,
   First Aid and Fishing (vendor or auction house), the Artisan quest found in Questie, or the
   trainer for primary professions.

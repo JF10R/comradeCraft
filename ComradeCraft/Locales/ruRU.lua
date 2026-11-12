@@ -243,8 +243,6 @@ ns.Translations[loc] = {
       "Ничего не передаётся, пока ты не отметишь персонажа в «Управлении группой», и только игрокам, которых ты добавил и которые добавили тебя.",
     ["Better with"] =
       "Лучше с",
-    ["TSM or Auctionator (prices), Pawn (upgrades for each class and spec). All optional."] =
-      "TSM или Auctionator (цены), Pawn (улучшения для каждого класса и специализации). Всё необязательно.",
     ["Replay the tour"] =
       "Пройти обзор снова",
     ["Welcome to ComradeCraft"] =
@@ -538,4 +536,26 @@ ns.Translations[loc] = {
     ["Step panel: on (shown with the profession window)"] =
       "Панель шага: вкл. (показывается с окном профессии)",
     ["Click: group needs"] = "Клик: нужды группы",
+    ["Keep for your group"] =
+      "Оставь для группы",
+    ["%s: %d for %s"] =
+      "%s: %d для %s",
+    ["and %d more"] =
+      "и ещё %d",
+    ["You sold %s"] =
+      "Ты продал: %s",
+    ["Buy back"] =
+      "Выкупить",
+    ["you"] =
+      "тебя",
+    ["At a merchant or the auction house: items in your bags that your group needs."] =
+      "У торговца или на аукционе: предметы в сумках, нужные твоей группе.",
+    ["Next rank"] =
+      "Следующий ранг",
+    ["At the skill cap: the Expert book (vendor or AH), the Artisan quest found in Questie (click for a waypoint to its giver), or the trainer."] =
+      "На пределе навыка: книга эксперта (торговец или аукцион), задание мастера из Questie (щелчок: точка к тому, кто его выдаёт) или учитель.",
+    ["Mats ready, profession cooldowns ready on any of your characters, craft requests, items your group needs when you open a merchant or the AH (with Buy back after a sale), and opt-in upgrades. Each one can be turned off in Manage group."] =
+      "Материалы готовы, восстановление профессий на любом твоём персонаже, запросы на создание, предметы, нужные группе, когда открываешь торговца или аукцион (с выкупом после продажи), и улучшения по желанию. Каждое отключается в управлении группой.",
+    ["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] =
+      "TSM или Auctionator (цены), Questie (координаты), TomTom (точки маршрута), Pawn (улучшения для каждого класса и специализации). Всё по желанию.",
 }

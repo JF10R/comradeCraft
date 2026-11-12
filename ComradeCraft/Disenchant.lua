@@ -150,6 +150,7 @@ function ns.BagAdvice(key)
     if not entry.verdict then
       local de = (ns.DisenchantPrice and ns.DisenchantPrice(item)) or DisenchantValue(cand.yield)
       local ah = ns.PriceSource and ns.PriceSource(item)
+      if ah and ns.AuctionDeposit then ah = ah * 0.95 - ns.AuctionDeposit(item) * ns.DEPOSIT_LOSS end
       if de and ah and ah > de * SELL_RATIO then
         entry.verdict, entry.ah, entry.de = "sell", ah, de
       else
