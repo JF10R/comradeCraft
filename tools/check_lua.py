@@ -485,6 +485,9 @@ def main():
       TSM_API = nil
       -- Step panel: opens with the profession window, shows the first step; bags allow N crafts.
       assert(ns.CraftableNow(2963, { [2589] = 7 }) == 3 and ns.CraftableNow(2963, {}) == 0, "craftable now")
+      -- (market-value plan here: under "group", the 20 owned linen make bolts free, no learn step first)
+      ComradeCraftDB.settings.groupObjective = "solo"
+      ns.UpdateNeeds(c)
       f.onEvent(f, "TRADE_SKILL_LIST_UPDATE")
       assert(ns.openLine == 197, "tracker: open line " .. tostring(ns.openLine))
       f.onEvent(f, "TRADE_SKILL_SHOW")
@@ -497,6 +500,7 @@ def main():
       local cq = ns.CraftQueue(c, c.professions.Tailoring, "step")
       local nq, blk = ns.NextCraft(cq)
       assert(cq[1].learn and nq == nil and blk == cq[1], "queue: learn first blocks")
+      ComradeCraftDB.settings.groupObjective = nil
       local pick = ns.NextCraft({ { spell = 1, n = 5, ready = 0 }, { spell = 2, n = 3, ready = 3, enchant = true },
         { spell = 3, n = 4, ready = 2 } })
       assert(pick and pick.spell == 3, "queue: first ready non-enchant")
@@ -936,6 +940,128 @@ def main():
       assert(gm2[1].item == 222 and gm2[2].item == 111, "urgency: urgent small need first")
       assert(gm2[2].step == 3 and gm2[2].by[1].key == "B-R", "urgency: soonest needer first in the breakdown")
       ComradeCraftDB.chars = saved
+
+      -- Group plan (1) objective: Spare-R can spare 1000 linen. "group" makes bolts free and
+      -- grinds them; "solo" (or no stock) keeps the vest, fewest mats per point, as before.
+      local savedF, oldPSF = ComradeCraftDB.chars, ns.PriceSource
+      ComradeCraftDB.chars = {
+        ["Test-Realm"] = { bags = { [2320] = 50 } },
+        ["Spare-R"] = { bags = { [2589] = 1000 }, bank = { [2589] = 10 }, needs = { [197] = { gross = { [2589] = 10 }, items = {} } } },
+      }
+      ns.PriceSource = function(item) return ({ [2589] = 100 })[item] end
+      local gst = ns.GroupStock(ComradeCraftDB.chars["Test-Realm"])
+      assert(gst[2589] == 1000 and gst[2320] == nil, "group plan: stock = the others' spare, vendor thread left out")
+      local kv = { [2963] = true, [2385] = true }
+      local gn0, _, gp0 = ns.ComputeNeeds(1, 10, kv, nil, nil, nil, "cheap")
+      local gn1, _, gp1 = ns.ComputeNeeds(1, 10, kv, nil, nil, nil, "cheap", { [99999] = 5 })
+      local _, _, gpg = ns.ComputeNeeds(1, 10, kv, nil, nil, nil, "cheap", gst)
+      assert(gp0[1].spell == 2385 and gp1[1].spell == 2385 and #gp0 == #gp1 and gn0[2589] == gn1[2589],
+        "group plan: no usable stock = unchanged route")
+      assert(gpg[1].spell == 2963 and #gpg == 1, "group plan: the group's linen makes bolts cheaper, got " .. gpg[1].spell)
+      -- Same through UpdateNeeds: the character's route follows the objective.
+      local tF = ComradeCraftDB.chars["Test-Realm"]
+      tF.professions, tF.known = { Tailoring = { skillLine = 197, rank = 1, max = 10 } }, { [197] = kv }
+      ns.UpdateNeeds(tF)
+      local groupFirst = tF.needs[197].plan[1].spell
+      ComradeCraftDB.settings.groupObjective = "solo"
+      ns.UpdateNeeds(tF)
+      local soloFirst = tF.needs[197].plan[1].spell
+      ComradeCraftDB.settings.groupObjective = nil
+      assert(groupFirst == 2963 and soloFirst ~= 2963, "group plan: UpdateNeeds follows the objective, got "
+        .. groupFirst .. "/" .. soloFirst)
+      tF.professions, tF.known, tF.needs = nil, nil, nil
+      ns.SetGroupObjective("solo")
+      assert(ns.GroupObjective() == "solo" and ComradeCraftDB.settings.groupObjective == "solo", "group plan: objective stored")
+      ns.SetGroupObjective("group")
+      assert(ns.GroupObjective() == "group", "group plan: objective back to group")
+      -- (2) synced farm table: valid entries kept, bad ones dropped, 40 at most.
+      local cr = ns.Sync.CleanRecord({ class = "MAGE", farm = { [2589] = 30, [2592] = 0, x = 5, [2593] = -2 } })
+      assert(cr.farm and cr.farm[2589] == 30 and cr.farm[2592] == nil and cr.farm.x == nil and cr.farm[2593] == nil,
+        "group plan: farm cleaned")
+      assert(ns.Sync.CleanRecord({ class = "MAGE", farm = "x" }).farm == nil
+        and ns.Sync.CleanRecord({ farm = { [2589] = "lots" } }).farm == nil, "group plan: bad farm dropped")
+      local bigF, nF = {}, 0
+      for i = 1, 60 do bigF[1000 + i] = 1 end
+      for _ in pairs(ns.Sync.CleanRecord({ farm = bigF }).farm) do nF = nF + 1 end
+      assert(nF == 40, "group plan: farm capped at 40, got " .. nF)
+      -- (3) assignments: tracker line, x drops it; the dialog's Yes assigns; done = one notice.
+      local notesF, origNotifyF = {}, ns.Alerts.Notify
+      ns.Alerts.Notify = function(t) notesF[#notesF + 1] = t end
+      local meF = ComradeCraftDB.chars["Test-Realm"]
+      meF.bags = { [2589] = 3 }
+      ns.FarmAssign(2589, 20)
+      local fa = ComradeCraftDB.farm[2589]
+      assert(fa and fa.target == 20 and fa.char == "Test-Realm" and meF.updated, "farm: assigned")
+      local fl = ns.Farmers(2589)
+      assert(#fl == 1 and fl[1].own and fl[1].key == "Test-Realm" and fl[1].target == 20, "farm: farmer listed")
+      local ftr = ComradeCraftFarmTracker
+      -- The 3 already held do not count: progress starts at 0.
+      assert(ftr and ftr:IsShown() and ftr.lines[1].text.text:find("0/20", 1, true), "farm: tracker line "
+        .. tostring(ftr and ftr.lines[1].text.text))
+      ns.SetFarmTracker(false)
+      assert(not ftr:IsShown(), "farm: tracker turned off")
+      ns.SetFarmTracker(true)
+      assert(ftr:IsShown(), "farm: tracker back on")
+      ftr.lines[1].drop.scripts.OnClick(ftr.lines[1].drop)
+      assert(ComradeCraftDB.farm[2589] == nil and not ftr:IsShown(), "farm: x drops it, tracker hidden")
+      ns.ShowFarmDialog(2589, 5, "Vez")
+      assert(ComradeCraftFarmDialog.text.text == "5 Item2589 needed for Vez. Do you want to farm them?", "farm: dialog text")
+      ComradeCraftFarmDialog.yes.scripts.OnClick(ComradeCraftFarmDialog.yes)
+      assert(ComradeCraftDB.farm[2589] and ComradeCraftDB.farm[2589].target == 5 and #notesF == 0, "farm: Yes assigns")
+      meF.bags[2589] = 10
+      ns.RefreshFarm()
+      ns.RefreshFarm()
+      assert(#notesF == 1 and notesF[1].title == "Farming done: Item2589" and ComradeCraftDB.farm[2589] == nil
+        and not ftr:IsShown(), "farm: done once, cleared")
+      -- (4) Group plan view: Need-R needs 50 wool and 8 linen; Spare-R spares 20 wool; we farm the
+      -- linen, Vez (a peer) farms the wool. Rows, tooltip lines and the view render.
+      ComradeCraftDB.chars["Need-R"] = { class = "MAGE", needs = { [197] = { name = "Tailoring",
+        items = { [2592] = 50, [2589] = 8, [2996] = 4 }, gross = { [2592] = 50, [2589] = 8 }, when = { [2592] = 1, [2589] = 2 } } } }
+      ComradeCraftDB.chars["Spare-R"] = { bags = { [2592] = 20 } }
+      ComradeCraftDB.peers = ComradeCraftDB.peers or {}
+      ComradeCraftDB.peers.pvF = { included = true }
+      ComradeCraftDB.remote = ComradeCraftDB.remote or {}
+      ComradeCraftDB.remote["Vez-Realm"] = ns.Sync.CleanRecord({ class = "DRUID", farm = { [2592] = 30 } })
+      ComradeCraftDB.remote["Vez-Realm"].peer = "pvF"
+      meF.bags = {}
+      ns.FarmAssign(2589, 8)
+      -- A shared character's record carries its assignments to the group.
+      meF.shared = true
+      sent = {}
+      From({ t = "R", v = 1, id = "pvF", k = { "Test-Realm" } }, "Vez")
+      local dF = OfType("D")[1]
+      assert(dF and dF.msg.rec.farm and dF.msg.rec.farm[2589] == 8, "group plan: farm sent with the record")
+      meF.shared = nil
+      local gpl, gtot, gall, gany = ns.GroupPlan()
+      local byItem = {}
+      for _, r in ipairs(gpl) do byItem[r.item] = r end
+      local wool, linen = byItem[2592], byItem[2589]
+      assert(wool and wool.total == 50 and wool.spare == 20 and wool.toGet == 30 and wool.cost == nil
+        and wool.farmers[1].key == "Vez-Realm", "group plan: wool row")
+      assert(linen and linen.toGet == 8 and linen.cost == 800 and linen.farmers[1].own, "group plan: linen row")
+      assert(gtot == 800 and gall == false and gany == true, "group plan: total 800, partial")
+      local ptt = { lines = {}, AddLine = function() end }
+      ptt.AddDoubleLine = function(self, l, r) self.lines[#self.lines + 1] = l .. "|" .. r end
+      ns.AddPlanLines(ptt, wool)
+      local pj = table.concat(ptt.lines, " / ")
+      assert(pj:find("needs 50", 1, true) and pj:find("Spare-R", 1, false) == nil and pj:find("Spare", 1, true)
+        and pj:find("Farmed by Vez|30", 1, true), "group plan: tooltip " .. pj)
+      local itt = { lines = {}, AddLine = function() end, Show = function() end }
+      itt.AddDoubleLine = function(self, l, r) self.lines[#self.lines + 1] = l .. "|" .. r end
+      ns.AddNeeds(itt, 2592)
+      assert(itt.lines[#itt.lines] == "Farmed by Vez|30", "group plan: item tooltip " .. tostring(itt.lines[#itt.lines]))
+      if not ComradeCraftFrame:IsShown() then SlashCmdList.COMRADECRAFT("") end
+      ComradeCraftDB.ui.sel = "groupplan"
+      ns.RefreshWindow()
+      assert(ComradeCraftDB.ui.sel == "groupplan" and ComradeCraftFrame.title.text == "Group plan", "group plan: view rendered")
+      ComradeCraftDB.ui.sel = "manage"
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      ns.Alerts.Notify, ns.PriceSource = origNotifyF, oldPSF
+      ComradeCraftDB.farm, ComradeCraftDB.remote["Vez-Realm"], ComradeCraftDB.peers.pvF = nil, nil, nil
+      ComradeCraftDB.chars = savedF
+      ns.RefreshFarm()
 
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log

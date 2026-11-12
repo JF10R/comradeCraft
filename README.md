@@ -36,6 +36,9 @@
 - **Next rank**: at the skill cap, how to get the next one: the Expert book of Cooking,
   First Aid and Fishing (vendor or auction house), the Artisan quest found in Questie, or the
   trainer for primary professions.
+- **Group plan**: plans spend the least gold for the whole group (stock a member already
+  holds counts as free), a view of what the group still needs and what it costs, and opt-in
+  farming assignments ("I'll farm it") with a small progress tracker.
 - **Sharing** with the friends and guildmates you add, opt-in per character.
 
 English, French, German, Spanish (Spain and Mexico), Italian, Brazilian Portuguese and

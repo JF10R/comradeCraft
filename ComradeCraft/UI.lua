@@ -459,6 +459,7 @@ local function Toggle(x, y, text, active, enabled, fn)
   local b = Acquire(toggles, CreateToggle)
   b:ClearAllPoints()
   b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b:SetWidth(110) -- pooled: a caller may have widened it
   b.label:SetText(text)
   b.active, b.fn = active, enabled and fn or nil
   b.bg:SetColorTexture(active and 0.35 or 0.12, active and 0.27 or 0.1, active and 0.12 or 0.08, 0.9)
@@ -935,6 +936,8 @@ local function RenderSide(sel)
   local open = ns.Requests and ns.Requests.OpenCount() or 0
   Add("requests", L["Craft requests"], open > 0 and ("|cff80ff80" .. ns.Plural(open, "%d to answer", "%d to answer") .. "|r")
     or ("|cff9d9d9d" .. L["none open"] .. "|r"))
+  Add("groupplan", L["Group plan"], "|cff9d9d9d" .. (ns.GroupObjective() == "group" and L["Lowest group cost"]
+    or L["Market value"]) .. "|r")
   for _, key in ipairs(SortedKeys(chars)) do
     local c = chars[key]
     local lines = { LevelSpecClass(c) }
@@ -1065,6 +1068,21 @@ local function RenderManage()
   _, h = Label(30, y - 4, L["Show the step panel next to the profession window."], nil, LIST_W - 140)
   Action(LIST_W - 100, y, L["Re-dock"], function() ns.SetTracker(nil, true) end)
   y = y - math.max(28, h + 10)
+  Check(0, y + 2, ns.FarmTrackerOn(), function(on) ns.SetFarmTracker(on) end)
+  _, h = Label(30, y - 4, L["Show the farming tracker (your farming assignments from the Group plan)."], nil, LIST_W - 30)
+  y = y - math.max(28, h + 10)
+
+  -- Group plan objective: what "cheapest" means for every plan.
+  local _, gh = Label(0, y - 2, "|cffffd100" .. L["Group plan"] .. "|r", "GameFontNormal")
+  y = y - gh - 8
+  local objective = ns.GroupObjective()
+  for _, o in ipairs({ { "group", L["Lowest group cost"], L["Least gold spent by the group: stock already held in the group counts as free."] },
+    { "solo", L["Market value"], L["Every material at its market value, as if each character were alone."] } }) do
+    local v = o[1]
+    Toggle(0, y, o[2], objective == v, true, function() ns.SetGroupObjective(v) end):SetWidth(150)
+    local _, oh = Label(160, y - 5, "|cff9d9d9d" .. o[3] .. "|r", nil, LIST_W - 160)
+    y = y - math.max(28, oh + 12)
+  end
 
   y = Section(y - 6, L["Alerts"], L["A chat line and a short notice at the top of the screen."])
   for _, a in ipairs({ { "mats", L["Your bags hold the mats for your next craft."] },
@@ -1093,6 +1111,7 @@ local HELP = {
   { L["Routes"], L["Each character picks Cheapest (least spent on mats) or Profitable (products sold back). The milestone table compares both: mats, what the products bring back (merchant, disenchant or AH) and the net cost."] },
   { L["Learning recipes"], L["Hover a Learn line for its trainers, vendors and drops; click it for a TomTom waypoint (with Questie installed for positions)."] },
   { L["Craft queue"], L["In the step panel: the crafts of this step or of the whole milestone, what your bags allow, and Craft next (one batch per click, the game needs a click per craft)."] },
+  { L["Group plan"], L["Plans count stock already held in the group as free (or every mat at market value: Manage group > Options). The Group plan view lists what the group still needs and its cost; take a material with I'll farm it and a small tracker follows your progress."] },
   { L["Craft requests"], L["Click a recipe in a group member's Can craft tab to ask for it. Answer what you are asked in Craft requests. Requests reach the other player the next time you are both online (or by mail, if turned on in Manage group)."] },
   { L["Tooltips"], L["On any material: who in the group needs it, how many, and how soon (now, soon, later). Spare stock in the group is shown too."] },
   { L["Step panel"], L["Next to your profession window: the current step, the chance per craft, how many crafts your bags allow, and what comes next."] },
@@ -1276,6 +1295,114 @@ local function RenderRequests()
   return -y
 end
 
+-- Group plan view: one row per material the group still needs, its spare, the cost of the
+-- rest and who farms it. Columns (x from the row's left): material | needed | spare | to get | cost | farming.
+local PLAN_H, PC_NEED, PC_SPARE, PC_GET, PC_COST, PC_FARM = 40, 250, 304, 420, 470, 568
+local planRows = {}
+
+local function CreatePlanRow()
+  local b = CreateFrame("Button", nil, content)
+  b:SetHeight(PLAN_H)
+  b:SetWidth(PC_FARM - 4) -- the farming column holds buttons: kept out of the row's hit area
+  b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetSize(24, 24)
+  b.icon:SetPoint("TOPLEFT", 0, -4)
+  b.name = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  b.name:SetPoint("TOPLEFT", 30, -4)
+  b.by = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  b.by:SetPoint("TOPLEFT", 30, -18)
+  for _, k in ipairs({ "name", "by" }) do
+    b[k]:SetWidth(PC_NEED - 38)
+    b[k]:SetJustifyH("LEFT")
+    b[k]:SetWordWrap(false)
+  end
+  for _, col in ipairs({ { "need", PC_NEED, 44, "RIGHT" }, { "spare", PC_SPARE + 8, 104, "LEFT" },
+    { "get", PC_GET, 44, "RIGHT" }, { "cost", PC_COST, 90, "RIGHT" } }) do
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPLEFT", col[2], -10)
+    fs:SetWidth(col[3])
+    fs:SetJustifyH(col[4])
+    fs:SetWordWrap(false)
+    b[col[1]] = fs
+  end
+  -- No SetItemByID here: its tooltip hook (Tooltip.lua) would add the same breakdown twice.
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine((ItemInfo(self.row.item)) or ("item:" .. self.row.item), 1, 1, 1)
+    ns.AddPlanLines(GameTooltip, self.row)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  b:SetScript("OnClick", function(self) LinkOnShiftClick(self.row.item) end)
+  return b
+end
+
+local function RenderGroupPlan()
+  local y = 0
+  local objective = ns.GroupObjective() == "group" and L["Lowest group cost"] or L["Market value"]
+  local _, h = Label(0, y, "|cff9d9d9d" .. L["Objective: %s (change it in Manage group > Options)."]:format(
+    "|cffffd100" .. objective .. "|cff9d9d9d") .. "|r")
+  y = y - h - 8
+  local list, total, complete, any = ns.GroupPlan()
+  if #list == 0 then
+    local _, h2 = Label(0, y, "|cff9d9d9d" .. L["Nothing missing yet."] .. "|r")
+    return -y + h2
+  end
+  for _, col in ipairs({ { 30, L["Material"], 200 }, { PC_NEED - 16, L["Needed"], 60 },
+    { PC_SPARE + 8, L["Spare"], 110 }, { PC_GET - 16, L["To get"], 60 },
+    { PC_COST + 20, L["Est. cost"], 70 }, { PC_FARM, L["Farming"], LIST_W - PC_FARM } }) do
+    Label(col[1], y, "|cff8f8f8f" .. col[2] .. "|r", "GameFontDisableSmall", col[3])
+  end
+  y = y - 16
+  local chars = ns.AllChars()
+  for _, row in ipairs(list) do
+    local b = Acquire(planRows, CreatePlanRow)
+    b.row = row
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+    local name, _, icon = ItemInfo(row.item)
+    b.icon:SetTexture(icon)
+    b.name:SetText(name or ("item:" .. row.item))
+    local by, names = {}, {}
+    for _, x in ipairs(row.by) do
+      by[#by + 1] = ("%s %d"):format(ShortName(x.key), x.n)
+      names[#names + 1] = ShortName(x.key)
+    end
+    b.by:SetText(table.concat(by, ", "))
+    b.need:SetText(tostring(row.total))
+    local holders = {}
+    for i = 1, math.min(3, #row.holders) do holders[i] = ShortName(row.holders[i].key) end
+    b.spare:SetText(row.spare > 0 and ("|cff80ccff%d|r |cff9d9d9d(%s)|r"):format(row.spare, table.concat(holders, ", "))
+      or "|cff6f6f6f-|r")
+    b.get:SetText(row.toGet > 0 and ("|cffffd100" .. row.toGet .. "|r") or "|cff40ff400|r")
+    b.cost:SetText(row.toGet == 0 and "|cff6f6f6f-|r" or row.cost and ShortMoney(row.cost) or "|cff9d9d9d?|r")
+    -- Farming: who took it (own: a Drop button), else an offer when something is left to get.
+    local farmers, mine = {}, nil
+    for _, f in ipairs(row.farmers) do
+      farmers[#farmers + 1] = ns.ClassColored(f.key, chars[f.key] and chars[f.key].class)
+      if f.own then mine = f end
+    end
+    if #farmers > 0 then
+      Label(PC_FARM, y - 4, L["Farmed by %s"]:format(table.concat(farmers, ", ")), nil, LIST_W - PC_FARM)
+      if mine then
+        local item = row.item
+        Action(PC_FARM, y - 17, L["Drop"], function() ns.FarmDrop(item) end)
+      end
+    elseif row.toGet > 0 and not ns.IsVendorItem(row.item) then
+      local item, n, who = row.item, row.toGet, table.concat(names, ", ")
+      Action(PC_FARM, y - 9, L["I'll farm it"], function() ns.ShowFarmDialog(item, n, who) end)
+    end
+    y = y - PLAN_H
+  end
+  y = y - 8
+  local text = not any and L["Estimated cost for the group: unknown (TSM or Auctionator give AH prices)."]
+    or complete and L["Estimated cost for the group: %s"]:format(ns.Money(math.floor(total)))
+    or L["Estimated cost for the group: at least %s (some items have no price)."]:format(ns.Money(math.floor(total)))
+  local _, th = Label(0, y, "|cffffd100" .. text .. "|r", "GameFontNormal")
+  return -y + th + 4
+end
+
 -- Refresh ---------------------------------------------------------------------------------
 
 -- Filter row: "All" + one chip per profession present in the group, and "Hide gathering".
@@ -1336,11 +1463,12 @@ function ns.RefreshWindow()
   if not (frame and frame:IsShown()) then return end
   local ui = ComradeCraftDB.ui
   local chars = ns.AllChars()
-  if ui.sel ~= "group" and ui.sel ~= "manage" and ui.sel ~= "help" and ui.sel ~= "requests" and not chars[ui.sel or ""] then
+  if ui.sel ~= "group" and ui.sel ~= "manage" and ui.sel ~= "help" and ui.sel ~= "requests" and ui.sel ~= "groupplan"
+    and not chars[ui.sel or ""] then
     ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
   end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
-  ReleaseAll(actionBtns) ReleaseAll(checks) ReleaseAll(toggles) ReleaseAll(heads)
+  ReleaseAll(actionBtns) ReleaseAll(checks) ReleaseAll(toggles) ReleaseAll(heads) ReleaseAll(planRows)
   frame.addBox:Hide()
   RenderSide(ui.sel)
 
@@ -1357,6 +1485,17 @@ function ns.RefreshWindow()
     ReleaseAll(chips)
     frame.gatherBox:Hide()
     h = RenderRequests()
+  elseif ui.sel == "groupplan" then
+    frame.title:SetText(L["Group plan"])
+    frame.sub:SetText(L["What the group still needs, what it already holds, and who farms what."])
+    frame.planTab:Hide()
+    frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
+    frame.search:Hide()
+    ReleaseAll(chips)
+    frame.gatherBox:Hide()
+    h = RenderGroupPlan()
   elseif ui.sel == "help" then
     frame.title:SetText(L["Help"])
     frame.sub:SetText(L["How ComradeCraft works, in short."])

@@ -686,4 +686,53 @@ ns.Translations[loc] = {
       "Materiais prontos, recargas de profissão prontas em qualquer personagem seu, pedidos de criação, itens que seu grupo precisa ao abrir um vendedor ou o leilão (com Recomprar após uma venda) e melhorias opcionais. Cada um pode ser desligado em Gerenciar grupo.",
     ["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] =
       "TSM ou Auctionator (preços), Questie (posições), TomTom (pontos de rota), Pawn (melhorias para cada classe e especialização). Todos opcionais.",
+    -- Group plan
+    ["Spare"] =
+      "Sobra",
+    ["Group plan"] =
+      "Plano do grupo",
+    ["What the group still needs, what it already holds, and who farms what."] =
+      "O que ainda falta ao grupo, o que ele já tem e quem farma o quê.",
+    ["Objective: %s (change it in Manage group > Options)."] =
+      "Objetivo: %s (mude em Gerenciar grupo > Opções).",
+    ["Lowest group cost"] =
+      "Menor custo do grupo",
+    ["Market value"] =
+      "Valor de mercado",
+    ["Least gold spent by the group: stock already held in the group counts as free."] =
+      "Menos ouro gasto pelo grupo: o estoque que o grupo já tem conta como grátis.",
+    ["Every material at its market value, as if each character were alone."] =
+      "Cada material pelo valor de mercado, como se cada personagem estivesse sozinho.",
+    ["Material"] =
+      "Material",
+    ["Needed"] =
+      "Necessário",
+    ["To get"] =
+      "A obter",
+    ["Est. cost"] =
+      "Custo est.",
+    ["Farming"] =
+      "Farm",
+    ["Farmed by %s"] =
+      "Farmado por %s",
+    ["Drop"] =
+      "Desistir",
+    ["I'll farm it"] =
+      "Eu farmo",
+    ["Estimated cost for the group: %s"] =
+      "Custo estimado para o grupo: %s",
+    ["Estimated cost for the group: at least %s (some items have no price)."] =
+      "Custo estimado para o grupo: pelo menos %s (alguns itens não têm preço).",
+    ["Estimated cost for the group: unknown (TSM or Auctionator give AH prices)."] =
+      "Custo estimado para o grupo: desconhecido (TSM ou Auctionator dão preços do leilão).",
+    ["%d %s needed for %s. Do you want to farm them?"] =
+      "%d %s necessários para %s. Quer farmá-los?",
+    ["Farming done: %s"] =
+      "Farm concluído: %s",
+    ["Give them from You can give in the Group view, or by mail."] =
+      "Entregue pelo Você pode dar na visão Grupo, ou por correio.",
+    ["Show the farming tracker (your farming assignments from the Group plan)."] =
+      "Mostrar o rastreador de farm (suas tarefas de farm do Plano do grupo).",
+    ["Plans count stock already held in the group as free (or every mat at market value: Manage group > Options). The Group plan view lists what the group still needs and its cost; take a material with I'll farm it and a small tracker follows your progress."] =
+      "Os planos contam como grátis o estoque que o grupo já tem (ou cada material pelo valor de mercado: Gerenciar grupo > Opções). A visão Plano do grupo lista o que ainda falta ao grupo e quanto custa; pegue um material com Eu farmo e um pequeno rastreador mostra seu progresso.",
 }

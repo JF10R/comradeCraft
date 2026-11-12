@@ -49,6 +49,11 @@ local function AddNeeds(tooltip, itemID)
     end
     tooltip:AddDoubleLine(ns.L["Spare in the group"], table.concat(who, ", "), 0.5, 0.8, 1, 0.5, 0.8, 1)
   end
+  -- Farming assignments (group plan).
+  for _, f in ipairs(ns.Farmers and ns.Farmers(itemID) or {}) do
+    tooltip:AddDoubleLine(ns.L["Farmed by %s"]:format(f.key:match("^[^-]+") or f.key), tostring(f.target),
+      0.4, 1, 0.4, 0.4, 1, 0.4)
+  end
   tooltip:Show()
 end
 ns.AddNeeds = AddNeeds

@@ -188,7 +188,9 @@ ns.MIN_GAIN = 0.25
 -- info { reason = nil | "grey" | "lowgain", bestGain, used = { [itemID] = count } }.
 -- learnable (optional): { [spellID] = requiredSkill } recipes not known yet but buyable at
 -- a trainer; each becomes an option from its required skill on (plan steps get .learn = true).
-function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
+-- stock (optional, "group" objective): { [itemID] = count } free to use; a step's cost counts
+-- only the raw mats beyond what is left of it, and the chosen action uses it up.
+function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, stock)
   -- A recipe makes an intermediate only when its mats are worth no more than the item
   -- (Bolt of Woolen Cloth 100c <= 3 Wool 99c: craft it; Light Leather 15c < 3 Ruined
   -- Leather Scraps 21c: gather or buy it instead). Values: ns.ItemValue.
@@ -225,6 +227,13 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
     a.back = { vendor = o.vendor * q, de = o.de and o.de * q, ah = o.ah and o.ah * q }
     a.resale = ns.BestResale(a.back)
     a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
+    if stock then
+      -- Flat arrays for the inner loop: raw item ids, counts and values.
+      a.ids, a.cnt, a.val = {}, {}, {}
+      for item, c in pairs(a.raw) do
+        a.ids[#a.ids + 1], a.cnt[#a.cnt + 1], a.val[#a.val + 1] = item, c, ns.ItemValue(item)
+      end
+    end
     actions[#actions + 1] = a
   end
   for spell in pairs(known) do AddAction(spell) end
@@ -236,6 +245,11 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
   -- milestones[start] = { mats, points, vendor, de, ah, deMissing, ahMissing }: expected copper
   -- per bracket of the route; *Missing = some products had no such value (sum is partial).
   local info = { used = {}, milestones = {} }
+  local left -- stock not used yet by earlier points
+  if stock then
+    left = {}
+    for item, n in pairs(stock) do left[item] = n end
+  end
   local cur = rank
   while cur < target do
     local best, bestCost, bestN, topGain = nil, nil, nil, 0
@@ -252,7 +266,23 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
       if gain >= floor then
         local n = 1 / gain -- actions for one expected point
         local cost = a.cost * n
-        if not best or cost < bestCost or (cost == bestCost and a.spell < best.spell) then
+        if left then
+          for j = 1, #a.ids do
+            local l = left[a.ids[j]]
+            if l and l > 0 then
+              local need = a.cnt[j] * n
+              cost = cost - (need < l and need or l) * a.val[j]
+            end
+          end
+        end
+        local better
+        if left then -- free stock: near-equal costs go to the faster recipe
+          better = not best or cost < bestCost - 1e-6
+            or (cost <= bestCost + 1e-6 and (n < bestN or (n == bestN and a.spell < best.spell)))
+        else
+          better = not best or cost < bestCost or (cost == bestCost and a.spell < best.spell)
+        end
+        if better then
           best, bestCost, bestN = a, cost, n
         end
       end
@@ -262,7 +292,11 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
       info.bestGain = topGain
       break
     end
-    for item, c in pairs(best.raw) do acc[item] = (acc[item] or 0) + c * bestN end
+    for item, c in pairs(best.raw) do
+      acc[item] = (acc[item] or 0) + c * bestN
+      local l = left and left[item]
+      if l and l > 0 then left[item] = math.max(0, l - c * bestN) end
+    end
     local b = math.floor(cur / ns.MILESTONE) * ns.MILESTONE
     local m = info.milestones[b] or { mats = 0, points = 0, vendor = 0, de = 0, ah = 0, best = 0 }
     info.milestones[b] = m
@@ -691,6 +725,47 @@ function ns.SetRouteMode(key, mode)
   ns.RequestRefresh()
 end
 
+-- Group plan objective, chosen in Manage group > Options: "group" (default) = least gold spent
+-- by the group, stock already held in the group is free; "solo" = market value for everything.
+function ns.GroupObjective()
+  local s = ComradeCraftDB and ComradeCraftDB.settings
+  return s and s.groupObjective == "solo" and "solo" or "group"
+end
+
+-- Stores the objective and recomputes every character's needs.
+function ns.SetGroupObjective(v)
+  ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+  ComradeCraftDB.settings.groupObjective = v == "solo" and "solo" or "group"
+  for _, c in pairs(ns.AllChars()) do ns.UpdateNeeds(c) end
+  ns.RequestRefresh()
+end
+
+-- Free stock for c under the "group" objective: its own bags + bank, plus what every other
+-- character can spare (ns.Surplus). Vendor items left out. { [itemID] = count }.
+function ns.GroupStock(c)
+  local stock = {}
+  local function Add(item, n)
+    if n > 0 and not ns.IsVendorItem(item) then stock[item] = (stock[item] or 0) + n end
+  end
+  for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
+    for item, n in pairs(src) do Add(item, n) end
+  end
+  for _, o in pairs(ns.AllChars()) do
+    if o ~= c then
+      local seen = {}
+      for _, src in ipairs({ o.bags or {}, o.bank or {} }) do
+        for item in pairs(src) do
+          if not seen[item] then
+            seen[item] = true
+            Add(item, ns.Surplus(o, item))
+          end
+        end
+      end
+    end
+  end
+  return stock
+end
+
 -- Recomputes c.needs[skillLine] for one character record (rank -> cap, minus owned).
 function ns.UpdateNeeds(c)
   c.needs = {}
@@ -703,6 +778,7 @@ function ns.UpdateNeeds(c)
   for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
     for item, n in pairs(src) do owned[item] = (owned[item] or 0) + n end
   end
+  local stock = ns.GroupObjective() == "group" and ns.GroupStock(c) or nil
   for name, p in pairs(c.professions) do
     local known = p.skillLine and c.known[p.skillLine]
     if known and p.rank and p.max and p.rank < p.max and not ns.GATHERING[p.skillLine] then
@@ -711,9 +787,9 @@ function ns.UpdateNeeds(c)
       local learnable = ns.TrainerRecipes(p.skillLine, p.max, known)
       local mode = ns.RouteMode(c)
       local other = mode == "profit" and "cheap" or "profit"
-      local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, nil, mode)
-      local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, mode)
-      local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, other)
+      local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, nil, mode, stock)
+      local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, mode, stock)
+      local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, other, stock)
       local net, vendor, have = {}, {}, {}
       for item, n in pairs(gross) do
         have[item] = owned[item] or 0

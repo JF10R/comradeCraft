@@ -36,3 +36,5 @@ First version for WoW Forever (Interface 16001):
 - Addon logo as the minimap button, window portrait and addon list icon.
 - Trainers you visit are remembered and come first in waypoints; distances work across
   zones (HereBeDragons, shipped with TomTom).
+- Group plan: plans count stock already in the group as free (or market value, in Options),
+  a view of what the group still needs and its cost, and opt-in farming assignments with a tracker.

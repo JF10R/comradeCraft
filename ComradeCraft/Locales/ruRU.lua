@@ -558,4 +558,53 @@ ns.Translations[loc] = {
       "Материалы готовы, восстановление профессий на любом твоём персонаже, запросы на создание, предметы, нужные группе, когда открываешь торговца или аукцион (с выкупом после продажи), и улучшения по желанию. Каждое отключается в управлении группой.",
     ["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] =
       "TSM или Auctionator (цены), Questie (координаты), TomTom (точки маршрута), Pawn (улучшения для каждого класса и специализации). Всё по желанию.",
+    -- Group plan
+    ["Spare"] =
+      "Лишнее",
+    ["Group plan"] =
+      "План группы",
+    ["What the group still needs, what it already holds, and who farms what."] =
+      "Чего группе ещё не хватает, что уже есть и кто что добывает.",
+    ["Objective: %s (change it in Manage group > Options)."] =
+      "Цель: %s (меняется в Управление группой > Настройки).",
+    ["Lowest group cost"] =
+      "Мин. затраты группы",
+    ["Market value"] =
+      "Рыночная цена",
+    ["Least gold spent by the group: stock already held in the group counts as free."] =
+      "Меньше всего золота на группу: запасы, которые уже есть в группе, считаются бесплатными.",
+    ["Every material at its market value, as if each character were alone."] =
+      "Каждый материал по рыночной цене, как будто каждый персонаж один.",
+    ["Material"] =
+      "Материал",
+    ["Needed"] =
+      "Нужно",
+    ["To get"] =
+      "Добыть",
+    ["Est. cost"] =
+      "Цена (оц.)",
+    ["Farming"] =
+      "Добыча",
+    ["Farmed by %s"] =
+      "Добывает %s",
+    ["Drop"] =
+      "Отказаться",
+    ["I'll farm it"] =
+      "Добуду я",
+    ["Estimated cost for the group: %s"] =
+      "Оценка стоимости для группы: %s",
+    ["Estimated cost for the group: at least %s (some items have no price)."] =
+      "Оценка стоимости для группы: не меньше %s (у некоторых предметов нет цены).",
+    ["Estimated cost for the group: unknown (TSM or Auctionator give AH prices)."] =
+      "Оценка стоимости для группы: неизвестна (цены аукциона дают TSM или Auctionator).",
+    ["%d %s needed for %s. Do you want to farm them?"] =
+      "%d %s нужно для %s. Хочешь добыть их?",
+    ["Farming done: %s"] =
+      "Добыча завершена: %s",
+    ["Give them from You can give in the Group view, or by mail."] =
+      "Отдай их через Можешь отдать в окне Группа или почтой.",
+    ["Show the farming tracker (your farming assignments from the Group plan)."] =
+      "Показывать трекер добычи (твои задания из Плана группы).",
+    ["Plans count stock already held in the group as free (or every mat at market value: Manage group > Options). The Group plan view lists what the group still needs and its cost; take a material with I'll farm it and a small tracker follows your progress."] =
+      "Планы считают бесплатными запасы, которые уже есть в группе (или каждый материал по рыночной цене: Управление группой > Настройки). Окно План группы показывает, чего группе ещё не хватает и сколько это стоит; возьми материал кнопкой Добуду я, и небольшой трекер покажет прогресс.",
 }

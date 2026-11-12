@@ -12,7 +12,7 @@ local PREFIX = "ComradeCraft"
 local PROTO = 1
 local HELLO_DEBOUNCE = 60   -- seconds between a local change and the next HELLO
 local REPLY_COOLDOWN = 30   -- seconds between two HELLO replies to the same peer
-local MAX_CHARS, MAX_PROFS, MAX_RECIPES, MAX_ITEMS = 50, 20, 3000, 2000
+local MAX_CHARS, MAX_PROFS, MAX_RECIPES, MAX_ITEMS, MAX_FARM = 50, 20, 3000, 2000, 40
 
 local Sync = {}
 ns.Sync = Sync
@@ -100,7 +100,8 @@ function Sync.CleanSummary(s)
 end
 
 -- Full record, wire shape: { class, level, updated, professions = { [name] = { rank, max,
--- skillLine, icon } }, known = { [skillLine] = { spellID, ... } }, owned = { [itemID] = n } }.
+-- skillLine, icon } }, known = { [skillLine] = { spellID, ... } }, owned = { [itemID] = n },
+-- farm = { [itemID] = target } }.
 -- Only spells in our recipe table and items in our price table are kept.
 function Sync.CleanRecord(r)
   if type(r) ~= "table" then return nil end
@@ -145,6 +146,16 @@ function Sync.CleanRecord(r)
       items = items + 1
     end
   end
+  -- Farming assignments (group plan): positive counts, MAX_FARM at most.
+  local farm, nf = {}, 0
+  for item, target in pairs(type(r.farm) == "table" and r.farm or {}) do
+    item, target = Num(item, 1, 2 ^ 31), Num(target, 1, 1000000)
+    if item and target and nf < MAX_FARM then
+      farm[item] = target
+      nf = nf + 1
+    end
+  end
+  out.farm = nf > 0 and farm or nil
   return out
 end
 
@@ -158,7 +169,7 @@ local function Summary(c)
   return { u = c.updated or 0, cl = c.class, lv = c.level, sp = c.spec, p = p }
 end
 
-local function Record(c)
+local function Record(c, key)
   local known = {}
   for line, set in pairs(c.known or {}) do
     local list = {}
@@ -175,8 +186,15 @@ local function Record(c)
   for name, p in pairs(c.professions or {}) do
     profs[name] = { rank = p.rank, max = p.max, skillLine = p.skillLine, icon = p.icon }
   end
+  local farm, nf = {}, 0
+  for item, a in pairs(ComradeCraftDB.farm or {}) do
+    if a.char == key and nf < MAX_FARM then
+      farm[item] = a.target
+      nf = nf + 1
+    end
+  end
   return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon, route = c.route, updated = c.updated,
-    professions = profs, known = known, owned = owned, equipped = c.equipped }
+    professions = profs, known = known, owned = owned, equipped = c.equipped, farm = nf > 0 and farm or nil }
 end
 
 local function DB()
@@ -365,7 +383,7 @@ function Sync.OnMessage(text, dist, sender)
     else
       for _, key in ipairs(type(msg.k) == "table" and msg.k or {}) do
         local c = Str(key, 80) and db.chars[key]
-        if c and c.shared then Sync.Send({ t = "D", v = PROTO, id = db.accountId, key = key, rec = Record(c) }, "WHISPER", sender) end
+        if c and c.shared then Sync.Send({ t = "D", v = PROTO, id = db.accountId, key = key, rec = Record(c, key) }, "WHISPER", sender) end
       end
     end
   elseif msg.t == "Q" then

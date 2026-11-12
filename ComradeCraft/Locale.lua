@@ -561,6 +561,55 @@ translations.frFR = {
       "Mats prêts, cooldowns de métier prêts sur n'importe quel perso, requêtes de craft, objets dont ton groupe a besoin quand tu ouvres un marchand ou l'HV (avec Racheter après une vente), et améliorations (au choix). Chacune se désactive dans Gérer le groupe.",
     ["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] =
       "TSM ou Auctionator (prix), Questie (positions), TomTom (points de passage), Pawn (améliorations pour chaque classe et spé). Tous optionnels.",
+    -- Group plan
+    ["Spare"] =
+      "Surplus",
+    ["Group plan"] =
+      "Plan du groupe",
+    ["What the group still needs, what it already holds, and who farms what."] =
+      "Ce qui manque encore au groupe, ce qu'il possède déjà, et qui farme quoi.",
+    ["Objective: %s (change it in Manage group > Options)."] =
+      "Objectif : %s (à changer dans Gérer le groupe > Options).",
+    ["Lowest group cost"] =
+      "Coût de groupe minimal",
+    ["Market value"] =
+      "Valeur marchande",
+    ["Least gold spent by the group: stock already held in the group counts as free."] =
+      "Le moins d'or dépensé par le groupe : le stock déjà présent dans le groupe compte comme gratuit.",
+    ["Every material at its market value, as if each character were alone."] =
+      "Chaque matériau à sa valeur marchande, comme si chaque perso était seul.",
+    ["Material"] =
+      "Matériau",
+    ["Needed"] =
+      "Besoin",
+    ["To get"] =
+      "À obtenir",
+    ["Est. cost"] =
+      "Coût est.",
+    ["Farming"] =
+      "Farm",
+    ["Farmed by %s"] =
+      "Farmé par %s",
+    ["Drop"] =
+      "Abandonner",
+    ["I'll farm it"] =
+      "Je m'en charge",
+    ["Estimated cost for the group: %s"] =
+      "Coût estimé pour le groupe : %s",
+    ["Estimated cost for the group: at least %s (some items have no price)."] =
+      "Coût estimé pour le groupe : au moins %s (certains objets n'ont pas de prix).",
+    ["Estimated cost for the group: unknown (TSM or Auctionator give AH prices)."] =
+      "Coût estimé pour le groupe : inconnu (TSM ou Auctionator donnent les prix de l'HV).",
+    ["%d %s needed for %s. Do you want to farm them?"] =
+      "%d %s nécessaires pour %s. Veux-tu les farmer ?",
+    ["Farming done: %s"] =
+      "Farm terminé : %s",
+    ["Give them from You can give in the Group view, or by mail."] =
+      "Donne-les depuis Tu peux donner dans la vue Groupe, ou par courrier.",
+    ["Show the farming tracker (your farming assignments from the Group plan)."] =
+      "Afficher le suivi de farm (tes farms du Plan du groupe).",
+    ["Plans count stock already held in the group as free (or every mat at market value: Manage group > Options). The Group plan view lists what the group still needs and its cost; take a material with I'll farm it and a small tracker follows your progress."] =
+      "Les plans comptent le stock déjà présent dans le groupe comme gratuit (ou chaque mat à sa valeur marchande : Gérer le groupe > Options). La vue Plan du groupe liste ce qui manque encore au groupe et son coût ; prends un matériau avec Je m'en charge et un petit suivi montre ta progression.",
 }
 ns.Translations = translations
 
