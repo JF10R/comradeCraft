@@ -2,14 +2,16 @@
 
 State: name "ComradeCraft" looked free on 2026-11-11 (curseforge.com/wow/addons/comradecraft
 returned 404; no search hit on CurseForge, Wago or WoWInterface). Packaging files are ready
-(`.pkgmeta`, `.github/workflows/release.yml`, `LICENSE`, `CHANGELOG.md`). No GitHub repo yet.
+(`.pkgmeta`, `.github/workflows/release.yml`, `LICENSE`, `CHANGELOG.md`). GitHub repo:
+github.com/JF10R/comradeCraft (private, created 2026-11-11).
 
 Steps when ready:
 
 1. Create the CurseForge project (World of Warcraft, name ComradeCraft, license MIT).
    Copy its Project ID into `ComradeCraft/ComradeCraft.toc` as `## X-Curse-Project-ID: <id>`.
 2. Create a CurseForge API token (CurseForge account > API tokens).
-3. Create the GitHub repository, push, and add the secret `CF_API_TOKEN`.
+3. Add the repository secret `CF_API_TOKEN` (the repo exists; make it public first if
+   CurseForge should link to it).
 4. Tag a version and push it: `git tag v0.1.0 && git push origin v0.1.0`.
    The workflow builds `ComradeCraft-v0.1.0.zip` and uploads it.
 

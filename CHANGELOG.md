@@ -27,3 +27,7 @@ First version for WoW Forever (Interface 16001):
   received them (both online once is enough).
 - Alerts (Manage group > Options): mats ready, cooldowns ready on any character, craft
   requests, and opt-in upgrades a group member can craft (with Pawn score or stats).
+- Next rank at the skill cap: Expert book (vendor or AH), Artisan quest from Questie with a
+  TomTom waypoint to its giver, or the trainer.
+- Trainers you visit are remembered and come first in waypoints; distances work across
+  zones (HereBeDragons, shipped with TomTom).

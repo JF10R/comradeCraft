@@ -15,6 +15,9 @@ question: *what should I do with what I have, for the group?*
 - **Alerts** (each can be turned off): mats ready for your next craft, profession cooldowns
   ready on any of your characters, craft requests, and (opt-in) upgrades a group member can
   craft for you, with a button to ask for it.
+- **Next rank**: at the skill cap, how to get the next one: the Expert book of Cooking,
+  First Aid and Fishing (vendor or auction house), the Artisan quest found in Questie, or the
+  trainer for primary professions.
 - **Sharing** with the friends and guildmates you add, opt-in per character.
 
 English and French (follows the game's language).
@@ -33,20 +36,23 @@ All optional. ComradeCraft detects them when the game loads.
 |---|---|---|
 | [TradeSkillMaster](https://www.curseforge.com/wow/addons/tradeskill-master) | Auction prices (DBMarket) for step costs and route choice; disenchant value (Destroy) for "sell or disenchant" advice; **Shopping list** button gives a search text for TSM's Shopping tab and a group to import (`ComradeCraft > Character > Tailoring 80-125`); TSM has no API to create, change or delete groups, so ComradeCraft tells you which ones are done or replaced | Auctionator, else merchant prices |
 | [Auctionator](https://www.curseforge.com/wow/addons/auctionator) | Auction prices when TSM is absent; **Shopping list** button exports a plan's missing mats as an Auctionator list; disenchant value | No shopping list export (`/comrade shop` still prints the list) |
-| Questie (with its QuestieDB) | Positions of the trainers, vendors and mobs that give a recipe you must learn | Names only (from the embedded recipe data) |
+| Questie (with its QuestieDB) | Positions of the trainers, vendors and mobs that give a recipe you must learn; the Artisan quest of Cooking, First Aid and Fishing and who starts it | Names only (from the embedded recipe data); no Artisan quest |
 | [TomTom](https://www.curseforge.com/wow/addons/tomtom) | Click a "Learn ..." step: waypoint to the nearest source | Location printed in chat |
 | [Pawn](https://www.curseforge.com/wow/addons/pawn) | Upgrade detection with the class and specialization scale of each group member | Item level comparison |
 
 Notes:
 
 - When TSM and Auctionator are both loaded, prices come from TSM.
+- Trainers you talk to are remembered with their exact position and come first in "Learn"
+  waypoints (the embedded lists are capped at 12 trainers per recipe).
 - Pawn is called while the game runs; none of its scales are copied (its license forbids it).
 - Mail addons (Postal, TSM's mail tab, ...): the mail button sits outside the send-mail
   frame so it does not cover them. If an addon replaces that frame, click an entry of
   "You can give" in the group window while the mailbox is open, or type `/comrade mail NAME`.
 
 Not yet verified in game: craft requests between two players (sync and mail), the craft
-queue's Craft next, Questie positions and TomTom waypoints, the TSM search text and group
+queue's Craft next, Questie positions and TomTom waypoints, the Artisan quests from Questie (assumed to require
+225 in the skill, as in Classic), the TSM search text and group
 import, Pawn's scale names on Forever, the Auctionator export, the TSM and Auctionator
 disenchant values, and the mail helper next to other mail addons.
 
