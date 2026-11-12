@@ -4,3 +4,4 @@
 tools/.cache/
 tools/.venv/
 __pycache__/
+tools/fixtures/
