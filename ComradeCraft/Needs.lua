@@ -102,7 +102,9 @@ end
 -- AH deposit, per item: measured when you post (Shopping.lua), else merchant price x ratio.
 -- DEPOSIT_LOSS: share counted as lost; WoW refunds it on sale (unconfirmed on Forever).
 ns.DEPOSIT_LOSS = 0.5 -- half of the auctions expire once
-ns.DEPOSIT_RATIO = 0.9 -- one observation: Lesser Magic Wand, 1s deposit, sells 1s10 to a merchant
+-- Forever, 2 h auctions: Lesser (merchant 1s10) and Greater Magic Wand (2s) both cost 1s
+-- each, so a flat minimum; the % above it is Retail's 12 h rule, unconfirmed.
+ns.DEPOSIT_MIN, ns.DEPOSIT_RATIO = 100, 0.15
 ns.AH_MARGIN = 1.1 -- the AH must beat the merchant/disenchant by 10% (time, competition)
 
 function ns.AuctionDeposit(item)
@@ -115,7 +117,7 @@ function ns.AuctionDeposit(item)
     local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     sell = get and select(11, get(item))
   end
-  return math.floor((sell or 0) * (db and db.depositRatio or ns.DEPOSIT_RATIO))
+  return math.max(ns.DEPOSIT_MIN, math.floor((sell or 0) * ns.DEPOSIT_RATIO))
 end
 
 -- What one crafted item brings back, three ways: merchant sell price, disenchant (AH value

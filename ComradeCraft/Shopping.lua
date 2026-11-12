@@ -268,17 +268,13 @@ end
 -- At the auction house: one reminder per session about ComradeCraft groups TSM still keeps.
 local reminded = false
 -- Real deposits: recorded per item when you post (also through TSM or Auctionator, which use
--- the same game functions). A moving average of deposit / merchant price estimates the rest.
+-- the same game functions). Others are estimated (ns.AuctionDeposit).
 local function LearnDeposit(item, deposit, qty)
   if not (ComradeCraftDB and item and deposit and deposit > 0 and qty and qty > 0) then return end
   local per = math.floor(deposit / qty)
   ComradeCraftDB.deposits = ComradeCraftDB.deposits or {}
   ComradeCraftDB.deposits[item] = per
   local p = ns.ItemPrices and ns.ItemPrices[item]
-  if p and p[1] and p[1] > 0 then
-    local r, old = per / p[1], ComradeCraftDB.depositRatio
-    ComradeCraftDB.depositRatio = old and (old * 0.8 + r * 0.2) or r
-  end
   ns.Log(("deposit: item %d x%d -> %d each (merchant %s)"):format(item, qty, per, tostring(p and p[1])))
 end
 ns.LearnDeposit = LearnDeposit
