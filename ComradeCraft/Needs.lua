@@ -99,22 +99,53 @@ function ns.ItemValue(item)
   return math.max(1, v or 1)
 end
 
+-- AH deposit, per item: measured when you post (Shopping.lua), else merchant price x ratio.
+-- DEPOSIT_LOSS: share counted as lost; WoW refunds it on sale (unconfirmed on Forever).
+ns.DEPOSIT_LOSS = 0.5 -- half of the auctions expire once
+ns.DEPOSIT_RATIO = 0.9 -- one observation: Lesser Magic Wand, 1s deposit, sells 1s10 to a merchant
+ns.AH_MARGIN = 1.1 -- the AH must beat the merchant/disenchant by 10% (time, competition)
+
+function ns.AuctionDeposit(item)
+  local db = ComradeCraftDB
+  local d = db and db.deposits and db.deposits[item]
+  if d then return d end
+  local p = ns.ItemPrices and ns.ItemPrices[item]
+  local sell = p and p[1]
+  if not sell then
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    sell = get and select(11, get(item))
+  end
+  return math.floor((sell or 0) * (db and db.depositRatio or ns.DEPOSIT_RATIO))
+end
+
 -- What one crafted item brings back, three ways: merchant sell price, disenchant (AH value
--- of its mats: TSM/Auctionator, else our yield table priced at the AH; nil if unknown or not
--- disenchantable), auction house (price minus the 5% cut; nil without a price source).
+-- of its mats; nil if unknown), auction house (price - 5% cut - expected deposit loss; nil
+-- without a price source). deposit = the full deposit, for display.
 function ns.ResaleOptions(item)
   if not item or item == 0 then return { vendor = 0 } end
   local p = ns.ItemPrices and ns.ItemPrices[item]
   local ah = ns.PriceSource and ns.PriceSource(item)
   local de = ns.DisenchantPrice and ns.DisenchantPrice(item)
   if not de and ns.DisenchantEstimate then de = ns.DisenchantEstimate(item) end
-  return { vendor = p and p[1] or 0, de = de, ah = ah and ah > 0 and ah * 0.95 or nil }
+  local o = { vendor = p and p[1] or 0, de = de }
+  if ah and ah > 0 then
+    o.deposit = ns.AuctionDeposit(item)
+    o.ah = ah * 0.95 - o.deposit * ns.DEPOSIT_LOSS
+  end
+  return o
 end
 
--- The best of the three: what the "profitable" route counts on.
+-- The best way to sell (o = ResaleOptions, values may be scaled): the AH only when it beats
+-- the merchant and the disenchant by AH_MARGIN.
+function ns.BestResale(o)
+  local other = math.max(o.vendor or 0, o.de or 0)
+  if o.ah and o.ah > other * ns.AH_MARGIN then return o.ah end
+  return other
+end
+
+-- What the "profitable" route counts on.
 function ns.ResaleValue(item)
-  local o = ns.ResaleOptions(item)
-  return math.max(o.vendor, o.de or 0, o.ah or 0)
+  return ns.BestResale(ns.ResaleOptions(item))
 end
 
 -- Route types: "cheap" = least spent on mats; "profit" = least spent once the products are
@@ -189,7 +220,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode)
     local q = math.max(1, r[6])
     local o = ns.ResaleOptions(r[5])
     a.back = { vendor = o.vendor * q, de = o.de and o.de * q, ah = o.ah and o.ah * q }
-    a.resale = math.max(a.back.vendor, a.back.de or 0, a.back.ah or 0)
+    a.resale = ns.BestResale(a.back)
     a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
     actions[#actions + 1] = a
   end

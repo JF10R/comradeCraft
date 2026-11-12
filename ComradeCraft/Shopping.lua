@@ -267,6 +267,47 @@ end
 
 -- At the auction house: one reminder per session about ComradeCraft groups TSM still keeps.
 local reminded = false
+-- Real deposits: recorded per item when you post (also through TSM or Auctionator, which use
+-- the same game functions). A moving average of deposit / merchant price estimates the rest.
+local function LearnDeposit(item, deposit, qty)
+  if not (ComradeCraftDB and item and deposit and deposit > 0 and qty and qty > 0) then return end
+  local per = math.floor(deposit / qty)
+  ComradeCraftDB.deposits = ComradeCraftDB.deposits or {}
+  ComradeCraftDB.deposits[item] = per
+  local p = ns.ItemPrices and ns.ItemPrices[item]
+  if p and p[1] and p[1] > 0 then
+    local r, old = per / p[1], ComradeCraftDB.depositRatio
+    ComradeCraftDB.depositRatio = old and (old * 0.8 + r * 0.2) or r
+  end
+  ns.Log(("deposit: item %d x%d -> %d each (merchant %s)"):format(item, qty, per, tostring(p and p[1])))
+end
+ns.LearnDeposit = LearnDeposit
+
+if hooksecurefunc and C_AuctionHouse then
+  if C_AuctionHouse.PostItem and C_AuctionHouse.CalculateItemDeposit then
+    hooksecurefunc(C_AuctionHouse, "PostItem", function(loc, duration, qty)
+      local ok, dep = pcall(C_AuctionHouse.CalculateItemDeposit, loc, duration, qty)
+      local okI, item = pcall(C_Item.GetItemID, loc)
+      if ok and okI then LearnDeposit(item, dep, qty) end
+    end)
+  end
+  if C_AuctionHouse.PostCommodity and C_AuctionHouse.CalculateCommodityDeposit then
+    hooksecurefunc(C_AuctionHouse, "PostCommodity", function(loc, duration, qty)
+      local okI, item = pcall(C_Item.GetItemID, loc)
+      local ok, dep = pcall(C_AuctionHouse.CalculateCommodityDeposit, okI and item, duration, qty)
+      if ok and okI then LearnDeposit(item, dep, qty) end
+    end)
+  end
+end
+if hooksecurefunc and PostAuction and GetAuctionDeposit and GetAuctionSellItemInfo then
+  -- Legacy AH: the item sits in the sell slot until the post goes through.
+  hooksecurefunc("PostAuction", function(bid, buyout, runTime, stackSize)
+    local item = select(10, GetAuctionSellItemInfo())
+    local ok, dep = pcall(GetAuctionDeposit, runTime, bid, buyout, stackSize, 1)
+    if ok then LearnDeposit(item, dep, stackSize) end
+  end)
+end
+
 ns.On("AUCTION_HOUSE_SHOW", function()
   if reminded or not ComradeCraftDB then return end
   reminded = true

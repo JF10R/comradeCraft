@@ -346,8 +346,8 @@ local translations = {
       "Vendu au marchand",
     ["Disenchanted"] =
       "Désenchanté",
-    ["At the auction house (-5%)"] =
-      "À l'hôtel des ventes (-5 %)",
+    ["At the auction house (-5%, deposit risk)"] =
+      "À l'hôtel des ventes (-5 %, risque de dépôt)",
     ["Best way per item"] =
       "Meilleure option par objet",
     ["Net cost = mats minus the best resale of each item. A green + is a profit. Hover a line for the details."] =

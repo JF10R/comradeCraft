@@ -580,7 +580,7 @@ local function LayoutProfession(y, name, p, c, own, key)
             return (m[k .. "Missing"] and ">" or "") .. ShortMoney(m[k])
           end
           tip = { { L["Mats"], ShortMoney(m.mats) }, { L["Sold to a merchant"], Way("vendor") },
-            { L["Disenchanted"], Way("de") }, { L["At the auction house (-5%)"], Way("ah") },
+            { L["Disenchanted"], Way("de") }, { L["At the auction house (-5%, deposit risk)"], Way("ah") },
             { L["Best way per item"], ShortMoney(m.best) }, { L["Net cost"], cols[5] } }
         end
         yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = cols, tip = tip }, own)
