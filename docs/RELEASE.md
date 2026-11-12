@@ -16,7 +16,9 @@ Steps when ready:
    The workflow builds `ComradeCraft-v0.1.0.zip` and uploads it.
 
 Project description: the packager does not upload it; paste README.md into the CurseForge
-description (drop the License section's relative links).
+description (drop the License section's relative links). The banner and badges use relative paths or
+HTML that CurseForge may not render: upload ComradeCraftBanner.png there and use the logo as
+the project avatar.
 
 Open points:
 

@@ -1,7 +1,23 @@
-# ComradeCraft
+<p align="center">
+  <img src="ComradeCraftBanner.png" alt="ComradeCraft" width="720">
+</p>
 
-A WoW Forever addon for groups of friends leveling professions together. It answers one
-question: *what should I do with what I have, for the group?*
+<p align="center">
+  <em>Level your professions together.</em><br>
+  A WoW Forever addon for groups of friends. It answers one question:
+  <strong>what should I do with what I have, for the group?</strong>
+</p>
+
+<p align="center">
+  <img alt="WoW Forever 1.60.1" src="https://img.shields.io/badge/WoW%20Forever-1.60.1-d4a017?style=flat-square&labelColor=7a1414">
+  <img alt="Interface 16001" src="https://img.shields.io/badge/Interface-16001-d4a017?style=flat-square&labelColor=7a1414">
+  <img alt="English and French" src="https://img.shields.io/badge/lang-EN%20%7C%20FR-d4a017?style=flat-square&labelColor=7a1414">
+  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-d4a017?style=flat-square&labelColor=7a1414">
+</p>
+
+---
+
+## Features
 
 - **Item tooltip**: who in your group needs this material, how many, and how soon.
 - **Group window** (`/comrade`): each character's leveling route (recipes to learn at the
@@ -21,6 +37,8 @@ question: *what should I do with what I have, for the group?*
 - **Sharing** with the friends and guildmates you add, opt-in per character.
 
 English and French (follows the game's language).
+
+---
 
 ## Requirements
 
@@ -56,6 +74,8 @@ queue's Craft next, Questie positions and TomTom waypoints, the Artisan quests f
 import, Pawn's scale names on Forever, the Auctionator export, the TSM and Auctionator
 disenchant values, and the mail helper next to other mail addons.
 
+---
+
 ## Commands
 
 | Command | Effect |
@@ -71,6 +91,8 @@ disenchant values, and the mail helper next to other mail addons.
 | `/comrade needs` / `stats` | Print your route / the measured skill-up rates |
 | `/comrade scan` / `api` / `audit` / `log clear` | Diagnostics |
 
+---
+
 ## Privacy
 
 No character data is sent until you share a character. Data then goes by addon whisper,
@@ -84,6 +106,8 @@ Recipe colors and reagents come from the WoW Forever client tables (published by
 wago.tools). Skill-up chances start from the Classic formula and are calibrated with the
 crafts you and your group log. Disenchant yields are estimates until enough real
 disenchants are logged.
+
+---
 
 ## License
 

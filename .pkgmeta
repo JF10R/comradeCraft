@@ -12,6 +12,8 @@ ignore:
   - .env.example
   - .gitignore
   - THIRD_PARTY.md
+  - ComradeCraftBanner.png
+  - ComradeCraftLogo.png
   - "*.html"
 
 manual-changelog:
