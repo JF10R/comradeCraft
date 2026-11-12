@@ -10,6 +10,7 @@
 ## Notes-ruRU: Профессии группы: кому какие материалы нужны и что создавать дальше.
 ## Author: JHF
 ## X-License: MIT
+## X-Curse-Project-ID: 1799561
 ## Version: @project-version@
 ## SavedVariables: ComradeCraftDB
 ## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom

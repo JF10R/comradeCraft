@@ -1,4 +1,6 @@
-# Publishing on CurseForge (not done yet)
+# Publishing on CurseForge
+
+CurseForge project ID: 1799561 (in the TOC as `## X-Curse-Project-ID`).
 
 State: name "ComradeCraft" looked free on 2026-11-11 (curseforge.com/wow/addons/comradecraft
 returned 404; no search hit on CurseForge, Wago or WoWInterface). Packaging files are ready
