@@ -130,6 +130,7 @@ function ns.BagAdvice(key)
 
   for _, cand in ipairs(candidates) do
     local item, f = cand.item, cand.facts
+    local bound = (ns.IsBoP and ns.IsBoP(item)) or (c.bound and c.bound[item])
     local entry = { item = item, yield = cand.yield }
     local inv = INVTYPE[f.equipLoc]
     for i, s in ipairs(slots) do
@@ -139,7 +140,7 @@ function ns.BagAdvice(key)
         break
       end
     end
-    if not entry.verdict then
+    if not entry.verdict and not bound then
       for other, oc in pairs(chars) do
         if other ~= key and ns.UpgradeFor(item, oc) then
           entry.verdict, entry.to = "gear", other
@@ -149,21 +150,23 @@ function ns.BagAdvice(key)
     end
     if not entry.verdict then
       local de = (ns.DisenchantPrice and ns.DisenchantPrice(item)) or DisenchantValue(cand.yield)
-      local ah = ns.PriceSource and ns.PriceSource(item)
+      local ah = not bound and ns.PriceSource and ns.PriceSource(item) or nil
       if ah and ns.AuctionDeposit then ah = ah * 0.95 - ns.AuctionDeposit(item) * ns.DEPOSIT_LOSS end
       if de and ah and ah > de * SELL_RATIO then
         entry.verdict, entry.ah, entry.de = "sell", ah, de
-      else
+      elseif not bound or enchanter == key then
         entry.verdict, entry.de = "disenchant", de
         for mat in pairs(cand.yield) do
           for _, oc in pairs(chars) do
             if ns.NeedOf(oc, mat) > 0 then entry.useful = true end
           end
         end
-        if enchanter ~= key then entry.enchanter = enchanter end
+        if not bound and enchanter ~= key then entry.enchanter = enchanter end
+      else
+        entry = nil
       end
     end
-    out[#out + 1] = entry
+    if entry then out[#out + 1] = entry end
   end
   local order = { target = 1, gear = 2, disenchant = 3, sell = 4 }
   table.sort(out, function(a, b)

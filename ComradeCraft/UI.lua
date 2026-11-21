@@ -100,7 +100,68 @@ local function ShowItemTooltip(owner, item, spell)
 end
 
 -- Pools ---------------------------------------------------------------------------------
-local sideBtns, rows, mats, steps, recipes, labels, heads = {}, {}, {}, {}, {}, {}, {}
+local sideBtns, rows, mats, steps, recipes, labels, heads, groupRows, sectionBars = {}, {}, {}, {}, {}, {}, {}, {}, {}
+
+-- Crisp 1px carved border helper (replaces flat yellowish fills with authentic dark-stone/bronze chrome).
+local function AddBorder(f)
+  local b = {}
+  for _, side_ in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
+    local t = f:CreateTexture(nil, "BORDER")
+    if side_ == "TOP" or side_ == "BOTTOM" then
+      t:SetHeight(1)
+      t:SetPoint(side_ .. "LEFT", 0, 0)
+      t:SetPoint(side_ .. "RIGHT", 0, 0)
+    else
+      t:SetWidth(1)
+      t:SetPoint("TOP" .. side_, 0, 0)
+      t:SetPoint("BOTTOM" .. side_, 0, 0)
+    end
+    b[side_] = t
+  end
+  f.border = b
+end
+
+local function SetBorderColor(f, r, g, bl, a)
+  if not f.border then return end
+  for _, t in pairs(f.border) do t:SetColorTexture(r, g, bl, a) end
+end
+
+local function CreateSectionBar()
+  local f = CreateFrame("Frame", nil, content)
+  f:SetHeight(24)
+  f.bg = f:CreateTexture(nil, "BACKGROUND")
+  f.bg:SetAllPoints()
+  f.bg:SetColorTexture(0.11, 0.11, 0.14, 0.72)
+  f.accent = f:CreateTexture(nil, "ARTWORK")
+  f.accent:SetWidth(2)
+  f.accent:SetPoint("TOPLEFT", 0, 0)
+  f.accent:SetPoint("BOTTOMLEFT", 0, 0)
+  f.accent:SetColorTexture(0.95, 0.78, 0.20, 0.9)
+  f.line = f:CreateTexture(nil, "ARTWORK")
+  f.line:SetHeight(1)
+  f.line:SetPoint("BOTTOMLEFT", 0, 0)
+  f.line:SetPoint("BOTTOMRIGHT", 0, 0)
+  f.line:SetColorTexture(0.45, 0.38, 0.25, 0.45)
+  f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  f.title:SetPoint("LEFT", 8, 0)
+  f.title:SetJustifyH("LEFT")
+  f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.sub:SetPoint("LEFT", f.title, "RIGHT", 10, 0)
+  f.sub:SetPoint("RIGHT", -8, 0)
+  f.sub:SetJustifyH("LEFT")
+  f.sub:SetWordWrap(false)
+  return f
+end
+
+local function SectionBar(x, y, w, title, sub)
+  local f = Acquire(sectionBars, CreateSectionBar)
+  f:ClearAllPoints()
+  f:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  f:SetWidth(w or (LIST_W - x))
+  f.title:SetText(title)
+  f.sub:SetText(sub or "")
+  return 26
+end
 
 -- Collapsed professions (by skill line), shared by Plan and Can craft, kept across sessions.
 local function Collapsed(line)
@@ -113,6 +174,16 @@ local function ToggleCollapsed(line)
   ui.collapsed = ui.collapsed or {}
   ui.collapsed[line] = not ui.collapsed[line] or nil
   ns.RefreshWindow()
+end
+local function SetAllCollapsed(lines, collapse)
+  local ui = ComradeCraftDB.ui
+  ui.collapsed = ui.collapsed or {}
+  for _, line in ipairs(lines) do ui.collapsed[line] = collapse or nil end
+  ns.RefreshWindow()
+end
+local function AllCollapsed(lines)
+  for _, line in ipairs(lines) do if not Collapsed(line) then return false end end
+  return #lines > 0
 end
 local function FoldTexture(collapsed) return collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up" end
 
@@ -147,7 +218,17 @@ local MS_COLS = { { 0, 64, "LEFT" }, { 66, 86, "LEFT" }, { 154, 92, "RIGHT" }, {
 -- (icon | count | name, mats in grey below), or a milestone table row (5 columns).
 local function CreateStep()
   local b = CreateFrame("Button", nil, content)
+  b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints()
+  b.bg:Hide()
+  b.accent = b:CreateTexture(nil, "ARTWORK")
+  b.accent:SetWidth(2)
+  b.accent:SetPoint("TOPLEFT", 0, 0)
+  b.accent:SetPoint("BOTTOMLEFT", 0, 0)
+  b.accent:SetColorTexture(0.95, 0.78, 0.20, 0.85)
+  b.accent:Hide()
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetSize(16, 16)
   b.icon:SetPoint("TOPLEFT", 0, -1)
@@ -197,13 +278,25 @@ local function CreateStep()
     ShowItemTooltip(self, e.item, e.spell)
     if e.kind == "learn" then
       ns.AddSourceLines(GameTooltip, e.spell)
+      if self.own and e.spell and ns.Recipes[e.spell] then
+        GameTooltip:AddLine(L["Right-click: skip this recipe and recalculate."], 0.8, 0.8, 0.8)
+      end
       GameTooltip:Show()
     end
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  b:SetScript("OnClick", function(self)
+  b:SetScript("OnClick", function(self, btn)
     local e = self.entry
     if not e or e.kind == "range" or e.kind == "milestone" or LinkOnShiftClick(e.item) then return end
+    if btn == "RightButton" then
+      if e.kind == "learn" and self.own and e.spell and ns.Recipes[e.spell] then
+        ComradeCraftDB.skippedLearn = ComradeCraftDB.skippedLearn or {}
+        ComradeCraftDB.skippedLearn[e.spell] = true
+        ns.UpdateNeeds(ns.CharData())
+        ns.RefreshWindow()
+      end
+      return
+    end
     if e.kind == "craft" and self.own then ns.OpenRecipe(e.spell) end
     if e.kind == "learn" then ns.WaypointRecipe(e.spell) end
     if e.kind == "quest" then ns.WaypointQuest(e.quest) end
@@ -212,7 +305,7 @@ local function CreateStep()
 end
 
 -- Places one steps-column line at content (x, y), width w; returns its height.
-local function PlaceStep(x, y, w, e, own)
+local function PlaceStep(x, y, w, e, own, zebra)
   local s = Acquire(steps, CreateStep)
   s.entry, s.own = e, own
   s:ClearAllPoints()
@@ -222,22 +315,29 @@ local function PlaceStep(x, y, w, e, own)
   s.detail:SetText("")
   s.right:SetText("")
   s.line:Hide()
+  s.bg:Hide()
+  s.accent:Hide()
   s.icon:Hide()
   for _, fs in ipairs(s.cols) do fs:SetText("") end
   s.text:SetText("")
   local h
   if e.kind == "range" then
+    s.bg:SetColorTexture(0.11, 0.11, 0.14, 0.72)
+    s.bg:Show()
+    s.accent:Show()
     s.text:ClearAllPoints()
-    s.text:SetPoint("TOPLEFT", 0, -4)
-    s.text:SetWidth(w - 110)
+    s.text:SetPoint("TOPLEFT", 8, -4)
+    s.text:SetWidth(w - 118)
     s.text:SetText("|cffffd100" .. (e.header or L["Skill %d to %d"]:format(e.from, e.to)) .. "|r")
     s.right:SetText(e.cost or "")
     s.line:Show()
     h = 22
   elseif e.kind == "milestone" then
+    if zebra then s.bg:SetColorTexture(0.10, 0.10, 0.13, 0.35) s.bg:Show() end
     for i, v in ipairs(e.cols) do s.cols[i]:SetText(v) end
     h = 16
   else
+    if zebra then s.bg:SetColorTexture(0.10, 0.10, 0.13, 0.32) s.bg:Show() end
     s.icon:Show()
     s.icon:SetTexture(e.kind == "quest" and "Interface\\GossipFrame\\AvailableQuestIcon"
       or e.item and e.item ~= 0 and select(3, ItemInfo(e.item))
@@ -265,27 +365,34 @@ local function CreateRow()
   -- Click the header (fold icon, icon, name) to collapse or expand the profession.
   r.hit = CreateFrame("Button", nil, r)
   r.hit:SetPoint("TOPLEFT", 0, 0)
-  r.hit:SetSize(PROF_W - 8, 30)
+  r.hit:SetSize(PROF_W - 8, 38)
   r.hit:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
   r.hit:SetScript("OnClick", function(self) ToggleCollapsed(self.line) end)
   r.fold = r:CreateTexture(nil, "ARTWORK")
   r.fold:SetSize(14, 14)
-  r.fold:SetPoint("TOPLEFT", 2, -8)
+  r.fold:SetPoint("TOPLEFT", 2, -12)
   r.icon = r:CreateTexture(nil, "ARTWORK")
   r.icon:SetSize(32, 32)
   r.icon:SetPoint("TOPLEFT", 20, -6)
   r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   r.name:SetPoint("TOPLEFT", r.icon, "TOPRIGHT", 8, -1)
-  r.level = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  r.level:SetPoint("TOPRIGHT", r, "TOPLEFT", PROF_W - 8, -8)
+  r.name:SetPoint("RIGHT", r, "LEFT", PROF_W - 10, 0)
+  r.name:SetJustifyH("LEFT")
+  r.name:SetWordWrap(false)
   r.bar = CreateFrame("StatusBar", nil, r)
-  r.bar:SetSize(PROF_W - 70, 8)
-  r.bar:SetPoint("TOPLEFT", r.icon, "BOTTOMRIGHT", 8, 10)
+  r.bar:SetHeight(13)
+  r.bar:SetPoint("TOPLEFT", r.icon, "BOTTOMRIGHT", 8, 13)
+  r.bar:SetPoint("RIGHT", r, "LEFT", PROF_W - 10, 0)
   r.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-  r.bar:SetStatusBarColor(0.35, 0.7, 0.25)
-  local barBg = r.bar:CreateTexture(nil, "BACKGROUND")
+  local barBorder = r.bar:CreateTexture(nil, "BACKGROUND", nil, -2)
+  barBorder:SetPoint("TOPLEFT", -1, 1)
+  barBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+  barBorder:SetColorTexture(0.35, 0.3, 0.2, 0.8)
+  local barBg = r.bar:CreateTexture(nil, "BACKGROUND", nil, -1)
   barBg:SetAllPoints()
-  barBg:SetColorTexture(0, 0, 0, 0.6)
+  barBg:SetColorTexture(0.05, 0.05, 0.05, 0.85)
+  r.level = r.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  r.level:SetPoint("CENTER", 0, 0)
   for _, k in ipairs({ "top", "mid", "bottom" }) do
     r[k] = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     r[k]:SetWidth(RIGHT_W)
@@ -295,7 +402,7 @@ local function CreateRow()
   -- Missing mats as an Auctionator list and/or TSM search text (shown only with one of them).
   r.shop = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
   r.shop:SetSize(PROF_W - 20, 20)
-  r.shop:SetPoint("TOPLEFT", r, "TOPLEFT", 6, -48)
+  r.shop:SetPoint("TOPLEFT", r, "TOPLEFT", 6, -46)
   r.shop:SetText(L["Shopping list"])
   r.shop:SetScript("OnClick", function(self) ns.ShoppingAction(self.key, self.line) end)
   r.shop:Hide()
@@ -329,7 +436,15 @@ local function CreateMat()
   b.own:SetPoint("RIGHT", b.count, "LEFT", -4, 0)
   b.own:SetJustifyH("LEFT")
   b.own:SetWordWrap(false)
-  b:SetScript("OnEnter", function(self) ShowItemTooltip(self, self.itemID) end)
+  b:SetScript("OnEnter", function(self)
+    ShowItemTooltip(self, self.itemID)
+    if self.verdictText then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine("ComradeCraft", 1, 0.82, 0)
+      GameTooltip:AddLine(self.verdictText, 1, 1, 1, true)
+      GameTooltip:Show()
+    end
+  end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   -- Shift-click links; on a "you can give" entry with the mailbox open, prepares the mail.
   b:SetScript("OnClick", function(self)
@@ -340,7 +455,7 @@ end
 
 local function PlaceMat(x, y, item, count, sub, width)
   local m = Acquire(mats, CreateMat)
-  m.giveTo = nil
+  m.giveTo, m.verdictText = nil, nil
   m:ClearAllPoints()
   m:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   m:SetWidth(width or MAT_W)
@@ -358,8 +473,12 @@ end
 -- Click opens it (own character only); shift-click links it in chat (any character).
 local function CreateRecipe()
   local b = CreateFrame("Button", nil, content)
+  b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   b:SetHeight(RECIPE_H)
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints()
+  b.bg:Hide()
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetSize(24, 24)
   b.icon:SetPoint("TOPLEFT", 0, -2)
@@ -396,14 +515,18 @@ local function CreateRecipe()
     if self.costText then GameTooltip:AddLine(self.costText, 1, 0.82, 0) end
     if self.requestTo then
       GameTooltip:AddLine(L["Click: ask %s to craft it."]:format(ShortName(self.requestTo)), 0.5, 0.8, 1)
+    elseif self.own and ns.Wishlist then
+      GameTooltip:AddLine(L["Right-click: add to Wishlist."], 0.5, 0.8, 1)
     end
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  b:SetScript("OnClick", function(self)
+  b:SetScript("OnClick", function(self, btn)
     if IsModifiedClick and IsModifiedClick("CHATLINK") then
       local link = ns.RecipeLink(self.spell, self.item)
       if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+    elseif btn == "RightButton" then
+      if self.own and ns.Wishlist then ns.Wishlist.ShowDialog(self.spell, self.crafterKey) end
     elseif self.own then
       ns.OpenRecipe(self.spell)
     elseif self.requestTo then
@@ -413,12 +536,13 @@ local function CreateRecipe()
   return b
 end
 
-local function PlaceRecipe(x, y, e, tags, kind, own)
+local function PlaceRecipe(x, y, e, tags, kind, own, zebra, crafterKey)
   local b = Acquire(recipes, CreateRecipe)
   b:ClearAllPoints()
   b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   b:SetWidth(LIST_W - x)
-  b.spell, b.item, b.own, b.requestTo = e.spell, e.item, own, nil
+  b.spell, b.item, b.own, b.requestTo, b.crafterKey = e.spell, e.item, own, nil, crafterKey
+  if zebra then b.bg:SetColorTexture(0.10, 0.10, 0.13, 0.34) b.bg:Show() else b.bg:Hide() end
   local icon = e.item ~= 0 and select(3, ItemInfo(e.item))
     or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(e.spell)) or 134400
   b.icon:SetTexture(icon)
@@ -437,19 +561,20 @@ end
 -- Plan tab: one block per profession (status, clickable plan, cost, mats, vendor, blocked).
 local actionBtns, checks, toggles = {}, {}, {}
 
--- Flat two-state button (like the Plan / Can craft tabs): gold and underlined when active.
+-- Sculpted dark-stone two-state toggle: crisp bronze/gold border and gold underline when active.
 local function CreateToggle()
   local b = CreateFrame("Button", nil, content)
   b:SetSize(110, 22)
   b.bg = b:CreateTexture(nil, "BACKGROUND")
   b.bg:SetAllPoints()
-  b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  AddBorder(b)
+  b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   b.label:SetPoint("CENTER")
   b.under = b:CreateTexture(nil, "ARTWORK")
   b.under:SetHeight(2)
-  b.under:SetPoint("BOTTOMLEFT")
-  b.under:SetPoint("BOTTOMRIGHT")
-  b.under:SetColorTexture(1, 0.82, 0, 1)
+  b.under:SetPoint("BOTTOMLEFT", 1, 0)
+  b.under:SetPoint("BOTTOMRIGHT", -1, 0)
+  b.under:SetColorTexture(0.95, 0.78, 0.20, 1)
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
   b:SetScript("OnClick", function(self) if self.fn and not self.active then self.fn() end end)
   return b
@@ -462,8 +587,15 @@ local function Toggle(x, y, text, active, enabled, fn)
   b:SetWidth(110) -- pooled: a caller may have widened it
   b.label:SetText(text)
   b.active, b.fn = active, enabled and fn or nil
-  b.bg:SetColorTexture(active and 0.35 or 0.12, active and 0.27 or 0.1, active and 0.12 or 0.08, 0.9)
-  b.label:SetTextColor(active and 1 or 0.6, active and 0.82 or 0.6, active and 0 or 0.6)
+  if active then
+    b.bg:SetColorTexture(0.15, 0.15, 0.19, 0.96)
+    SetBorderColor(b, 0.78, 0.64, 0.24, 0.9)
+    b.label:SetTextColor(1, 0.85, 0.22)
+  else
+    b.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+    SetBorderColor(b, 0.28, 0.25, 0.20, 0.65)
+    b.label:SetTextColor(0.68, 0.68, 0.72)
+  end
   b.under:SetShown(active)
   return b
 end
@@ -479,6 +611,7 @@ local function Action(x, y, text, fn)
   local b = Acquire(actionBtns, CreateActionBtn)
   b:ClearAllPoints()
   b:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+  b:SetWidth(96) -- pooled: a caller may have widened it
   b:SetText(text)
   b:SetEnabled(true)
   b.fn = fn
@@ -509,9 +642,15 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.icon:SetTexture(p.icon or 134400)
   r.name:SetText(name)
   local need = p.skillLine and c.needs and c.needs[p.skillLine]
-  r.level:SetText(("%d -> %d"):format(p.rank or 0, p.max or 0))
-  r.bar:SetMinMaxValues(0, math.max(1, p.max or 1))
-  r.bar:SetValue(p.rank or 0)
+  local rank, maxRank = p.rank or 0, p.max or 0
+  r.level:SetText(("%d / %d"):format(rank, maxRank))
+  r.bar:SetMinMaxValues(0, math.max(1, maxRank))
+  r.bar:SetValue(rank)
+  if maxRank > 0 and rank >= maxRank then
+    r.bar:SetStatusBarColor(0.24, 0.62, 0.22)
+  else
+    r.bar:SetStatusBarColor(0.10, 0.42, 0.78)
+  end
 
   r.shop.key, r.shop.line = key, p.skillLine
   r.shop:SetShown(ns.CanShop() and need ~= nil and next(need.items or {}) ~= nil)
@@ -519,6 +658,8 @@ local function LayoutProfession(y, name, p, c, own, key)
   -- Folding only makes sense with every profession listed ("All"); a filtered view is open.
   local filtered = ComradeCraftDB.ui.prof ~= nil
   local collapsed = not filtered and Collapsed(p.skillLine)
+  r.icon:ClearAllPoints()
+  r.icon:SetPoint("TOPLEFT", filtered and 6 or 20, -6)
   r.hit.line = p.skillLine
   r.hit:SetShown(not filtered)
   r.fold:SetShown(not filtered)
@@ -544,8 +685,19 @@ local function LayoutProfession(y, name, p, c, own, key)
   local yy = 8 + (#top > 0 and (r.top:GetStringHeight() + 4) or 0)
 
   for _, step in ipairs(d.steps or {}) do
-    yy = yy + 2 + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "range", from = step.from, to = step.to, cost = step.cost }, own)
-    for _, e in ipairs(step.entries) do yy = yy + PlaceStep(PROF_W + 4, y - yy, RIGHT_W - 4, e, own) end
+    yy = yy + 4 + PlaceStep(PROF_W, y - yy - 2, RIGHT_W, { kind = "range", from = step.from, to = step.to, cost = step.cost }, own)
+    for idx, e in ipairs(step.entries) do
+      if e.kind == "craft" and e.item and e.item ~= 0 and ns.Synergies and ns.Synergies.DisenchantTarget then
+        local deTo = ns.Synergies.DisenchantTarget(key, e.item)
+        if deTo then
+          local hint = "|cff80ff80" .. (deTo == key and L["Disenchant for your enchanting plan"]
+            or L["Send to %s to disenchant"]:format(ShortName(deTo))) .. "|r"
+          e = { kind = e.kind, spell = e.spell, item = e.item, n = e.n, label = e.label, text = e.text,
+            detail = (e.detail and e.detail ~= "" and (e.detail .. "  -  ") or "") .. hint }
+        end
+      end
+      yy = yy + PlaceStep(PROF_W + 4, y - yy, RIGHT_W - 4, e, own, idx % 2 == 0)
+    end
   end
 
   local extra = {}
@@ -558,37 +710,51 @@ local function LayoutProfession(y, name, p, c, own, key)
   if #extra > 0 then yy = yy + 8 + r.mid:GetStringHeight() end
   yy = yy + 4
 
-  -- Cost per milestone: both routes, what they cost, bring back, and the net.
+  -- Cost per milestone: collapsed behind a button by default so the plan stays easy to scan.
   local ms = ns.MilestoneRows(need)
   if ms then
-    yy = yy + 4 + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "range", from = 0, to = 0, header = ms.header }, own)
-    yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = { "|cff8f8f8f" .. L["Skill"] .. "|r",
-      "|cff8f8f8f" .. L["Route"] .. "|r", "|cff8f8f8f" .. L["Mats"] .. "|r", "|cff8f8f8f" .. L["Sold back"] .. "|r",
-      "|cff8f8f8f" .. L["Net cost"] .. "|r" } }, own)
-    for _, row in ipairs(ms.rows) do
-      for i, rt in ipairs(row.routes) do
-        local name = L[rt.mode == "cheap" and "Cheapest" or "Profitable"]
-        name = rt.active and ("|cffffd100" .. name .. "|r") or ("|cffb0b0b0" .. name .. "|r")
-        local cols, tip = { i == 1 and ("%d-%d"):format(row.from, row.to) or "", name, "-", "-", "-" }, nil
-        local m = rt.m
-        if m then
-          local net = rt.net
-          cols[3] = ShortMoney(m.mats)
-          cols[4] = m.best > 0 and ShortMoney(m.best) or ("|cff6f6f6f" .. L["nothing"] .. "|r")
-          cols[5] = net < 0 and ("|cff40ff40+" .. ShortMoney(-net) .. "|r") or ShortMoney(net)
-          local function Way(k)
-            if k ~= "vendor" and m[k] == 0 and m[k .. "Missing"] then return L["unknown"] end
-            return (m[k .. "Missing"] and ">" or "") .. ShortMoney(m[k])
+    local ui = ComradeCraftDB.ui
+    local showMs = ui.showMilestones and p.skillLine and ui.showMilestones[p.skillLine]
+    local lineId = p.skillLine
+    local mb = Action(PROF_W, y - yy - 2, showMs and L["Hide route comparison"] or L["Compare routes"], function()
+      ui.showMilestones = ui.showMilestones or {}
+      ui.showMilestones[lineId] = not ui.showMilestones[lineId] or nil
+      ns.RefreshWindow()
+    end)
+    mb:SetWidth(155)
+    yy = yy + 28
+    if showMs then
+      yy = yy + 2 + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "range", from = 0, to = 0, header = ms.header }, own)
+      yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = { "|cff8f8f8f" .. L["Skill"] .. "|r",
+        "|cff8f8f8f" .. L["Route"] .. "|r", "|cff8f8f8f" .. L["Mats"] .. "|r", "|cff8f8f8f" .. L["Sold back"] .. "|r",
+        "|cff8f8f8f" .. L["Net cost"] .. "|r" } }, own)
+      local mi = 0
+      for _, row in ipairs(ms.rows) do
+        for i, rt in ipairs(row.routes) do
+          mi = mi + 1
+          local name = L[rt.mode == "cheap" and "Cheapest" or "Profitable"]
+          name = rt.active and ("|cffffd100" .. name .. "|r") or ("|cffb0b0b0" .. name .. "|r")
+          local cols, tip = { i == 1 and ("%d-%d"):format(row.from, row.to) or "", name, "-", "-", "-" }, nil
+          local m = rt.m
+          if m then
+            local net = rt.net
+            cols[3] = ShortMoney(m.mats)
+            cols[4] = m.best > 0 and ShortMoney(m.best) or ("|cff6f6f6f" .. L["nothing"] .. "|r")
+            cols[5] = net < 0 and ("|cff40ff40+" .. ShortMoney(-net) .. "|r") or ShortMoney(net)
+            local function Way(k)
+              if k ~= "vendor" and m[k] == 0 and m[k .. "Missing"] then return L["unknown"] end
+              return (m[k .. "Missing"] and ">" or "") .. ShortMoney(m[k])
+            end
+            tip = { { L["Mats"], ShortMoney(m.mats) }, { L["Sold to a merchant"], Way("vendor") },
+              { L["Disenchanted"], Way("de") }, { L["At the auction house (-5%, deposit risk)"], Way("ah") },
+              { L["Best way per item"], ShortMoney(m.best) }, { L["Net cost"], cols[5] } }
           end
-          tip = { { L["Mats"], ShortMoney(m.mats) }, { L["Sold to a merchant"], Way("vendor") },
-            { L["Disenchanted"], Way("de") }, { L["At the auction house (-5%, deposit risk)"], Way("ah") },
-            { L["Best way per item"], ShortMoney(m.best) }, { L["Net cost"], cols[5] } }
+          yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = cols, tip = tip }, own, mi % 2 == 0)
         end
-        yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", cols = cols, tip = tip }, own)
       end
+      local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. L["Net cost = mats minus the best resale of each item. A green + is a profit. Hover a line for the details."] .. "|r", "GameFontDisableSmall", RIGHT_W)
+      yy = yy + nh + 8
     end
-    local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. L["Net cost = mats minus the best resale of each item. A green + is a profit. Hover a line for the details."] .. "|r", "GameFontDisableSmall", RIGHT_W)
-    yy = yy + nh + 8
   end
 
   local items = need and SortedKeys(need.items) or {}
@@ -619,6 +785,25 @@ local function LayoutProfession(y, name, p, c, own, key)
     end
   end
 
+  if own and p.skillLine and ComradeCraftDB and ComradeCraftDB.skippedLearn then
+    local nSkip = 0
+    for sp in pairs(ComradeCraftDB.skippedLearn) do
+      if ns.Recipes[sp] and ns.Recipes[sp][1] == p.skillLine then nSkip = nSkip + 1 end
+    end
+    if nSkip > 0 then
+      local line = p.skillLine
+      local rb = Action(PROF_W, y - yy - 4, L["Reset skipped (%d)"]:format(nSkip), function()
+        for sp in pairs(ComradeCraftDB.skippedLearn or {}) do
+          if ns.Recipes[sp] and ns.Recipes[sp][1] == line then ComradeCraftDB.skippedLearn[sp] = nil end
+        end
+        ns.UpdateNeeds(ns.CharData())
+        ns.RefreshWindow()
+      end)
+      rb:SetWidth(140)
+      yy = yy + 28
+    end
+  end
+
   local h = math.max(r.shop:IsShown() and 76 or 48, yy + ROW_PAD)
   r:SetHeight(h)
   return h
@@ -632,26 +817,40 @@ local function RenderPlan(key, c)
   Label(0, y - 5, L["Route:"], "GameFontNormal", 60)
   Toggle(60, y, L["Cheapest"], mode == "cheap", not c.peer, function() ns.SetRouteMode(key, "cheap") end)
   Toggle(174, y, L["Profitable"], mode == "profit", not c.peer, function() ns.SetRouteMode(key, "profit") end)
+  local visibleLines = {}
+  local plist = SortedKeys(c.professions or {})
+  for _, pname in ipairs(plist) do
+    local line = c.professions[pname].skillLine
+    if LineVisible(line) and line then visibleLines[#visibleLines + 1] = line end
+  end
+  local canFoldAll = #visibleLines > 1 and not ComradeCraftDB.ui.prof
+  local whyW = LIST_W - 296 - (canFoldAll and 106 or 0)
   local why = mode == "profit"
     and L["Picks recipes whose products sell back well. More crafts, so more mats: tooltips, the give list, mail and shopping all follow this route."]
     or L["Spends the least on mats."]
   if c.peer then why = why .. " " .. L["Chosen by its owner."] end
-  local _, hh = Label(296, y - 5, "|cff9d9d9d" .. why .. "|r", nil, LIST_W - 296)
+  local _, hh = Label(296, y - 5, "|cff9d9d9d" .. why .. "|r", nil, math.max(120, whyW))
+  if canFoldAll then
+    local folded = AllCollapsed(visibleLines)
+    Action(LIST_W - 100, y, folded and L["Expand all"] or L["Collapse all"],
+      function() SetAllCollapsed(visibleLines, not folded) end)
+  end
   y = y - math.max(30, hh + 12)
   local own = key == ns.CharKey()
-  local plist = SortedKeys(c.professions or {})
   if #plist == 0 then
     local _, h = Label(0, y, "|cff9d9d9d" .. L["No profession data. Open your profession windows."] .. "|r")
-    return h
+    return -y + h
   end
+  local shown = 0
   for _, pname in ipairs(plist) do
     if LineVisible(c.professions[pname].skillLine) then
+      shown = shown + 1
       y = y - LayoutProfession(y, pname, c.professions[pname], c, own, key)
     end
   end
-  if y == 0 then
-    local _, h = Label(0, 0, "|cff9d9d9d" .. L["No profession matches the filter."] .. "|r")
-    return h
+  if shown == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["No profession matches the filter."] .. "|r")
+    return -y + h
   end
   return -y
 end
@@ -721,6 +920,12 @@ local function RenderCraft(key, c, filter)
     local _, h = Label(0, y, "|cff9d9d9d" .. L["No recipe matches."] .. "|r")
     return h
   end
+  if #lines > 1 and not ComradeCraftDB.ui.prof then
+    local folded = AllCollapsed(lines)
+    Action(LIST_W - 100, y, folded and L["Expand all"] or L["Collapse all"],
+      function() SetAllCollapsed(lines, not folded) end)
+    y = y - 26
+  end
   for _, line in ipairs(lines) do
     local list = byLine[line]
     y = y - Head(y, line, ("|cffffd100%s|r  |cff9d9d9d%s|r"):format(nameOf[line] or tostring(line),
@@ -735,8 +940,8 @@ local function RenderCraft(key, c, filter)
       ct:SetJustifyH("RIGHT")
       y = y - 16
     end
-    for _, e in ipairs(list) do
-      PlaceRecipe(8, y, e, RecipeTags(e), L[e.category], own).requestTo = c.peer and key or nil
+    for idx, e in ipairs(list) do
+      PlaceRecipe(8, y, e, RecipeTags(e), L[e.category], own, idx % 2 == 0, key).requestTo = c.peer and key or nil
       y = y - RECIPE_H
     end
     y = y - 8
@@ -744,14 +949,24 @@ local function RenderCraft(key, c, filter)
   return -y
 end
 
--- Group view: skill table, most wanted materials, or "who can craft" search results.
+local function FormatDuration(sec)
+  if sec <= 0 then return "|cff40ff40" .. L["Ready"] .. "|r" end
+  local d = math.floor(sec / 86400)
+  local h = math.floor((sec % 86400) / 3600)
+  local m = math.floor((sec % 3600) / 60)
+  if d > 0 then return ("|cffffd100%dd %dh|r"):format(d, h) end
+  if h > 0 then return ("|cffffd100%dh %dm|r"):format(h, m) end
+  return ("|cffffd100%dm|r"):format(math.max(1, m))
+end
+
+-- Group view: sub-tabs (Overview | Materials | Disenchant) to avoid information overload,
+-- or instant "who can craft" search results when typing in the search box.
 local function RenderGroup(filter)
   local chars = ns.AllChars()
   local keys = SortedKeys(chars)
   local y = 0
   if filter ~= "" then
-    local _, h = Label(0, y, "|cffffd100" .. L["Who can craft \"%s\""]:format(filter) .. "|r", "GameFontNormal")
-    y = y - h - 6
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Who can craft \"%s\""]:format(filter) .. "|r") - 6
     local found, any = {}, false
     for _, key in ipairs(keys) do
       for _, e in ipairs(ns.CraftCatalog(key)) do
@@ -768,10 +983,10 @@ local function RenderGroup(filter)
     local list = {}
     for _, f in pairs(found) do list[#list + 1] = f end
     table.sort(list, function(a, b) return a.e.name < b.e.name end)
-    for _, f in ipairs(list) do
+    for idx, f in ipairs(list) do
       any = true
       local e = { spell = f.e.spell, item = f.e.item, color = "yellow", name = f.e.name }
-      PlaceRecipe(8, y, e, table.concat(f.who, ", "), nil, false).name:SetText(f.e.name)
+      PlaceRecipe(8, y, e, table.concat(f.who, ", "), nil, false, idx % 2 == 0).name:SetText(f.e.name)
       y = y - RECIPE_H
     end
     if not any then
@@ -781,34 +996,42 @@ local function RenderGroup(filter)
     return -y
   end
 
-  -- "You can give": the current character's spare items that someone else needs.
-  local give = ns.GiveList(ns.CharKey())
-  if #give > 0 then
-    local _, hg = Label(0, y, "|cffffd100" .. L["You can give"] .. "|r  |cff9d9d9d"
-      .. L["Spare items in your bags that others need. With a mailbox open, click one to prepare the mail."] .. "|r", "GameFontNormal")
-    y = y - hg - 6
-    local width = math.floor((LIST_W - 8) / 3)
-    local shown = math.min(#give, 12)
-    for i = 1, shown do
-      local g = give[i]
-      local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
-      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), g.item, g.n,
-        ("-> %s %s"):format(ns.ClassColored(g.to, chars[g.to] and chars[g.to].class), ns.UrgencyText(g.step)), width)
-        .giveTo = g.to
+  local subTab = ComradeCraftDB.ui.groupTab or "overview"
+
+  if subTab == "mats" then
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Most wanted materials"] .. "|r") - 6
+    local mats_ = ns.GroupMaterials(LineVisible)
+    if #mats_ == 0 then
+      local _, h4 = Label(0, y, "|cff9d9d9d" .. L["Nothing missing yet."] .. "|r")
+      return -y + h4
     end
-    y = y - math.ceil(shown / 3) * (MAT_H + 4) - 10
+    local width = math.floor((LIST_W - 8) / 3)
+    for i = 1, math.min(#mats_, 42) do
+      local a = mats_[i]
+      local by = {}
+      for _, b in ipairs(a.by) do
+        by[#by + 1] = ("%s %d %s"):format(ShortName(b.key), b.n, ns.UrgencyText(b.step))
+      end
+      local spare = ns.GroupSupply(a.item)
+      if spare > 0 then by[#by + 1] = "|cff80ccff" .. L["group: %d"]:format(spare) .. "|r" end
+      local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
+      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, a.total, table.concat(by, ", "), width)
+    end
+    y = y - math.ceil(math.min(#mats_, 42) / 3) * (MAT_H + 4)
+    return -y
   end
 
-  -- "Disenchant or keep?": the current character's disenchantable bag items, with a verdict.
-  local advice = ns.BagAdvice(ns.CharKey())
-  if #advice > 0 then
-    local _, ha = Label(0, y, "|cffffd100" .. L["Disenchant or keep?"] .. "|r  |cff9d9d9d"
-      .. L["Green and better items in your bags. Yields are estimates until your disenchants are logged."] .. "|r",
-      "GameFontNormal")
-    y = y - ha - 6
+  if subTab == "de" then
+    local advice = ns.BagAdvice(ns.CharKey())
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Disenchant or keep?"] .. "|r",
+      L["Green and better items in your bags. Yields are estimates until your disenchants are logged."]) - 6
+    if #advice == 0 then
+      local _, h4 = Label(0, y, "|cff9d9d9d" .. L["No disenchantable items in your bags."] .. "|r")
+      return -y + h4
+    end
     local width = math.floor((LIST_W - 8) / 2)
     local myBags = (ComradeCraftDB.chars[ns.CharKey()] or {}).bags or {}
-    local shown = math.min(#advice, 12)
+    local shown = math.min(#advice, 24)
     for i = 1, shown do
       local a = advice[i]
       local text
@@ -831,14 +1054,77 @@ local function RenderGroup(filter)
         if a.enchanter then text = text .. "  |cff66ccff" .. L["give to %s"]:format(ShortName(a.enchanter)) .. "|r" end
       end
       local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
-      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, myBags[a.item] or 1, text, width)
+      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, myBags[a.item] or 1, text, width).verdictText = text
     end
-    y = y - math.ceil(shown / 2) * (MAT_H + 4) - 10
+    y = y - math.ceil(shown / 2) * (MAT_H + 4)
+    return -y
   end
 
-  -- Skill table: one line per character.
-  local _, h = Label(0, y, "|cffffd100" .. L["Skill levels"] .. "|r", "GameFontNormal")
-  y = y - h - 6
+  if subTab == "upgrades" then
+    local groups = ns.Audit and ns.Audit.Run() or {}
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Group upgrades"] .. "|r",
+      L["Small bags, unenchanted gear and craftable upgrades your group can make."]) - 6
+    if #groups == 0 then
+      local _, h4 = Label(0, y, "|cff9d9d9d" .. L["Everyone's bags, enchants and gear are up to date."] .. "|r")
+      return -y + h4
+    end
+    for _, grp in ipairs(groups) do
+      local _, ch = Label(0, y - 2, ns.ClassColored(grp.targetKey, grp.targetClass), "GameFontNormal")
+      y = y - ch - 4
+      for _, u in ipairs(grp.items) do
+        local byTxt = ("|cff9d9d9d%s|r"):format(L["by %s"]:format(ShortName(u.crafter)))
+        local _, uh = Label(12, y - 3, u.summary .. "  " .. byTxt, "GameFontHighlightSmall", LIST_W - 120)
+        local spell, crafter, qty, targetShort, own = u.spell, u.crafter, u.qty or 1, ShortName(grp.targetKey), u.ownCrafter
+        if own and ns.Wishlist then
+          local bp = Action(LIST_W - 96, y, L["Pin"], function()
+            ns.Wishlist.Add(spell, qty, targetShort, nil, true, crafter)
+          end)
+          bp:SetWidth(90)
+        elseif not own and ns.Requests then
+          local ba = Action(LIST_W - 96, y, L["Ask"], function()
+            ns.Requests.ShowDialog(crafter, spell)
+          end)
+          ba:SetWidth(90)
+        end
+        y = y - math.max(26, uh + 8)
+      end
+      y = y - 6
+    end
+    return -y
+  end
+
+  -- Overview sub-tab: Synergies (when any), "You can give", clickable "Skill levels", and "Group cooldowns".
+  local syns = ns.Synergies and ns.Synergies.Find() or {}
+  if #syns > 0 then
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Group synergies"] .. "|r",
+      L["Cross-profession links between your group's active plans."]) - 6
+    for i = 1, math.min(#syns, 4) do
+      local s = syns[i]
+      local _, sh = Label(8, y - 2, "|cff80ff80>|r " .. s.detail, "GameFontHighlightSmall", LIST_W - 16)
+      y = y - sh - 5
+    end
+    y = y - 6
+  end
+
+  local give = ns.GiveList(ns.CharKey())
+  if #give > 0 then
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["You can give"] .. "|r",
+      L["Spare items in your bags that others need. With a mailbox open, click one to prepare the mail."]) - 6
+    local width = math.floor((LIST_W - 8) / 3)
+    local shown = math.min(#give, 12)
+    for i = 1, shown do
+      local g = give[i]
+      local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
+      PlaceMat(col * (width + 4), y - line * (MAT_H + 4), g.item, g.n,
+        ("-> %s %s"):format(ns.ClassColored(g.to, chars[g.to] and chars[g.to].class), ns.UrgencyText(g.step)), width)
+        .giveTo = g.to
+    end
+    y = y - math.ceil(shown / 3) * (MAT_H + 4) - 10
+  end
+
+  -- Skill table: one clickable line per character (click opens that character's sheet).
+  y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Skill levels"] .. "|r") - 6
+  local ri = 0
   for _, key in ipairs(keys) do
     local c = chars[key]
     local parts = {}
@@ -847,38 +1133,121 @@ local function RenderGroup(filter)
       if LineVisible(p.skillLine) then parts[#parts + 1] = ("%s %d/%d"):format(pname, p.rank or 0, p.max or 0) end
     end
     if #parts > 0 or not ComradeCraftDB.ui.prof then
-      Label(0, y, ns.ClassColored(key, c.class) .. (c.spec and ("  |cff9d9d9d" .. c.spec .. "|r") or ""),
-        "GameFontHighlight", 170)
-      local _, h2 = Label(180, y, table.concat(parts, "   "), "GameFontHighlightSmall", LIST_W - 180)
-      y = y - math.max(16, h2) - 4
+      ri = ri + 1
+      local gr = Acquire(groupRows, function()
+        local b = CreateFrame("Button", nil, content)
+        b:SetWidth(LIST_W)
+        b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+        b.bg = b:CreateTexture(nil, "BACKGROUND")
+        b.bg:SetAllPoints()
+        b.bg:Hide()
+        b.name = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        b.name:SetPoint("TOPLEFT", 6, -3)
+        b.name:SetWidth(170)
+        b.name:SetJustifyH("LEFT")
+        b.profs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.profs:SetPoint("TOPLEFT", 182, -4)
+        b.profs:SetWidth(LIST_W - 188)
+        b.profs:SetJustifyH("LEFT")
+        b:SetScript("OnClick", function(self)
+          if self.key then
+            ComradeCraftDB.ui.sel = self.key
+            ns.RefreshWindow()
+          end
+        end)
+        return b
+      end)
+      gr.key = key
+      gr:ClearAllPoints()
+      gr:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+      if ri % 2 == 0 then gr.bg:SetColorTexture(0.10, 0.10, 0.13, 0.34) gr.bg:Show() else gr.bg:Hide() end
+      gr.name:SetText(ns.ClassColored(key, c.class) .. (c.spec and ("  |cff9d9d9d" .. c.spec .. "|r") or ""))
+      gr.profs:SetText(table.concat(parts, "   "))
+      local rh = math.max(22, (gr.profs:GetStringHeight() or 12) + 8)
+      gr:SetHeight(rh)
+      y = y - rh - 1
     end
   end
 
-  y = y - 10
-  local _, h3 = Label(0, y, "|cffffd100" .. L["Most wanted materials"] .. "|r", "GameFontNormal")
-  y = y - h3 - 6
-  local mats_ = ns.GroupMaterials(LineVisible)
-  if #mats_ == 0 then
-    local _, h4 = Label(0, y, "|cff9d9d9d" .. L["Nothing missing yet."] .. "|r")
-    return -y + h4
-  end
-  local width = math.floor((LIST_W - 8) / 3)
-  for i = 1, math.min(#mats_, 30) do
-    local a = mats_[i]
-    local by = {}
-    for _, b in ipairs(a.by) do
-      by[#by + 1] = ("%s %d %s"):format(ShortName(b.key), b.n, ns.UrgencyText(b.step))
+  -- Group profession cooldowns (when any character has recorded long cooldowns).
+  local now = (GetServerTime and GetServerTime()) or time()
+  local cds = {}
+  for _, key in ipairs(keys) do
+    local c = chars[key]
+    for spell, readyAt in pairs(c.cooldowns or {}) do
+      cds[#cds + 1] = { key = key, class = c.class, spell = spell, left = readyAt - now }
     end
-    local spare = ns.GroupSupply(a.item)
-    if spare > 0 then by[#by + 1] = "|cff80ccff" .. L["group: %d"]:format(spare) .. "|r" end
-    local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
-    PlaceMat(col * (width + 4), y - line * (MAT_H + 4), a.item, a.total, table.concat(by, ", "), width)
   end
-  y = y - math.ceil(math.min(#mats_, 30) / 3) * (MAT_H + 4)
+  if #cds > 0 then
+    table.sort(cds, function(a, b) return a.left < b.left end)
+    y = y - 10
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Group cooldowns"] .. "|r") - 6
+    for _, cd in ipairs(cds) do
+      Label(6, y - 2, ns.ClassColored(cd.key, cd.class), "GameFontHighlightSmall", 140)
+      Label(150, y - 2, ns.SpellName(cd.spell), "GameFontHighlightSmall", LIST_W - 260)
+      local st = Label(LIST_W - 100, y - 2, FormatDuration(cd.left), "GameFontHighlightSmall", 94)
+      st:SetJustifyH("RIGHT")
+      y = y - 18
+    end
+  end
+  return -y
+end
+
+-- Wishlist view: local + synced group pinned crafts, material progress, who they're for, and quick actions.
+local function RenderWishlist()
+  local Wl = ns.Wishlist
+  local y = 0
+  local list = Wl and Wl.List(nil, true) or {}
+  if #list == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["No craft pinned yet. Right-click any recipe in your Can craft tab to add it here, track its materials and get notified when ready."] .. "|r")
+    return -y + h
+  end
+  local me = ns.CharKey()
+  local chars = ns.AllChars()
+  for _, e in ipairs(list) do
+    local prog = Wl.Progress(e, chars[e.char])
+    local label = e.item ~= 0 and (ItemInfo(e.item) or ("item:" .. e.item)) or ns.SpellName(e.spell)
+    local who = e.forWho and ("  |cff80ccff" .. L["For %s"]:format(e.forWho) .. "|r") or ""
+    local status = prog.bagReady and ("  |cff40ff40" .. L["Ready to craft!"] .. "|r")
+      or (prog.ready and ("  |cffffd100" .. L["Ready (some mats in bank/mail)"] .. "|r") or "")
+    local sub = e.remote and (L["via %s"]:format(ShortName(e.char)) .. (e.note and (" - " .. e.note) or ""))
+      or (e.note or ShortName(e.char))
+    y = y - SectionBar(0, y, LIST_W, ("|cffffd100%dx %s|r%s%s"):format(e.qty, label, who, status), sub) - 6
+    local parts = {}
+    for _, m in ipairs(prog.mats) do
+      local col = m.missing == 0 and "40ff40" or "ffd100"
+      parts[#parts + 1] = ("%s |cff%s%d/%d|r"):format((ItemInfo(m.item)) or ("item:" .. m.item), col, m.have, m.need)
+    end
+    local _, mh = Label(8, y - 2, table.concat(parts, "   "), "GameFontHighlightSmall", LIST_W - (e.remote and 20 or 290))
+    if not e.remote then
+      local id, spell, own = e.id, e.spell, e.char == me
+      local bx = LIST_W - 86
+      local bd = Action(bx, y, L["Done"], function() Wl.Remove(id) end)
+      bd:SetWidth(82)
+      bx = bx - 88
+      local bp = Action(bx, y, e.pinned and L["Unpin"] or L["Pin"], function() Wl.SetPinned(id, not e.pinned) end)
+      bp:SetWidth(82)
+      if own then
+        bx = bx - 88
+        local bc = Action(bx, y, L["Craft"], function() ns.OpenRecipe(spell) end)
+        bc:SetWidth(82)
+      end
+    end
+    y = y - math.max(28, mh + 10) - 6
+  end
   return -y
 end
 
 -- Sidebar ---------------------------------------------------------------------------------
+
+local suppressSearch = false
+local function ClearSearch()
+  if frame and frame.search and (frame.search:GetText() or "") ~= "" then
+    suppressSearch = true
+    frame.search:SetText("")
+    suppressSearch = false
+  end
+end
 
 local function CreateSideBtn()
   local b = CreateFrame("Button", nil, side)
@@ -886,17 +1255,23 @@ local function CreateSideBtn()
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
   b.sel = b:CreateTexture(nil, "BACKGROUND")
   b.sel:SetAllPoints()
-  b.sel:SetColorTexture(0.4, 0.3, 0.1, 0.5)
+  b.sel:SetColorTexture(0.16, 0.16, 0.20, 0.88)
+  b.accent = b:CreateTexture(nil, "ARTWORK")
+  b.accent:SetWidth(2)
+  b.accent:SetPoint("TOPLEFT", 0, 0)
+  b.accent:SetPoint("BOTTOMLEFT", 0, 0)
+  b.accent:SetColorTexture(1, 0.82, 0, 1)
   b.name = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  b.name:SetPoint("TOPLEFT", 6, -4)
+  b.name:SetPoint("TOPLEFT", 8, -4)
   b.sub = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  b.sub:SetPoint("TOPLEFT", 6, -20)
-  b.sub:SetWidth(SIDE_LIST_W - 16)
+  b.sub:SetPoint("TOPLEFT", 8, -20)
+  b.sub:SetWidth(SIDE_LIST_W - 18)
   b.sub:SetJustifyH("LEFT")
   b:SetScript("OnClick", function(self)
     if self.peerID then
       ns.Sync.Include(self.peerID) -- a suggestion: click adds that player to the group
     elseif self.key then
+      if ComradeCraftDB.ui.sel ~= self.key then ClearSearch() end
       ComradeCraftDB.ui.sel = self.key
       ns.RefreshWindow()
     end
@@ -910,6 +1285,7 @@ local function PeerName(c)
   return peer and peer.name
 end
 
+local sideDiv, sideCharHead
 local function RenderSide(sel)
   ReleaseAll(sideBtns)
   local chars = ns.AllChars()
@@ -924,20 +1300,47 @@ local function RenderSide(sel)
     local h = 24 + (sub ~= "" and (b.sub:GetStringHeight() or 12) or 0)
     b:SetHeight(h)
     b.sel:SetShown(sel == key)
+    b.accent:SetShown(sel == key)
     y = y - h - 4
   end
   Add("group", L["Group"], ns.Plural(#SortedKeys(chars), "%d member", "%d members"))
+  Add("groupplan", L["Group plan"], "|cff9d9d9d" .. (ns.GroupObjective() == "group" and L["Lowest group cost"]
+    or L["Market value"]) .. "|r")
+  local wList = ns.Wishlist and ns.Wishlist.List() or {}
+  local wReady = 0
+  for _, e in ipairs(wList) do if ns.Wishlist.Progress(e).bagReady then wReady = wReady + 1 end end
+  local wSub = wReady > 0 and ("|cff40ff40" .. L["%d ready"]:format(wReady) .. "|r")
+    or (#wList > 0 and ("|cff9d9d9d" .. ns.Plural(#wList, "%d tracked", "%d tracked") .. "|r")
+    or ("|cff9d9d9d" .. L["none pinned"] .. "|r"))
+  Add("wishlist", L["Wishlist"], wSub)
+  local open = ns.Requests and ns.Requests.OpenCount() or 0
+  Add("requests", L["Craft requests"], open > 0 and ("|cff80ff80" .. ns.Plural(open, "%d to answer", "%d to answer") .. "|r")
+    or ("|cff9d9d9d" .. L["none open"] .. "|r"))
+  local listed = 0
+  for _ in pairs(ns.Directory.Index().chars) do listed = listed + 1 end
+  Add("directory", L["Guild directory"], "|cff9d9d9d" .. ns.Plural(listed, "%d crafter", "%d crafters") .. "|r")
   local inGroup, requests = 0, 0
   for _, peer in pairs(ComradeCraftDB.peers or {}) do
     if peer.included then inGroup = inGroup + 1 elseif peer.asked then requests = requests + 1 end
   end
   Add("manage", L["Manage group"], ns.Plural(inGroup, "%d player", "%d players")
     .. (requests > 0 and ("  |cff80ff80" .. ns.Plural(requests, "%d request", "%d requests") .. "|r") or ""))
-  local open = ns.Requests and ns.Requests.OpenCount() or 0
-  Add("requests", L["Craft requests"], open > 0 and ("|cff80ff80" .. ns.Plural(open, "%d to answer", "%d to answer") .. "|r")
-    or ("|cff9d9d9d" .. L["none open"] .. "|r"))
-  Add("groupplan", L["Group plan"], "|cff9d9d9d" .. (ns.GroupObjective() == "group" and L["Lowest group cost"]
-    or L["Market value"]) .. "|r")
+
+  -- Visual divider between navigation views and character sheets.
+  if not sideDiv then
+    sideDiv = side:CreateTexture(nil, "ARTWORK")
+    sideDiv:SetHeight(1)
+    sideDiv:SetWidth(SIDE_LIST_W - 12)
+    sideDiv:SetColorTexture(0.6, 0.5, 0.3, 0.45)
+    sideCharHead = side:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    sideCharHead:SetJustifyH("LEFT")
+  end
+  sideDiv:ClearAllPoints()
+  sideDiv:SetPoint("TOPLEFT", side, "TOPLEFT", 6, y - 3)
+  sideCharHead:ClearAllPoints()
+  sideCharHead:SetPoint("TOPLEFT", side, "TOPLEFT", 8, y - 9)
+  sideCharHead:SetText("|cffffd100" .. L["Characters"] .. "|r")
+  y = y - 24
   for _, key in ipairs(SortedKeys(chars)) do
     local c = chars[key]
     local lines = { LevelSpecClass(c) }
@@ -965,15 +1368,14 @@ end
 
 -- Manage group view ------------------------------------------------------------------------
 
--- Section title + one-line explanation; returns the new y.
+-- Section title bar + optional one-line explanation; returns the new y.
 local function Section(y, title, help)
-  local _, h = Label(0, y, "|cffffd100" .. title .. "|r", "GameFontNormalLarge")
-  y = y - h - 2
+  y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. title .. "|r") - 4
   if help then
-    local _, h2 = Label(0, y, "|cff9d9d9d" .. help .. "|r")
-    y = y - h2
+    local _, h2 = Label(4, y, "|cff9d9d9d" .. help .. "|r", nil, LIST_W - 8)
+    y = y - h2 - 4
   end
-  return y - 8
+  return y - 4
 end
 
 local function CharCount(peer)
@@ -990,11 +1392,50 @@ local function RenderManage()
   local y = 0
 
   y = Section(y, L["Your characters"], L["Only checked characters are shared, and only with the players in your group."])
-  for _, key in ipairs(SortedKeys(db.chars)) do
+  local _, lh = Label(0, y + 4, "|cff9d9d9d" .. L["Right box: list the character in the guild directory (professions and recipes only, sent to your guild)."] .. "|r")
+  y = y - lh - 4
+  local ownKeys = SortedKeys(db.chars)
+  local nameCounts = {}
+  for _, key in ipairs(ownKeys) do
+    local s = ShortName(key)
+    nameCounts[s] = (nameCounts[s] or 0) + 1
+  end
+  local meKey = ns.CharKey()
+  local anyShared, anyUnshared = false, false
+  for _, key in ipairs(ownKeys) do
     local c = db.chars[key]
+    if c.shared then anyShared = true else anyUnshared = true end
     Check(0, y + 2, c.shared, function(on) Sync.SetShared(key, on) end)
-    Label(30, y - 4, ns.ClassColored(key, c.class) .. "  |cff9d9d9d" .. LevelSpecClass(c) .. "|r", "GameFontHighlight")
+    local realmTag = nameCounts[ShortName(key)] > 1 and (" |cff6f6f6f(" .. (key:match("-(.+)$") or "?") .. ")|r") or ""
+    local canRemove = key ~= meKey
+    Label(30, y - 4, ns.ClassColored(key, c.class) .. realmTag .. "  |cff9d9d9d" .. LevelSpecClass(c) .. "|r",
+      "GameFontHighlight", LIST_W - (canRemove and 330 or 250))
+    local dirX = canRemove and (LIST_W - 290) or (LIST_W - 210)
+    Check(dirX, y + 2, c.listed, function(on) ns.Directory.SetListed(key, on) end)
+    Label(dirX + 28, y - 4, L["List in guild directory"], nil, 175)
+    if canRemove then
+      local delKey = key
+      local delBtn = Action(LIST_W - 80, y, L["Remove"], function()
+        db.chars[delKey] = nil
+        if db.ui and db.ui.sel == delKey then db.ui.sel = meKey end
+        Sync.AnnounceToGroup()
+        ns.RefreshWindow()
+      end)
+      delBtn:SetWidth(76)
+    end
     y = y - 28
+  end
+  if #ownKeys > 0 then
+    local bAll = Action(0, y, L["Share all"], function() Sync.SetAllShared(true) end)
+    bAll:SetWidth(104)
+    bAll:SetEnabled(anyUnshared)
+    local bNone = Action(110, y, L["Unshare all"], function() Sync.SetAllShared(false) end)
+    bNone:SetWidth(104)
+    bNone:SetEnabled(anyShared)
+    db.settings = db.settings or {}
+    Check(226, y + 1, db.settings.autoShareNew, function(on) db.settings.autoShareNew = on or nil end)
+    local _, ah = Label(254, y - 4, L["Automatically share new characters on this account"], nil, LIST_W - 254)
+    y = y - math.max(28, ah + 10)
   end
 
   local inGroup, others = {}, {}
@@ -1027,9 +1468,10 @@ local function RenderManage()
     y = y - 30
   end
 
+  local pendingAdds = Sync.PendingAdds and Sync.PendingAdds() or {}
   y = Section(y - 10, L["Requests and suggestions"],
     L["Players with ComradeCraft in your guild, or who added you. Add them to share both ways."])
-  if #others == 0 then
+  if #others == 0 and #pendingAdds == 0 then
     local _, h = Label(0, y, "|cff9d9d9d" .. L["Nobody yet."] .. "|r")
     y = y - h - 8
   end
@@ -1040,6 +1482,13 @@ local function RenderManage()
     Action(LIST_W - 100, y, L["Add"], function() Sync.Include(e.id) end)
     y = y - 28
   end
+  for _, p in ipairs(pendingAdds) do
+    Label(0, y - 4, p.name .. "  |cffffd100" .. L["waiting for reply"] .. "|r  |cff9d9d9d(" .. Ago(p.t) .. ")|r",
+      "GameFontHighlight", LIST_W - 210)
+    Action(LIST_W - 200, y, L["Retry"], function() Sync.RetryAdd(p.key) end)
+    Action(LIST_W - 100, y, L["Cancel"], function() Sync.CancelAdd(p.key) end)
+    y = y - 28
+  end
 
   y = Section(y - 10, L["Add a player by name"], L["For friends outside your guild. They must add you back."])
   frame.addBox:ClearAllPoints()
@@ -1048,11 +1497,32 @@ local function RenderManage()
   Action(200, y + 1, L["Add"], function()
     local name = frame.addBox:GetText()
     if name and name ~= "" then
-      ns.commands.add(name)
+      Sync.AddByName(name)
       frame.addBox:SetText("")
     end
   end)
+  local targetName = Sync.TargetPlayerName and Sync.TargetPlayerName() or nil
+  local tBtn = Action(304, y + 1, targetName and L["Add %s"]:format(targetName) or L["Add target"], function()
+    if targetName then Sync.AddByName(targetName) end
+  end)
+  tBtn:SetWidth(140)
+  tBtn:SetEnabled(targetName ~= nil)
   y = y - 34
+
+  local quick = Sync.QuickAddCandidates and Sync.QuickAddCandidates() or {}
+  if #quick > 0 then
+    local _, qh = Label(0, y, "|cff9d9d9d" .. L["Online in your party, friends or guild:"] .. "|r")
+    y = y - qh - 6
+    local srcLabel = { party = L["Party"], friend = L["Friend"], guild = L["Guild"] }
+    for i = 1, math.min(#quick, 6) do
+      local q = quick[i]
+      Label(0, y - 4, ns.ClassColored(q.name, q.class) .. "  |cff9d9d9d" .. (srcLabel[q.source] or "") .. "|r",
+        "GameFontHighlight", LIST_W - 110)
+      Action(LIST_W - 100, y, L["Add"], function() Sync.AddByName(q.name) end)
+      y = y - 26
+    end
+    y = y - 4
+  end
 
   y = Section(y - 6, L["Options"])
   db.settings = db.settings or {}
@@ -1071,6 +1541,16 @@ local function RenderManage()
   Check(0, y + 2, ns.FarmTrackerOn(), function(on) ns.SetFarmTracker(on) end)
   _, h = Label(30, y - 4, L["Show the farming tracker (your farming assignments from the Group plan)."], nil, LIST_W - 30)
   y = y - math.max(28, h + 10)
+  if ns.Bags then
+    Check(0, y + 2, ns.Bags.On(), function(on) ns.Bags.Set(on) end)
+    _, h = Label(30, y - 4, L["Highlight items for your group in your bags (and focus a recipient's items when mailing)."], nil, LIST_W - 30)
+    y = y - math.max(28, h + 10)
+  end
+  if ns.Wishlist then
+    Check(0, y + 2, ns.Wishlist.TrackerOn(), function(on) ns.Wishlist.SetTracker(on) end)
+    _, h = Label(30, y - 4, L["Show the wishlist tracker on screen (pinned crafts)."], nil, LIST_W - 30)
+    y = y - math.max(28, h + 10)
+  end
 
   -- Group plan objective: what "cheapest" means for every plan.
   local _, gh = Label(0, y - 2, "|cffffd100" .. L["Group plan"] .. "|r", "GameFontNormal")
@@ -1119,6 +1599,7 @@ local HELP = {
   { L["Disenchant or keep"], L["Your green items: keep one per slot your enchanting plan needs, keep upgrades for group members, sell what is worth more than its mats, disenchant the rest."] },
   { L["Shopping"], L["The Shopping list button makes an Auctionator list, or a TSM search and group to paste. TSM groups that are done are pointed out."] },
   { L["Sharing"], L["Nothing is shared until you check a character in Manage group, and only with players you added who added you back."] },
+  { L["Guild directory"], L["Opt-in, per character: List in guild directory in Manage group (or /comrade list) sends its professions and recipes to guildmates who use ComradeCraft. Search who can craft an item, whisper them, or ask for the craft if they are in your group. Item tooltips name up to 3 guild crafters."] },
   { L["Next rank"], L["At the skill cap: the Expert book (vendor or AH), the Artisan quest found in Questie (click for a waypoint to its giver), or the trainer."] },
   { L["Alerts"], L["Mats ready, profession cooldowns ready on any of your characters, craft requests, items your group needs when you open a merchant or the AH (with Buy back after a sale), and opt-in upgrades. Each one can be turned off in Manage group."] },
   { L["Better with"], L["TSM or Auctionator (prices), Questie (positions), TomTom (waypoints), Pawn (upgrades for each class and spec). All optional."] },
@@ -1331,19 +1812,38 @@ local function CreatePlanRow()
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine((ItemInfo(self.row.item)) or ("item:" .. self.row.item), 1, 1, 1)
     ns.AddPlanLines(GameTooltip, self.row)
+    if self.advice then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddDoubleLine(L["Advice"], self.advice.label, 0.8, 0.8, 0.8, 1, 1, 1)
+      if self.advice.spot then
+        local sp = self.advice.spot
+        GameTooltip:AddDoubleLine(L["Farm spot"], ("%s (%s %d, %d)"):format(sp.name, sp.zone or "?", sp.x, sp.y),
+          0.5, 0.8, 1, 1, 1, 1)
+        GameTooltip:AddLine(L["Click: waypoint to farm spot."], 0.5, 0.8, 1)
+      end
+    end
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  b:SetScript("OnClick", function(self) LinkOnShiftClick(self.row.item) end)
+  b:SetScript("OnClick", function(self)
+    if not LinkOnShiftClick(self.row.item) and self.advice and self.advice.spot and ns.FarmAdvice then
+      ns.FarmAdvice.Waypoint(self.row.item)
+    end
+  end)
   return b
 end
 
 local function RenderGroupPlan()
   local y = 0
-  local objective = ns.GroupObjective() == "group" and L["Lowest group cost"] or L["Market value"]
-  local _, h = Label(0, y, "|cff9d9d9d" .. L["Objective: %s (change it in Manage group > Options)."]:format(
-    "|cffffd100" .. objective .. "|cff9d9d9d") .. "|r")
-  y = y - h - 8
+  local objective = ns.GroupObjective()
+  Label(0, y - 5, L["Objective:"], "GameFontNormal", 72)
+  Toggle(76, y, L["Lowest group cost"], objective == "group", true, function() ns.SetGroupObjective("group") end):SetWidth(150)
+  Toggle(230, y, L["Market value"], objective == "solo", true, function() ns.SetGroupObjective("solo") end):SetWidth(120)
+  local desc = objective == "group"
+    and L["Least gold spent by the group: stock already held in the group counts as free."]
+    or L["Every material at its market value, as if each character were alone."]
+  local _, h = Label(358, y - 5, "|cff9d9d9d" .. desc .. "|r", nil, LIST_W - 358)
+  y = y - math.max(30, h + 12)
   local list, total, complete, any = ns.GroupPlan()
   if #list == 0 then
     local _, h2 = Label(0, y, "|cff9d9d9d" .. L["Nothing missing yet."] .. "|r")
@@ -1356,9 +1856,11 @@ local function RenderGroupPlan()
   end
   y = y - 16
   local chars = ns.AllChars()
-  for _, row in ipairs(list) do
+  local gold = (GetMoney and GetMoney()) or 0
+  for idx, row in ipairs(list) do
     local b = Acquire(planRows, CreatePlanRow)
     b.row = row
+    b.advice = row.toGet > 0 and ns.FarmAdvice and ns.FarmAdvice.Evaluate(row.item, row.toGet, gold) or nil
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
     local name, _, icon = ItemInfo(row.item)
@@ -1376,7 +1878,13 @@ local function RenderGroupPlan()
     b.spare:SetText(row.spare > 0 and ("|cff80ccff%d|r |cff9d9d9d(%s)|r"):format(row.spare, table.concat(holders, ", "))
       or "|cff6f6f6f-|r")
     b.get:SetText(row.toGet > 0 and ("|cffffd100" .. row.toGet .. "|r") or "|cff40ff400|r")
-    b.cost:SetText(row.toGet == 0 and "|cff6f6f6f-|r" or row.cost and ShortMoney(row.cost) or "|cff9d9d9d?|r")
+    local costTxt = row.toGet == 0 and "|cff6f6f6f-|r" or row.cost and ShortMoney(row.cost) or "|cff9d9d9d?|r"
+    if b.advice and row.toGet > 0 then
+      local tag = b.advice.action == "buy" and " |cff40ff40" .. L["Buy"] .. "|r"
+        or (b.advice.action == "farm" and " |cffffa040" .. L["Farm"] .. "|r" or "")
+      costTxt = costTxt .. tag
+    end
+    b.cost:SetText(costTxt)
     -- Farming: who took it (own: a Drop button), else an offer when something is left to get.
     local farmers, mine = {}, nil
     for _, f in ipairs(row.farmers) do
@@ -1399,8 +1907,72 @@ local function RenderGroupPlan()
   local text = not any and L["Estimated cost for the group: unknown (TSM or Auctionator give AH prices)."]
     or complete and L["Estimated cost for the group: %s"]:format(ns.Money(math.floor(total)))
     or L["Estimated cost for the group: at least %s (some items have no price)."]:format(ns.Money(math.floor(total)))
+  if gold > 0 then
+    text = text .. "   |cff9d9d9d" .. L["Your gold: %s"]:format("|cffffffff" .. ns.Money(gold) .. "|cff9d9d9d") .. "|r"
+  end
   local _, th = Label(0, y, "|cffffd100" .. text .. "|r", "GameFontNormal")
   return -y + th + 4
+end
+
+-- Guild directory view: listed characters (empty search), or who crafts what matches the search.
+local function DirectoryProfs(e)
+  local parts = {}
+  for _, line in ipairs(SortedKeys(e.p or {})) do
+    local x = e.p[line]
+    parts[#parts + 1] = ("%s %d/%d"):format(x[3] or ("#" .. line), x[1] or 0, x[2] or 0)
+  end
+  return table.concat(parts, ", ")
+end
+
+-- One crafter line with its Whisper (and, for a group member, Ask for it) button.
+local function DirectoryRow(x, y, key, spell, text)
+  local D = ns.Directory
+  local _, h = Label(x, y - 4, text, "GameFontHighlight", LIST_W - x - 210)
+  if D.WhisperTarget(key) then Action(LIST_W - 100, y, L["Whisper"], function() D.Whisper(key) end) end
+  if spell and D.CanRequest(key) then
+    Action(LIST_W - 200, y, L["Ask for it"], function() ns.Requests.ShowDialog(key, spell) end)
+  end
+  return y - math.max(26, h + 8)
+end
+
+local function RenderDirectory(filter)
+  local D = ns.Directory
+  local idx = D.Index()
+  local y = 0
+  if not next(idx.chars) then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["Nobody is listed yet. The directory is opt-in: each player lists their own characters in Manage group (List in guild directory) or with /comrade list."] .. "|r")
+    return -y + h
+  end
+  if filter == "" then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["Type a product or recipe name in the search box."] .. "|r")
+    y = y - h - 10
+    for _, key in ipairs(SortedKeys(idx.chars)) do
+      local e = idx.chars[key]
+      local seen = e.own and "" or ("  |cff9d9d9d" .. L["seen %s"]:format(Ago(e.seen)) .. "|r")
+      y = DirectoryRow(0, y, key, nil, ns.ClassColored(key, e.cl) .. "  |cff9d9d9d" .. DirectoryProfs(e) .. "|r" .. seen)
+    end
+    return -y
+  end
+  local found = D.Search(filter)
+  if #found == 0 then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["No crafter found."] .. "|r")
+    return -y + h
+  end
+  for i = 1, math.min(#found, D.MAX_ROWS) do
+    local r = found[i]
+    local _, h = Label(0, y, "|cffffd100" .. r.name .. "|r  |cff9d9d9d- " .. D.Names(r.crafters, 3) .. "|r", "GameFontNormal")
+    y = y - h - 6
+    for i2 = 1, math.min(#r.crafters, 10) do
+      local key = r.crafters[i2]
+      y = DirectoryRow(16, y, key, r.spell, ns.ClassColored(key, idx.chars[key] and idx.chars[key].cl))
+    end
+    y = y - 6
+  end
+  if #found > D.MAX_ROWS then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["... and %d more"]:format(#found - D.MAX_ROWS) .. "|r")
+    y = y - h
+  end
+  return -y
 end
 
 -- Refresh ---------------------------------------------------------------------------------
@@ -1412,6 +1984,7 @@ local function CreateChip()
   b:SetHeight(20)
   b.bg = b:CreateTexture(nil, "BACKGROUND")
   b.bg:SetAllPoints()
+  AddBorder(b)
   b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   b.label:SetPoint("CENTER")
   b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
@@ -1422,7 +1995,16 @@ local function CreateChip()
   return b
 end
 
-local function RenderChips(chars)
+local function LocalProfName(line, fallback)
+  local T = C_TradeSkillUI
+  if T and T.GetTradeSkillDisplayName then
+    local ok, n = pcall(T.GetTradeSkillDisplayName, line)
+    if ok and type(n) == "string" and n ~= "" then return n end
+  end
+  return fallback
+end
+
+local function RenderChips(chars, startY)
   ReleaseAll(chips)
   local ui = ComradeCraftDB.ui
   local names, lines = {}, {}
@@ -1430,51 +2012,93 @@ local function RenderChips(chars)
     for pname, p in pairs(c.professions or {}) do
       local line = p.skillLine
       if line and not names[line] and not (ui.hideGathering ~= false and ns.GATHERING[line]) then
-        names[line] = pname
+        names[line] = LocalProfName(line, pname)
         lines[#lines + 1] = line
       end
     end
   end
   table.sort(lines, function(a, b) return names[a] < names[b] end)
   if ui.prof and not names[ui.prof] then ui.prof = nil end
-  local x = DETAIL_X
+  local x, rowY = DETAIL_X, startY or -140
+  local maxX = W - 34
   local function Chip(line, text)
     local b = Acquire(chips, CreateChip)
     b.line = line
     b.label:SetText(text)
     local active = ui.prof == line
-    b.label:SetTextColor(active and 1 or 0.75, active and 0.82 or 0.75, active and 0 or 0.75)
-    b.bg:SetColorTexture(active and 0.35 or 0.12, active and 0.27 or 0.1, active and 0.12 or 0.08, 0.9)
+    if active then
+      b.bg:SetColorTexture(0.16, 0.16, 0.20, 0.96)
+      SetBorderColor(b, 0.82, 0.66, 0.24, 0.92)
+      b.label:SetTextColor(1, 0.85, 0.22)
+    else
+      b.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+      SetBorderColor(b, 0.28, 0.25, 0.20, 0.6)
+      b.label:SetTextColor(0.75, 0.75, 0.78)
+    end
     local w = math.max(40, (b.label:GetStringWidth() or 40) + 16)
+    if x > DETAIL_X and x + w > maxX then
+      x = DETAIL_X
+      rowY = rowY - 24
+    end
     b:SetWidth(w)
     b:ClearAllPoints()
-    b:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -140)
+    b:SetPoint("TOPLEFT", frame, "TOPLEFT", x, rowY)
     x = x + w + 4
   end
   Chip(nil, L["All"])
   for _, line in ipairs(lines) do Chip(line, names[line]) end
+  local gw = 26 + (frame.gatherBox.label:GetStringWidth() or 100)
+  if x > DETAIL_X and x + gw + 8 > maxX then
+    x = DETAIL_X
+    rowY = rowY - 24
+  end
   frame.gatherBox:ClearAllPoints()
-  frame.gatherBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 8, -138)
+  frame.gatherBox:SetPoint("TOPLEFT", frame, "TOPLEFT", x + (x > DETAIL_X and 8 or 0), rowY + 2)
   frame.gatherBox:SetChecked(ui.hideGathering ~= false)
   frame.gatherBox:Show()
+  return rowY - 26
 end
 
+local function SetSearchPlaceholder(text)
+  local inst = frame and frame.search and frame.search.Instructions
+  if type(inst) == "table" and inst.SetText then inst:SetText(text or "") end
+end
+
+local lastSel, lastTab, lastGroupTab
 function ns.RefreshWindow()
   if not (frame and frame:IsShown()) then return end
   local ui = ComradeCraftDB.ui
   local chars = ns.AllChars()
   if ui.sel ~= "group" and ui.sel ~= "manage" and ui.sel ~= "help" and ui.sel ~= "requests" and ui.sel ~= "groupplan"
-    and not chars[ui.sel or ""] then
+    and ui.sel ~= "directory" and ui.sel ~= "wishlist" and not chars[ui.sel or ""] then
     ui.sel = chars[ns.CharKey()] and ns.CharKey() or "group"
+  end
+  if ui.sel ~= lastSel or ui.tab ~= lastTab or ui.groupTab ~= lastGroupTab then
+    if frame.scroll and frame.scroll.SetVerticalScroll then frame.scroll:SetVerticalScroll(0) end
+    lastSel, lastTab, lastGroupTab = ui.sel, ui.tab, ui.groupTab
   end
   ReleaseAll(rows) ReleaseAll(mats) ReleaseAll(steps) ReleaseAll(recipes) ReleaseAll(labels)
   ReleaseAll(actionBtns) ReleaseAll(checks) ReleaseAll(toggles) ReleaseAll(heads) ReleaseAll(planRows)
+  ReleaseAll(groupRows) ReleaseAll(sectionBars)
   frame.addBox:Hide()
+  frame.groupOverTab:Hide() frame.groupMatsTab:Hide() frame.groupUpTab:Hide() frame.groupDeTab:Hide()
   RenderSide(ui.sel)
 
   local filter = (frame.search:GetText() or ""):lower()
-  local h
-  if ui.sel == "requests" then
+  local h, scrollTop = 1, -110
+  frame.sub:SetWidth(LIST_W - 20)
+  if ui.sel == "wishlist" then
+    frame.title:SetText(L["Wishlist"])
+    frame.sub:SetText(L["Pinned crafts to track materials for yourself or friends."])
+    frame.planTab:Hide()
+    frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
+    frame.search:Hide()
+    ReleaseAll(chips)
+    frame.gatherBox:Hide()
+    h = RenderWishlist()
+  elseif ui.sel == "requests" then
     frame.title:SetText(L["Craft requests"])
     frame.sub:SetText(L["Ask a group member to craft something, or answer what they asked you."])
     frame.planTab:Hide()
@@ -1496,6 +2120,21 @@ function ns.RefreshWindow()
     ReleaseAll(chips)
     frame.gatherBox:Hide()
     h = RenderGroupPlan()
+  elseif ui.sel == "directory" then
+    frame.title:SetText(L["Guild directory"])
+    frame.sub:SetText(L["Who in your guild can craft what. Each player lists their own characters (opt-in)."])
+    frame.planTab:Hide()
+    frame.craftTab:Hide()
+    frame.removeBtn:Hide()
+    frame.shareBox:Hide()
+    frame.search:ClearAllPoints()
+    frame.search:SetPoint("TOPLEFT", frame, "TOPLEFT", DETAIL_X + 6, -108)
+    SetSearchPlaceholder(L["Search guild crafters..."])
+    frame.search:Show()
+    ReleaseAll(chips)
+    frame.gatherBox:Hide()
+    scrollTop = -136
+    h = RenderDirectory(filter)
   elseif ui.sel == "help" then
     frame.title:SetText(L["Help"])
     frame.sub:SetText(L["How ComradeCraft works, in short."])
@@ -1519,8 +2158,23 @@ function ns.RefreshWindow()
     frame.gatherBox:Hide()
     h = RenderManage()
   elseif ui.sel == "group" then
+    local gTab = ui.groupTab or "overview"
+    frame.groupOverTab:Show() frame.groupMatsTab:Show() frame.groupUpTab:Show() frame.groupDeTab:Show()
+    frame.groupOverTab:SetActive(gTab == "overview")
+    frame.groupMatsTab:SetActive(gTab == "mats")
+    frame.groupUpTab:SetActive(gTab == "upgrades")
+    frame.groupDeTab:SetActive(gTab == "de")
+    frame.search:ClearAllPoints()
+    frame.search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -112)
+    SetSearchPlaceholder(L["Find who can craft..."])
     frame.search:Show()
-    RenderChips(chars)
+    if (gTab == "de" or gTab == "upgrades") and filter == "" then
+      ReleaseAll(chips)
+      frame.gatherBox:Hide()
+      scrollTop = -142
+    else
+      scrollTop = RenderChips(chars, -142)
+    end
     frame.title:SetText(L["Group"])
     frame.sub:SetText(L["Skill levels and the materials the group still needs. Type to find who can craft something."])
     frame.planTab:Hide()
@@ -1529,10 +2183,9 @@ function ns.RefreshWindow()
     frame.shareBox:Hide()
     h = RenderGroup(filter)
   else
-    frame.search:Show()
-    RenderChips(chars)
     local c = chars[ui.sel]
     frame.title:SetText(ns.ClassColored(ui.sel, c.class))
+    frame.sub:SetWidth(LIST_W - 260)
     frame.sub:SetText(("%s - %s%s"):format(LevelSpecClass(c),
       L["updated %s"]:format(Ago(c.updated)), c.peer and (" - " .. L["via %s"]:format(PeerName(c) or "?")) or ""))
     frame.removeBtn.peerID = c.peer
@@ -1545,10 +2198,24 @@ function ns.RefreshWindow()
     frame.planTab:SetActive(ui.tab ~= "craft")
     frame.craftTab:SetActive(ui.tab == "craft")
     if ui.tab == "craft" then
+      frame.search:ClearAllPoints()
+      frame.search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -112)
+      SetSearchPlaceholder(L["Filter recipes..."])
+      frame.search:Show()
+    else
+      frame.search:Hide()
+    end
+    scrollTop = RenderChips({ [ui.sel] = c }, -142)
+    if ui.tab == "craft" then
       h = RenderCraft(ui.sel, c, filter)
     else
       h = RenderPlan(ui.sel, c)
     end
+  end
+  if frame.scroll then
+    frame.scroll:ClearAllPoints()
+    frame.scroll:SetPoint("TOPLEFT", DETAIL_X, scrollTop)
+    frame.scroll:SetPoint("BOTTOMRIGHT", -34, 36)
   end
   content:SetHeight(math.max(1, h or 1))
 
@@ -1574,15 +2241,21 @@ local function CreateWindow()
     f = CreateFrame("Frame", "ComradeCraftFrame", UIParent, "BasicFrameTemplateWithInset")
   end
   f:SetSize(W, H)
-  f:SetPoint("CENTER")
+  local pos = ComradeCraftDB and ComradeCraftDB.ui and ComradeCraftDB.ui.pos
+  if pos then f:SetPoint(pos[1], UIParent, pos[1], pos[2], pos[3]) else f:SetPoint("CENTER") end
   -- Same layer as the game's windows: the profession window can come in front of it.
   f:SetFrameStrata("MEDIUM")
   f:SetToplevel(true)
   f:SetMovable(true)
+  f:SetClampedToScreen(true)
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local point, _, _, x, y = self:GetPoint()
+    if ComradeCraftDB and ComradeCraftDB.ui and point then ComradeCraftDB.ui.pos = { point, x, y } end
+  end)
   f:Hide()
   if ButtonFrameTemplate_HideButtonBar then pcall(ButtonFrameTemplate_HideButtonBar, f) end
   if f.SetTitle then f:SetTitle("ComradeCraft")
@@ -1601,63 +2274,79 @@ local function CreateWindow()
   local sep = f:CreateTexture(nil, "ARTWORK")
   sep:SetColorTexture(0.6, 0.5, 0.3, 0.5)
   sep:SetWidth(1)
-  sep:SetPoint("TOPLEFT", DETAIL_X - 6, -64)
-  sep:SetPoint("BOTTOMLEFT", DETAIL_X - 6, 36)
+  sep:SetPoint("TOPLEFT", DETAIL_X - 4, -64)
+  sep:SetPoint("BOTTOMLEFT", DETAIL_X - 4, 36)
 
   -- Right: header, tabs, search, scrolling detail.
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
   f.title:SetPoint("TOPLEFT", DETAIL_X, -66)
+  f.title:SetJustifyH("LEFT")
   f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   f.sub:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
-  f.badge = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  f.badge:SetPoint("TOPRIGHT", -24, -68)
+  f.sub:SetJustifyH("LEFT")
+  f.sub:SetWordWrap(false)
   -- "?" opens the help view (click again to go back to the group).
   f.helpBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
   f.helpBtn:SetSize(24, 22)
-  f.helpBtn:SetPoint("TOPRIGHT", -24, -36)
+  f.helpBtn:SetPoint("TOPRIGHT", -24, -64)
   f.helpBtn:SetText("?")
   f.helpBtn:SetScript("OnClick", function()
     local ui = ComradeCraftDB.ui
     ui.sel = ui.sel == "help" and "group" or "help"
     ns.RefreshWindow()
   end)
+  f.badge = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  f.badge:SetPoint("RIGHT", f.helpBtn, "LEFT", -10, 0)
 
-  -- Flat tabs: the active one is gold, lighter and underlined; the other stays grey.
-  local function Tab(text, tab, anchor)
+  -- Sculpted dark-stone tabs: bronze/gold carved border + gold underline when active (no yellowish box fill).
+  local function Tab(text, tab, anchor, field, w)
     local b = CreateFrame("Button", nil, f)
-    b:SetSize(120, 24)
+    b:SetSize(w or 120, 24)
     b:SetPoint(unpack(anchor))
     b.bg = b:CreateTexture(nil, "BACKGROUND")
     b.bg:SetAllPoints()
+    AddBorder(b)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     b.label:SetPoint("CENTER")
     b.label:SetText(text)
     b.under = b:CreateTexture(nil, "ARTWORK")
     b.under:SetHeight(2)
-    b.under:SetPoint("BOTTOMLEFT")
-    b.under:SetPoint("BOTTOMRIGHT")
-    b.under:SetColorTexture(1, 0.82, 0, 1)
+    b.under:SetPoint("BOTTOMLEFT", 1, 0)
+    b.under:SetPoint("BOTTOMRIGHT", -1, 0)
+    b.under:SetColorTexture(0.95, 0.78, 0.20, 1)
     b:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
     function b:SetActive(on)
-      self.bg:SetColorTexture(on and 0.35 or 0.12, on and 0.27 or 0.1, on and 0.12 or 0.08, 0.9)
-      self.label:SetTextColor(on and 1 or 0.6, on and 0.82 or 0.6, on and 0 or 0.6)
+      if on then
+        self.bg:SetColorTexture(0.16, 0.16, 0.20, 0.98)
+        SetBorderColor(self, 0.82, 0.66, 0.24, 0.92)
+        self.label:SetTextColor(1, 0.86, 0.24)
+      else
+        self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.90)
+        SetBorderColor(self, 0.28, 0.25, 0.20, 0.65)
+        self.label:SetTextColor(0.68, 0.68, 0.72)
+      end
       self.under:SetShown(on)
     end
     b:SetScript("OnClick", function()
-      ComradeCraftDB.ui.tab = tab
+      ComradeCraftDB.ui[field or "tab"] = tab
       ns.RefreshWindow()
     end)
     return b
   end
   f.planTab = Tab(L["Plan"], "plan", { "TOPLEFT", DETAIL_X, -112 })
   f.craftTab = Tab(L["Can craft"], "craft", { "TOPLEFT", DETAIL_X + 126, -112 })
+  f.groupOverTab = Tab(L["Overview"], "overview", { "TOPLEFT", DETAIL_X, -112 }, "groupTab", 100)
+  f.groupMatsTab = Tab(L["Materials"], "mats", { "TOPLEFT", DETAIL_X + 104, -112 }, "groupTab", 100)
+  f.groupUpTab = Tab(L["Upgrades"], "upgrades", { "TOPLEFT", DETAIL_X + 208, -112 }, "groupTab", 100)
+  f.groupDeTab = Tab(L["Disenchant"], "de", { "TOPLEFT", DETAIL_X + 312, -112 }, "groupTab", 104)
+  f.groupOverTab:Hide() f.groupMatsTab:Hide() f.groupUpTab:Hide() f.groupDeTab:Hide()
 
   -- Shown on this account's characters: opt-in sharing (nothing is sent until checked).
   f.shareBox = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
   f.shareBox:SetSize(22, 22)
-  f.shareBox:SetPoint("TOPRIGHT", -230, -88)
+  f.shareBox:SetPoint("TOPRIGHT", -24, -88)
   f.shareBox.label = f.shareBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  f.shareBox.label:SetPoint("LEFT", f.shareBox, "RIGHT", 2, 0)
+  f.shareBox.label:SetPoint("RIGHT", f.shareBox, "LEFT", -2, 0)
   f.shareBox.label:SetText(L["Share this character with the group"])
   f.shareBox:SetScript("OnClick", function(self)
     if self.key then ns.Sync.SetShared(self.key, self:GetChecked() and true or false) end
@@ -1681,7 +2370,7 @@ local function CreateWindow()
   search:SetSize(200, 20)
   search:SetPoint("TOPRIGHT", -30, -112)
   search:SetAutoFocus(false)
-  search:HookScript("OnTextChanged", function() ns.RefreshWindow() end)
+  search:HookScript("OnTextChanged", function() if not suppressSearch then ns.RefreshWindow() end end)
   f.search = search
 
   -- "Hide gathering" next to the profession chips (placed by RenderChips).
@@ -1701,6 +2390,7 @@ local function CreateWindow()
   content = CreateFrame("Frame", nil, scroll)
   content:SetSize(LIST_W, 1)
   scroll:SetScrollChild(content)
+  f.scroll = scroll
 
   -- Manage view: add a player by name (Enter or the Add button).
   f.addBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
@@ -1709,15 +2399,26 @@ local function CreateWindow()
   f.addBox:SetScript("OnEnterPressed", function(self)
     local name = self:GetText()
     if name and name ~= "" then
-      ns.commands.add(name)
+      ns.Sync.AddByName(name)
       self:SetText("")
     end
     self:ClearFocus()
   end)
   f.addBox:Hide()
 
-  f.foot = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.foot:SetPoint("BOTTOMLEFT", 20, 14)
+  local footBtn = CreateFrame("Button", nil, f)
+  footBtn:SetSize(640, 18)
+  footBtn:SetPoint("BOTTOMLEFT", 20, 10)
+  footBtn:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  footBtn:SetScript("OnClick", function() if ns.commands.sync then ns.commands.sync() end end)
+  footBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine(L["Click to sync now with your group."], 0.5, 0.8, 1)
+    GameTooltip:Show()
+  end)
+  footBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  f.foot = footBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.foot:SetPoint("LEFT", 0, 0)
   local foot2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   foot2:SetPoint("BOTTOMRIGHT", -20, 14)
   foot2:SetText("/comrade")

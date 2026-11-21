@@ -39,35 +39,51 @@ away from its minimap button.
 
 **Plan your route**
 - **Personal leveling route**: recipes to learn, intermediates to craft, the skill-up chance
-  of each step, and the total cost, from your bags, your known recipes and live prices.
+  of each step, and the total cost, recalculated automatically from your bags, newly learned
+  recipes (including world drops, vendor patterns and Forever custom recipes) and live prices.
 - **Cheapest or Profitable**: Profitable counts what each product brings back (merchant,
   disenchant or auction house after the 5% cut and the deposit risk). Cost and net cost for
   every 75-point milestone.
 - **Step panel and craft queue** next to the profession window, with a *Craft next* button.
 - **Where to learn a recipe**: trainers, vendors and drops, with a TomTom waypoint to the
-  nearest one. Trainers you visit are remembered with their exact position.
+  nearest one. Trainers you visit are remembered with their exact position and refused recipes
+  are deferred automatically.
 - **Next rank**: at the skill cap, the Expert book, the Artisan quest (with Questie) or the
   trainer.
-- **Shopping lists**: export the missing materials to Auctionator, or copy a search text and a
-  group import for TradeSkillMaster.
+- **Shopping, Merchant & Auction House panels**: export missing materials to Auctionator or
+  TSM, buy required vendor reagents in one click at merchants, and search missing materials
+  directly from the Auction House side panel with your gold balance in view.
+- **Buy vs Farm advice**: compares auction costs against your gold balance and points to
+  QuestieDB farming spots with TomTom waypoints.
 
 **Play as a group**
 - **Group plan**: by default, routes spend the least gold for the whole group (materials a
   member already holds count as free). One view shows what the group still needs, who holds
-  spare stock, and what is left to buy.
+  spare stock, cross-profession synergies, and what is left to buy.
+- **Shared craft wishlist**: pin any craft for yourself or a friend (bags, gear, enchants),
+  follow the materials in a movable tracker, and get notified when it is ready to craft.
 - **Farming assignments** (opt-in): "200 Light Leather needed for X, Y, Z. Farm them?" Accept
   and a small tracker follows your progress; the group sees who farms what.
-- **Group material tooltip**: on any item, who needs it, how many, and how soon.
+- **Bag highlights & tooltips**: highlights items your group needs directly in your bags
+  (Blizzard, Baganator, Bagnon, Combuctor, ElvUI) and focuses on the current mail or trade
+  recipient; hover any material or recipe item to see who needs it and how soon.
+- **Mail & Trade helpers**: compact side panels at the Mailbox and Trade window to attach or
+  place what a group member needs in one click. You still press Send or Accept.
 - **Keep for the group**: at a merchant or the auction house, the items in your bags that
   your group needs. Sell one anyway and a *Buy back* button appears.
 - **Craft requests**: ask a friend to craft a recipe for you. The request waits until you
   are both online.
-- **Mail helper**: attaches what a group member needs. You still press Send.
+- **Guild directory** (opt-in, per character): search who in your guild can craft an item and
+  whisper them. Item tooltips name up to 3 guild crafters.
 
 **Stay on top of things**
-- **Alerts**, each one can be turned off: materials ready, cooldowns ready on any of your
-  characters, craft requests, and (opt-in) upgrades a friend can craft for you.
-- **Disenchant or keep**: advice for the items in your bags, from group needs and prices.
+- **Group upgrades audit**: spots small bags, missing enchants, and craftable gear upgrades
+  across your group in one tab.
+- **Loot roll hints**: prints a quick chat note during group rolls when someone needs the item.
+- **Alerts**, each one can be turned off: materials ready, wishlist ready, cooldowns ready on
+  any of your characters, craft requests, and (opt-in) upgrades a friend can craft for you.
+- **Disenchant or keep**: advice for tradeable and BoP items in your bags, from group needs
+  and prices.
 
 <p align="center">
   <img src="docs/images/step-panel.png" alt="Step panel with the Craft next button" width="360">
@@ -95,6 +111,7 @@ Nothing else is required; the libraries it uses are embedded (see
 | Questie (with QuestieDB) | Positions of trainers, vendors and drops; the Artisan quest and its giver | Names only; no Artisan quest |
 | [TomTom](https://www.curseforge.com/wow/addons/tomtom) | Waypoints to the nearest recipe source or quest giver | Location printed in chat |
 | [Pawn](https://www.curseforge.com/wow/addons/pawn) | Upgrades with each member's class and spec scale (called at runtime, no scale copied) | Item level comparison |
+| Baganator, Bagnon, Combuctor, ElvUI | In-bag badges and highlights for group-needed items and mail/trade focus | Default Blizzard bags highlighted |
 
 When TSM and Auctionator are both loaded, prices come from TSM.
 
@@ -112,7 +129,9 @@ craft requests. Your own route works without them.
 **Is my data sent to anyone?** No character data leaves your game until you share a
 character, and then only by addon whisper to the players you added who added you back. At
 login, a presence signal without character data goes to your guild's addon channel so
-guildmates can find each other; it can be turned off in Manage group.
+guildmates can find each other; it can be turned off in Manage group. A character you list in
+the guild directory sends its professions and known recipes (nothing else) to your guild's
+addon channel.
 
 **Where do the skill-up chances come from?** The Classic formula, calibrated with the crafts
 you and your group log. Recipe colors and reagents come from the WoW Forever client tables.
@@ -131,6 +150,8 @@ machine translations, corrections welcome.
 | `/comrade tracker [reset]` | Show or hide the step panel; `reset` docks it back |
 | `/comrade mail NAME` | At a mailbox: attach what NAME needs |
 | `/comrade share [off]` | Share this character with your group |
+| `/comrade list [off]` | List this character in the guild directory |
+| `/comrade directory [text]` | Search who in your guild can craft it |
 | `/comrade add NAME` / `remove NAME` | Add or remove a player |
 | `/comrade peers` / `sync` | List the players seen / send your data now |
 | `/comrade guildping [off]` | Tell the guild you use ComradeCraft |
@@ -142,7 +163,7 @@ machine translations, corrections welcome.
 ## Early version
 
 Not yet verified in game: craft requests and farming assignments between two players, the
-Artisan quests from Questie (assumed to require 225 in the skill, as in Classic), Questie
+guild directory between two players, the Artisan quests from Questie (assumed to require 225 in the skill, as in Classic), Questie
 positions and TomTom waypoints, the TSM search text and group import, the Auctionator export,
 Pawn's scale names on Forever, and the mail helper next to other mail addons. Bug reports and
 ideas are welcome in the [issues](https://github.com/JF10R/comradeCraft/issues).

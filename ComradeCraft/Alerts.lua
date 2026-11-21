@@ -237,7 +237,7 @@ function Alerts.FindUpgrades()
           local r = ns.Recipes[spell]
           local item = r and r[5]
           local seenKey = ns.CharKey() .. "|" .. spell
-          if item and item ~= 0 and not st.upgradeSeen[seenKey] then
+          if item and item ~= 0 and not st.upgradeSeen[seenKey] and not (ns.IsBoP and ns.IsBoP(item)) then
             local up, gain, how = ns.UpgradeFor(item, me)
             if up and gain then out[#out + 1] = { key = key, spell = spell, item = item, gain = gain, how = how } end
           end
@@ -299,7 +299,7 @@ end
 -- Who needs an item: { { name, n } }, most first; merchant-sold items never count.
 function Alerts.Wanted(item)
   local out = {}
-  if ns.IsVendorItem and ns.IsVendorItem(item) then return out end
+  if (ns.IsVendorItem and ns.IsVendorItem(item)) or (ns.IsBoP and ns.IsBoP(item)) then return out end
   local me = ns.CharKey()
   for key, c in pairs(ns.AllChars()) do
     local n = ns.NeedOf(c, item)

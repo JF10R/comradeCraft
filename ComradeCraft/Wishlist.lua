@@ -1,0 +1,454 @@
+-- Wishlist: pin concrete crafts (e.g. bags for a friend, raid consumables), track their
+-- materials (bags + bank + inbox), feed group tooltips/bags/mail/trade/merchant needs,
+-- notify when ready to craft, and show a movable on-screen tracker for pinned goals.
+local _, ns = ...
+local L = ns.L
+
+local Wishlist = {}
+ns.Wishlist = Wishlist
+
+local TRACKER_W, PAD, MAX_PINNED = 270, 10, 6
+
+local function DB()
+  ComradeCraftDB.wishlist = ComradeCraftDB.wishlist or {}
+  return ComradeCraftDB.wishlist
+end
+
+local function Settings()
+  ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+  return ComradeCraftDB.settings
+end
+
+local function ItemName(id)
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  return get and get(id) or ("item:" .. id)
+end
+
+local function ItemIcon(item, spell)
+  if item and item ~= 0 then
+    return (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(item))
+      or (GetItemIcon and GetItemIcon(item)) or 134400
+  end
+  return (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(spell)) or 134400
+end
+
+function Wishlist.TrackerOn()
+  return Settings().wishlistTracker ~= false
+end
+
+function Wishlist.SetTracker(on)
+  Settings().wishlistTracker = on and true or false
+  Wishlist.RefreshTracker()
+end
+
+function Wishlist.List(charKey, includeRemote)
+  local out = {}
+  for _, e in ipairs(DB()) do
+    if not charKey or e.char == charKey then out[#out + 1] = e end
+  end
+  if includeRemote then
+    for key, c in pairs(ns.AllChars()) do
+      if c.peer and type(c.wishlist) == "table" and (not charKey or key == charKey) then
+        for _, re in ipairs(c.wishlist) do
+          out[#out + 1] = { id = re.id, char = key, spell = re.spell, item = re.item or 0,
+            qty = re.qty, forWho = re.forWho, note = re.note, remote = true, peer = c.peer }
+        end
+      end
+    end
+  end
+  return out
+end
+
+function Wishlist.Add(spell, qty, forWho, note, pinned, crafterKey)
+  local r = ns.Recipes and ns.Recipes[spell]
+  if not r then return nil end
+  qty = math.max(1, math.floor(tonumber(qty) or 1))
+  forWho = type(forWho) == "string" and forWho:match("^%s*(.-)%s*$") or ""
+  note = type(note) == "string" and note:match("^%s*(.-)%s*$") or ""
+  local list = DB()
+  local entry = {
+    id = tostring(time()) .. "-" .. tostring(math.random(1000, 9999)),
+    char = crafterKey or ns.CharKey(),
+    spell = spell,
+    item = r[5] or 0,
+    qty = qty,
+    forWho = forWho ~= "" and forWho or nil,
+    note = note ~= "" and note or nil,
+    pinned = pinned ~= false,
+    created = time(),
+  }
+  list[#list + 1] = entry
+  ns.Log(("wishlist: added %dx spell %d for %s"):format(qty, spell, entry.forWho or "-"))
+  local ch = ComradeCraftDB.chars and ComradeCraftDB.chars[entry.char]
+  if ch then ch.updated = time() end
+  ns.RequestRefresh()
+  Wishlist.RefreshTracker()
+  return entry
+end
+
+function Wishlist.Remove(id)
+  local list = DB()
+  for i, e in ipairs(list) do
+    if e.id == id then
+      local ch = ComradeCraftDB.chars and ComradeCraftDB.chars[e.char]
+      if ch then ch.updated = time() end
+      table.remove(list, i)
+      ns.RequestRefresh()
+      Wishlist.RefreshTracker()
+      return true
+    end
+  end
+  return false
+end
+
+function Wishlist.SetPinned(id, on)
+  for _, e in ipairs(DB()) do
+    if e.id == id then
+      e.pinned = on and true or false
+      Wishlist.RefreshTracker()
+      if ns.RefreshWindow then ns.RefreshWindow() end
+      return true
+    end
+  end
+end
+
+-- Computes reagent needs for one wishlist entry against `char`'s owned stock (bags+bank+mail).
+-- Expands missing intermediates (e.g. Bolts) when the crafter knows a recipe making them.
+function Wishlist.Progress(entry, charData)
+  local r = ns.Recipes and ns.Recipes[entry.spell]
+  if not r then return { mats = {}, ready = false, missingCount = 0 } end
+  local c = charData or (ComradeCraftDB and ComradeCraftDB.chars and ComradeCraftDB.chars[entry.char]) or {}
+  local owned, bagOwned = {}, {}
+  for item, n in pairs(c.bags or {}) do
+    owned[item] = (owned[item] or 0) + n
+    bagOwned[item] = (bagOwned[item] or 0) + n
+  end
+  for _, src in ipairs({ c.bank or {}, c.mail or {} }) do
+    for item, n in pairs(src) do owned[item] = (owned[item] or 0) + n end
+  end
+  -- Known producers on this character for expanding missing intermediates.
+  local producers = {}
+  for _, set in pairs(c.known or {}) do
+    for sp in pairs(set) do
+      local sr = ns.Recipes[sp]
+      if sr and sr[5] and sr[5] ~= 0 and not producers[sr[5]] then producers[sr[5]] = sp end
+    end
+  end
+  local gross = {}
+  local function Accum(spell, mult, depth)
+    local reag = ns.Recipes[spell] and ns.Recipes[spell][7] or {}
+    for i = 1, #reag, 2 do
+      local item, need = reag[i], math.ceil(reag[i + 1] * mult - 1e-9)
+      local have = owned[item] or 0
+      local sub = producers[item]
+      if sub and sub ~= spell and depth < 3 and have < need then
+        if have > 0 then gross[item] = (gross[item] or 0) + have end
+        local deficit = need - have
+        local subYield = math.max(1, ns.Recipes[sub][6] or 1)
+        Accum(sub, deficit / subYield, depth + 1)
+      else
+        gross[item] = (gross[item] or 0) + need
+      end
+    end
+  end
+  Accum(entry.spell, entry.qty, 0)
+  local mats, ready, bagReady, missingCount = {}, true, true, 0
+  for item, need in pairs(gross) do
+    local have = owned[item] or 0
+    local inBags = bagOwned[item] or 0
+    local miss = math.max(0, need - have)
+    if miss > 0 then ready = false missingCount = missingCount + miss end
+    if inBags < need then bagReady = false end
+    mats[#mats + 1] = { item = item, need = need, have = math.min(have, need), missing = miss,
+      vendor = ns.IsVendorItem and ns.IsVendorItem(item) or false }
+  end
+  table.sort(mats, function(a, b)
+    if (a.missing > 0) ~= (b.missing > 0) then return a.missing > 0 end
+    return a.need > b.need
+  end)
+  return { mats = mats, ready = ready, bagReady = bagReady, missingCount = missingCount }
+end
+
+-- Injects missing wishlist materials into `c.needs[0]` so tooltips, bags, mail, trade,
+-- merchant auto-buy, shopping lists and group plan all include pinned wishlist goals.
+function Wishlist.InjectNeeds(c, charKey)
+  if not (ComradeCraftDB and c and charKey) then return end
+  local entries = c.peer and (c.wishlist or {}) or Wishlist.List(charKey)
+  if #entries == 0 then return end
+  local items, vendor, gross, have, when = {}, {}, {}, {}, {}
+  local any = false
+  for _, e in ipairs(entries) do
+    local prog = Wishlist.Progress(e, c)
+    for _, m in ipairs(prog.mats) do
+      gross[m.item] = (gross[m.item] or 0) + m.need
+      have[m.item] = math.max(have[m.item] or 0, m.have)
+      if m.missing > 0 then
+        any = true
+        when[m.item] = 1
+        if m.vendor then vendor[m.item] = (vendor[m.item] or 0) + m.missing
+        else items[m.item] = (items[m.item] or 0) + m.missing end
+      end
+    end
+  end
+  if any then
+    c.needs = c.needs or {}
+    c.needs[0] = { name = L["Wishlist"], items = items, vendor = vendor, gross = gross, have = have,
+      when = when, plan = { { spell = entries[1].spell } } }
+  end
+end
+
+-- Fires a toast when all materials for a wishlist item are in the current character's bags.
+function Wishlist.CheckReady()
+  if not (ComradeCraftDB and ComradeCraftDB.wishlist and ns.Alerts) then return end
+  local me = ns.CharKey()
+  local c = ComradeCraftDB.chars and ComradeCraftDB.chars[me]
+  if not c then return end
+  for _, e in ipairs(Wishlist.List(me)) do
+    local prog = Wishlist.Progress(e, c)
+    if prog.bagReady then
+      if not e.readyAlerted then
+        e.readyAlerted = true
+        local name = e.item ~= 0 and ItemName(e.item) or ns.SpellName(e.spell)
+        local sub = e.forWho and L["For %s"]:format(e.forWho) or L["All materials are in your bags."]
+        ns.Alerts.Notify({
+          title = L["Wishlist ready: %dx %s"]:format(e.qty, name),
+          text = sub,
+          icon = ItemIcon(e.item, e.spell),
+          item = e.item ~= 0 and e.item or nil,
+          sticky = true,
+          buttons = { { L["Craft"], function() ns.OpenRecipe(e.spell) end } },
+        })
+      end
+    else
+      e.readyAlerted = nil
+    end
+  end
+end
+
+-- Add-to-Wishlist dialog ------------------------------------------------------------------
+
+local dialog
+local function CreateDialog()
+  dialog = CreateFrame("Frame", "ComradeCraftWishlistDialog", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+  dialog:SetSize(330, 224)
+  dialog:SetPoint("CENTER")
+  dialog:SetFrameStrata("DIALOG")
+  dialog:SetMovable(true)
+  dialog:SetClampedToScreen(true)
+  dialog:EnableMouse(true)
+  dialog:RegisterForDrag("LeftButton")
+  dialog:SetScript("OnDragStart", dialog.StartMoving)
+  dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+  if dialog.SetBackdrop then
+    dialog:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+      edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 32,
+      insets = { left = 11, right = 12, top = 12, bottom = 11 } })
+  end
+  dialog.title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  dialog.title:SetPoint("TOPLEFT", 18, -16)
+  dialog.title:SetText(L["Add to wishlist"])
+  dialog.recipe = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  dialog.recipe:SetPoint("TOPLEFT", 18, -42)
+  dialog.recipe:SetWidth(294)
+  dialog.recipe:SetJustifyH("LEFT")
+
+  local ql = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  ql:SetPoint("TOPLEFT", 18, -68)
+  ql:SetText(L["Quantity:"])
+  dialog.qty = CreateFrame("EditBox", nil, dialog, "InputBoxTemplate")
+  dialog.qty:SetSize(50, 20)
+  dialog.qty:SetPoint("LEFT", ql, "RIGHT", 10, 0)
+  dialog.qty:SetAutoFocus(false)
+  dialog.qty:SetNumeric(true)
+
+  local fl = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  fl:SetPoint("TOPLEFT", 18, -98)
+  fl:SetText(L["For who:"])
+  dialog.forWho = CreateFrame("EditBox", nil, dialog, "InputBoxTemplate")
+  dialog.forWho:SetSize(200, 20)
+  dialog.forWho:SetPoint("LEFT", fl, "RIGHT", 10, 0)
+  dialog.forWho:SetAutoFocus(false)
+
+  local nl = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  nl:SetPoint("TOPLEFT", 18, -128)
+  nl:SetText(L["Note (optional):"])
+  dialog.note = CreateFrame("EditBox", nil, dialog, "InputBoxTemplate")
+  dialog.note:SetSize(180, 20)
+  dialog.note:SetPoint("LEFT", nl, "RIGHT", 10, 0)
+  dialog.note:SetAutoFocus(false)
+
+  dialog.pin = CreateFrame("CheckButton", nil, dialog, "UICheckButtonTemplate")
+  dialog.pin:SetSize(22, 22)
+  dialog.pin:SetPoint("TOPLEFT", 14, -154)
+  dialog.pin.label = dialog.pin:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  dialog.pin.label:SetPoint("LEFT", dialog.pin, "RIGHT", 4, 0)
+  dialog.pin.label:SetText(L["Pin on screen"])
+
+  local ok = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
+  ok:SetSize(96, 22)
+  ok:SetPoint("BOTTOMRIGHT", -16, 14)
+  ok:SetText(L["Add"])
+  ok:SetScript("OnClick", function()
+    if dialog.spell then
+      Wishlist.Add(dialog.spell, tonumber(dialog.qty:GetText()) or 1,
+        dialog.forWho:GetText(), dialog.note:GetText(), dialog.pin:GetChecked(), dialog.crafterKey)
+    end
+    dialog:Hide()
+  end)
+  local cancel = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
+  cancel:SetSize(96, 22)
+  cancel:SetPoint("RIGHT", ok, "LEFT", -8, 0)
+  cancel:SetText(L["Cancel"])
+  cancel:SetScript("OnClick", function() dialog:Hide() end)
+  tinsert(UISpecialFrames, "ComradeCraftWishlistDialog")
+end
+
+function Wishlist.ShowDialog(spell, crafterKey)
+  if not (ns.Recipes and ns.Recipes[spell]) then return end
+  if not dialog then CreateDialog() end
+  dialog.spell = spell
+  dialog.crafterKey = crafterKey or ns.CharKey()
+  local r = ns.Recipes[spell]
+  local name = r[5] ~= 0 and ItemName(r[5]) or ns.SpellName(spell)
+  dialog.recipe:SetText("|cffffd100" .. name .. "|r")
+  dialog.qty:SetText("1")
+  dialog.forWho:SetText("")
+  dialog.note:SetText("")
+  dialog.pin:SetChecked(true)
+  dialog:Show()
+end
+
+-- Movable On-Screen Pinned Tracker --------------------------------------------------------
+
+local tracker, rows
+
+local function CreateTracker()
+  tracker = CreateFrame("Frame", "ComradeCraftWishlistTracker", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+  tracker:SetSize(TRACKER_W, 80)
+  local pos = Settings().wishlistPos
+  if pos then tracker:SetPoint(pos[1], UIParent, pos[1], pos[2], pos[3])
+  else tracker:SetPoint("RIGHT", UIParent, "RIGHT", -30, -90) end
+  tracker:SetFrameStrata("MEDIUM")
+  tracker:SetMovable(true)
+  tracker:SetClampedToScreen(true)
+  tracker:EnableMouse(true)
+  tracker:RegisterForDrag("LeftButton")
+  tracker:SetScript("OnDragStart", tracker.StartMoving)
+  tracker:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local point, _, _, x, y = self:GetPoint()
+    if point then Settings().wishlistPos = { point, x, y } end
+  end)
+  if tracker.SetBackdrop then
+    tracker:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    tracker:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
+    tracker:SetBackdropBorderColor(0.8, 0.68, 0.35, 1)
+  end
+  tracker.logo = tracker:CreateTexture(nil, "ARTWORK")
+  tracker.logo:SetSize(14, 14)
+  tracker.logo:SetPoint("TOPLEFT", PAD, -9)
+  tracker.logo:SetTexture(ns.LOGO)
+  tracker.title = tracker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  tracker.title:SetPoint("LEFT", tracker.logo, "RIGHT", 6, 0)
+  tracker.title:SetText(L["Wishlist"])
+  tracker.close = CreateFrame("Button", nil, tracker, "UIPanelCloseButton")
+  tracker.close:SetSize(20, 20)
+  tracker.close:SetPoint("TOPRIGHT", -2, -2)
+  tracker.close:SetScript("OnClick", function() Wishlist.SetTracker(false) end)
+  rows = {}
+end
+
+local function CreateTrackerRow()
+  local f = CreateFrame("Button", nil, tracker)
+  f:SetSize(TRACKER_W - 2 * PAD, 34)
+  f:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
+  f.icon = f:CreateTexture(nil, "ARTWORK")
+  f.icon:SetSize(22, 22)
+  f.icon:SetPoint("TOPLEFT", 0, -4)
+  f.done = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.done:SetSize(22, 20)
+  f.done:SetPoint("TOPRIGHT", 0, -4)
+  f.done:SetText("x")
+  f.done:SetScript("OnClick", function(self) if self.id then Wishlist.Remove(self.id) end end)
+  f.name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.name:SetPoint("TOPLEFT", 26, -2)
+  f.name:SetPoint("RIGHT", f.done, "LEFT", -4, 0)
+  f.name:SetJustifyH("LEFT")
+  f.name:SetWordWrap(false)
+  f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.sub:SetPoint("TOPLEFT", 26, -16)
+  f.sub:SetPoint("RIGHT", f.done, "LEFT", -4, 0)
+  f.sub:SetJustifyH("LEFT")
+  f.sub:SetWordWrap(false)
+  f:SetScript("OnClick", function(self)
+    if self.spell and self.own then ns.OpenRecipe(self.spell) end
+  end)
+  f:SetScript("OnEnter", function(self)
+    if not self.entry then return end
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    if self.entry.item and self.entry.item ~= 0 then GameTooltip:SetItemByID(self.entry.item)
+    elseif GameTooltip.SetSpellByID then GameTooltip:SetSpellByID(self.entry.spell) end
+    local prog = Wishlist.Progress(self.entry)
+    GameTooltip:AddLine(" ")
+    if self.entry.forWho then GameTooltip:AddLine(L["For %s"]:format(self.entry.forWho), 1, 0.82, 0) end
+    if self.entry.note then GameTooltip:AddLine(self.entry.note, 0.8, 0.8, 0.8, true) end
+    for _, m in ipairs(prog.mats) do
+      local c = m.missing == 0 and { 0.3, 1, 0.4 } or { 1, 0.82, 0.4 }
+      GameTooltip:AddDoubleLine(ItemName(m.item), ("%d / %d"):format(m.have, m.need), 1, 1, 1, c[1], c[2], c[3])
+    end
+    GameTooltip:Show()
+  end)
+  f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  return f
+end
+
+function Wishlist.RefreshTracker()
+  if not (ComradeCraftDB and ComradeCraftDB.wishlist) then return end
+  local pinned = {}
+  for _, e in ipairs(DB()) do
+    if e.pinned then pinned[#pinned + 1] = e end
+  end
+  if #pinned == 0 or not Wishlist.TrackerOn() then
+    if tracker then tracker:Hide() end
+    return
+  end
+  if not tracker then CreateTracker() end
+  for _, r in ipairs(rows) do r:Hide() end
+  local me = ns.CharKey()
+  local y = -30
+  for i = 1, math.min(#pinned, MAX_PINNED) do
+    local e = pinned[i]
+    local r = rows[i]
+    if not r then r = CreateTrackerRow() rows[i] = r end
+    local prog = Wishlist.Progress(e)
+    local label = e.item ~= 0 and ItemName(e.item) or ns.SpellName(e.spell)
+    r.entry, r.spell, r.own, r.done.id = e, e.spell, e.char == me, e.id
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", PAD, y)
+    r.icon:SetTexture(ItemIcon(e.item, e.spell))
+    local who = e.forWho and (" |cff80ccff(" .. e.forWho .. ")|r") or ""
+    r.name:SetText(("%dx %s%s"):format(e.qty, label, who))
+    if prog.bagReady then
+      r.sub:SetText("|cff40ff40" .. L["Ready to craft!"] .. "|r")
+    elseif prog.ready then
+      r.sub:SetText("|cffffd100" .. L["Ready (some mats in bank/mail)"] .. "|r")
+    else
+      local parts = {}
+      for j = 1, math.min(#prog.mats, 2) do
+        local m = prog.mats[j]
+        if m.missing > 0 then parts[#parts + 1] = ("%s %d/%d"):format(ItemName(m.item), m.have, m.need) end
+      end
+      r.sub:SetText(table.concat(parts, ", "))
+    end
+    r:Show()
+    y = y - 36
+  end
+  tracker:SetHeight(-y + 8)
+  tracker:Show()
+end
+
+ns.On("PLAYER_LOGIN", function()
+  if C_Timer then C_Timer.After(4, Wishlist.RefreshTracker) else Wishlist.RefreshTracker() end
+end)

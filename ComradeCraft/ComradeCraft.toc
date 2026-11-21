@@ -13,7 +13,7 @@
 ## X-Curse-Project-ID: 1799561
 ## Version: @project-version@
 ## SavedVariables: ComradeCraftDB
-## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom
+## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom, Baganator, Bagnon, Combuctor, BetterBags, ElvUI
 ## IconTexture: Interface\AddOns\ComradeCraft\Media\Logo
 
 Libs\LibStub\LibStub.lua
@@ -56,10 +56,20 @@ Disenchant.lua
 Tooltip.lua
 Sync.lua
 Mail.lua
+Trade.lua
+Merchant.lua
+AuctionPanel.lua
+Bags.lua
 Requests.lua
+Directory.lua
 Alerts.lua
 Shopping.lua
 Sources.lua
+Loot.lua
+Synergies.lua
+Audit.lua
+FarmAdvice.lua
 Tracker.lua
 Farm.lua
+Wishlist.lua
 UI.lua

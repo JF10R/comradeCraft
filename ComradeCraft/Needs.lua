@@ -37,41 +37,65 @@ local function Expand(spell, producers, depth, raw, subs, mult)
   end
 end
 
--- Auction prices from TSM (DBMarket) or Auctionator, when one is loaded. Sets
--- ns.PriceSource(itemID) -> copper|nil and ns.PriceSourceName.
+local AH_PRICE_TTL = 86400 -- 24 h freshness window for directly scanned AH prices
+
+function ns.LiveAHPrice(item)
+  local e = ComradeCraftDB and ComradeCraftDB.ahPrices and ComradeCraftDB.ahPrices[item]
+  if e and e.price and e.price > 0 and (time() - (e.t or 0)) <= AH_PRICE_TTL then return e.price end
+end
+
+-- Auction prices from live AH scans, TSM (latest buyout/recent/market) and/or Auctionator.
+-- When both TSM and Auctionator are loaded, falls back cleanly between them so new/rare items
+-- still get a price. Sets ns.PriceSource(itemID) -> copper|nil and ns.PriceSourceName.
 function ns.DetectPriceSource()
-  if TSM_API and TSM_API.GetCustomPriceValue then
-    ns.PriceSourceName = "TSM"
-    ns.PriceSource = function(item)
-      local ok, v = pcall(TSM_API.GetCustomPriceValue, "DBMarket", "i:" .. item)
-      return ok and v or nil
-    end
-  elseif Auctionator and Auctionator.API and Auctionator.API.v1
-    and Auctionator.API.v1.GetAuctionPriceByItemID then
-    ns.PriceSourceName = "Auctionator"
-    ns.PriceSource = function(item)
-      local ok, v = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "ComradeCraft", item)
-      return ok and v or nil
+  local hasTSM = TSM_API and TSM_API.GetCustomPriceValue ~= nil
+  local hasAuc = Auctionator and Auctionator.API and Auctionator.API.v1
+    and Auctionator.API.v1.GetAuctionPriceByItemID ~= nil
+  local hasLive = ComradeCraftDB and ComradeCraftDB.ahPrices and next(ComradeCraftDB.ahPrices) ~= nil
+  local function TSMPrice(item)
+    if not hasTSM then return nil end
+    local key = "i:" .. item
+    for _, expr in ipairs({ "DBMinBuyout", "DBRecent", "DBMarket" }) do
+      local ok, v = pcall(TSM_API.GetCustomPriceValue, expr, key)
+      if ok and type(v) == "number" and v > 0 then return v end
     end
   end
-  -- Disenchant value of an item (AH value of its expected mats): TSM "Destroy" source,
-  -- else Auctionator's. Used over our own yield table when present.
-  ns.DisenchantPrice = nil
-  if TSM_API and TSM_API.GetCustomPriceValue then
-    local get = TSM_API.GetCustomPriceValue
-    ns.DisenchantPrice = function(item)
-      local ok, v = pcall(get, "Destroy", "i:" .. item)
-      return ok and v and v > 0 and v or nil
+  local function AucPrice(item)
+    if not hasAuc then return nil end
+    local ok, v = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "ComradeCraft", item)
+    if ok and type(v) == "number" and v > 0 then return v end
+  end
+  if hasTSM or hasAuc or hasLive then
+    ns.PriceSourceName = hasTSM and hasAuc and "TSM + Auctionator"
+      or hasTSM and "TSM" or hasAuc and "Auctionator" or "AH"
+    ns.PriceSource = function(item)
+      return ns.LiveAHPrice(item) or TSMPrice(item) or AucPrice(item)
     end
-  elseif Auctionator and Auctionator.API and Auctionator.API.v1 and Auctionator.API.v1.GetDisenchantPriceByItemID then
-    local get = Auctionator.API.v1.GetDisenchantPriceByItemID
+  else
+    ns.PriceSource, ns.PriceSourceName = nil, nil
+  end
+  -- Disenchant value of an item (AH value of its expected mats): TSM "Destroy", else Auctionator.
+  ns.DisenchantPrice = nil
+  local hasAucDE = Auctionator and Auctionator.API and Auctionator.API.v1
+    and Auctionator.API.v1.GetDisenchantPriceByItemID ~= nil
+  if hasTSM or hasAucDE then
     ns.DisenchantPrice = function(item)
-      local ok, v = pcall(get, "ComradeCraft", item)
-      return ok and v and v > 0 and v or nil
+      if hasTSM then
+        local ok, v = pcall(TSM_API.GetCustomPriceValue, "Destroy", "i:" .. item)
+        if ok and type(v) == "number" and v > 0 then return v end
+      end
+      if hasAucDE then
+        local ok, v = pcall(Auctionator.API.v1.GetDisenchantPriceByItemID, "ComradeCraft", item)
+        if ok and type(v) == "number" and v > 0 then return v end
+      end
     end
   end
 end
 ns.On("PLAYER_LOGIN", function()
+  ns.DetectPriceSource()
+  ns.RequestRefresh()
+end)
+ns.On("AUCTION_HOUSE_CLOSED", function()
   ns.DetectPriceSource()
   ns.RequestRefresh()
 end)
@@ -121,16 +145,29 @@ function ns.AuctionDeposit(item)
   return math.max(ns.DEPOSIT_MIN, math.floor((sell or 0) * ns.DEPOSIT_RATIO))
 end
 
+-- True for Bind on Pickup (1) and Quest (4) items: cannot be auctioned or mailed to others.
+function ns.IsBoP(item)
+  if not item or item == 0 then return false end
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  local bind = get and select(14, get(item))
+  return bind == 1 or bind == 4
+end
+
 -- What one crafted item brings back, three ways: merchant sell price, disenchant (AH value
 -- of its mats; nil if unknown), auction house (price - 5% cut - expected deposit loss; nil
--- without a price source). deposit = the full deposit, for display.
+-- without a price source or for BoP items). deposit = the full deposit, for display.
 function ns.ResaleOptions(item)
   if not item or item == 0 then return { vendor = 0 } end
   local p = ns.ItemPrices and ns.ItemPrices[item]
-  local ah = ns.PriceSource and ns.PriceSource(item)
+  local vendor = p and p[1] or 0
+  if vendor == 0 then
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    vendor = (get and select(11, get(item))) or 0
+  end
+  local ah = not ns.IsBoP(item) and ns.PriceSource and ns.PriceSource(item) or nil
   local de = ns.DisenchantPrice and ns.DisenchantPrice(item)
   if not de and ns.DisenchantEstimate then de = ns.DisenchantEstimate(item) end
-  local o = { vendor = p and p[1] or 0, de = de }
+  local o = { vendor = vendor, de = de }
   if ah and ah > 0 then
     o.deposit = ns.AuctionDeposit(item)
     o.ah = ah * 0.95 - o.deposit * ns.DEPOSIT_LOSS
@@ -487,13 +524,16 @@ function ns.CraftCatalog(key)
         local e = { spell = spell, line = line, item = r[5], needers = {}, fits = {},
           color = rankOf[line] and ns.RecipeColor(spell, rankOf[line]) or "grey",
           category = ns.ItemCategory(r[5]) }
-        for other, oc in pairs(chars) do
-          if other ~= key then
-            local n = r[5] ~= 0 and ns.NeedOf(oc, r[5]) or 0
-            if n > 0 then e.needers[#e.needers + 1] = { key = other, n = n } end
-            if r[5] ~= 0 then
-              local up, gain = ns.UpgradeFor(r[5], oc)
-              if up then e.fits[#e.fits + 1] = { key = other, gain = gain } end
+        local bop = r[5] ~= 0 and ns.IsBoP(r[5])
+        if not bop then
+          for other, oc in pairs(chars) do
+            if other ~= key then
+              local n = r[5] ~= 0 and ns.NeedOf(oc, r[5]) or 0
+              if n > 0 then e.needers[#e.needers + 1] = { key = other, n = n } end
+              if r[5] ~= 0 then
+                local up, gain = ns.UpgradeFor(r[5], oc)
+                if up then e.fits[#e.fits + 1] = { key = other, gain = gain } end
+              end
             end
           end
         end
@@ -541,9 +581,9 @@ function ns.GroupMaterials(lineOK)
   return list
 end
 
--- What a character can give away: owned (bags + bank) minus what its own plans use.
+-- What a character can give away: owned (bags + bank + inbox) minus what its own plans use.
 function ns.Surplus(c, item)
-  local owned = ((c.bags or {})[item] or 0) + ((c.bank or {})[item] or 0)
+  local owned = ((c.bags or {})[item] or 0) + ((c.bank or {})[item] or 0) + ((c.mail or {})[item] or 0)
   if owned == 0 then return 0 end
   local used = 0
   for _, need in pairs(c.needs or {}) do used = used + ((need.gross or {})[item] or 0) end
@@ -553,6 +593,7 @@ end
 -- Who in the group has spare `item`: total and { {key, n} } (largest first), `except` left out.
 function ns.GroupSupply(item, except)
   local total, list = 0, {}
+  if ns.IsBoP(item) then return total, list end
   for key, c in pairs(ns.AllChars()) do
     if key ~= except then
       local n = ns.Surplus(c, item)
@@ -578,13 +619,14 @@ function ns.GiveList(key)
     for item in pairs(src) do items[item] = true end
   end
   for item in pairs(items) do
-    local spare = ns.Surplus(c, item)
+    local bound = ns.IsBoP(item) or (c.bound and c.bound[item] and (c.bank and c.bank[item] or 0) == 0)
+    local spare = not bound and ns.Surplus(c, item) or 0
     if spare > 0 then
       local wants = {}
       for other, oc in pairs(chars) do
         if other ~= key then
           for _, r in ipairs(ns.NeedRows(oc, item)) do
-            wants[#wants + 1] = { to = other, n = r.n, step = r.step }
+            wants[#wants + 1] = { to = other, n = r.n, step = r.step, prof = r.prof, spell = r.spell }
           end
         end
       end
@@ -593,7 +635,7 @@ function ns.GiveList(key)
         if spare <= 0 then break end
         local n = math.min(spare, w.n)
         spare = spare - n
-        out[#out + 1] = { item = item, to = w.to, n = n, step = w.step }
+        out[#out + 1] = { item = item, to = w.to, n = n, step = w.step, prof = w.prof, spell = w.spell }
       end
     end
   end
@@ -643,6 +685,8 @@ end
 
 -- Trainer recipes of a skill line not known yet: { [spellID] = requiredSkill } up to maxRank.
 -- Recipes seen at a real trainer win over LibProfessionDB (whose values are partly Classic's).
+-- Skips recipes the user skipped, recipes absent from a scanned trainer of that skill tier,
+-- or recipes with no eligible friendly trainer left (e.g. refused at current rank).
 function ns.TrainerRecipes(line, maxRank, known)
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
   local all = lib and lib.GetRecipes and lib:GetRecipes(line)
@@ -659,8 +703,39 @@ function ns.TrainerRecipes(line, maxRank, known)
     local r = ns.Recipes[spell]
     if r and r[1] == line and not known[spell] and seen.req then out[spell] = seen.req end
   end
+  local skipped = ComradeCraftDB and ComradeCraftDB.skippedLearn or {}
+  local spots = ComradeCraftDB and ComradeCraftDB.trainerSpots or {}
+  local refused = ComradeCraftDB and ComradeCraftDB.trainerRefused or {}
+  -- Highest recipe rank actually seen on a scanned trainer of this profession on Forever.
+  local maxScannedReq, seenOnTrainer = 0, {}
+  for _, t in pairs(spots) do
+    if t.scanned and t.line == line then
+      if (t.maxReq or 0) > maxScannedReq then maxScannedReq = t.maxReq end
+      for sp in pairs(t.spells or {}) do seenOnTrainer[sp] = true end
+    end
+  end
+  -- If a trainer of this profession refused us ("You'll need more training...") at `refRank`,
+  -- unconfirmed recipes with req <= refRank cannot be learned yet: defer them to the next
+  -- Classic/Forever trainer tier (50, 125, 200, 275) so the planner levels us there with known crafts!
+  local deferUntil = 0
+  for _, rf in pairs(refused) do
+    if rf.line == line and (rf.rank or 0) > 0 then
+      local nextTier = (rf.rank < 50 and 50) or (rf.rank < 125 and 125)
+        or (rf.rank < 200 and 200) or (rf.rank < 275 and 275) or (rf.rank + 10)
+      if nextTier > deferUntil then deferUntil = nextTier end
+    end
+  end
   for spell, req in pairs(out) do
-    if req > maxRank then out[spell] = nil end
+    if req > maxRank or skipped[spell] then
+      out[spell] = nil
+    elseif maxScannedReq >= req and not seenOnTrainer[spell] then
+      -- A scanned trainer of this skill tier didn't offer it on Forever.
+      out[spell] = nil
+    elseif ns.HasEligibleTrainer and ns.HasEligibleTrainer(spell) == false then
+      out[spell] = nil
+    elseif deferUntil > 0 and not seenOnTrainer[spell] and req < deferUntil then
+      if deferUntil <= maxRank then out[spell] = deferUntil else out[spell] = nil end
+    end
   end
   return out
 end
@@ -747,7 +822,7 @@ function ns.GroupStock(c)
   local function Add(item, n)
     if n > 0 and not ns.IsVendorItem(item) then stock[item] = (stock[item] or 0) + n end
   end
-  for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
+  for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
     for item, n in pairs(src) do Add(item, n) end
   end
   for _, o in pairs(ns.AllChars()) do
@@ -757,7 +832,7 @@ function ns.GroupStock(c)
         for item in pairs(src) do
           if not seen[item] then
             seen[item] = true
-            Add(item, ns.Surplus(o, item))
+            if not ns.IsBoP(item) then Add(item, ns.Surplus(o, item)) end
           end
         end
       end
@@ -775,7 +850,7 @@ function ns.UpdateNeeds(c)
     for spell in pairs(set) do all[spell] = true end
   end
   local owned = {}
-  for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
+  for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
     for item, n in pairs(src) do owned[item] = (owned[item] or 0) + n end
   end
   local stock = ns.GroupObjective() == "group" and ns.GroupStock(c) or nil
@@ -805,6 +880,13 @@ function ns.UpdateNeeds(c)
         alt = { mode = other, reached = oReached, milestones = oInfo.milestones } }
     end
   end
+  if ns.Wishlist and ns.Wishlist.InjectNeeds then
+    local foundKey
+    for key, ch in pairs(ns.AllChars()) do
+      if ch == c then foundKey = key break end
+    end
+    if foundKey then ns.Wishlist.InjectNeeds(c, foundKey) end
+  end
 end
 
 -- Total need of one item for a character, across professions.
@@ -814,13 +896,15 @@ function ns.NeedOf(c, itemID)
   return n
 end
 
--- Per-profession needs of one item: { { prof = name, n = count }, ... }.
+-- Per-profession needs of one item: { { prof = name, n = count, step = i, spell = id }, ... }.
 function ns.NeedRows(c, itemID)
   local rows = {}
   for _, need in pairs(c.needs or {}) do
     local n = need.items[itemID]
     if n and n > 0 then
-      rows[#rows + 1] = { prof = need.name, n = n, step = need.when and need.when[itemID] }
+      local step = need.when and need.when[itemID]
+      local planStep = step and need.plan and need.plan[step]
+      rows[#rows + 1] = { prof = need.name, n = n, step = step, spell = planStep and planStep.spell or nil }
     end
   end
   return rows

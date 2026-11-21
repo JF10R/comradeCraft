@@ -5,8 +5,8 @@ if loc ~= "ruRU" then return end
 ns.Translations = ns.Translations or {}
 ns.Translations[loc] = {
     -- Core
-    ["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"] =
-      "команды: /comrade (окно) | share [off] | add ИМЯ | remove ИМЯ | peers | sync | guildping [off] | shop [профессия] | tracker [reset] | mail ИМЯ | scan | needs | stats | api | audit | log clear",
+    ["commands: /comrade (window) | share [off] | list [off] | directory [text] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"] =
+      "команды: /comrade (окно) | share [off] | list [off] | directory [текст] | add ИМЯ | remove ИМЯ | peers | sync | guildping [off] | shop [профессия] | tracker [reset] | mail ИМЯ | scan | needs | stats | api | audit | log clear",
     ["log cleared"] = "журнал очищен",
     ["%d lines in the log (written to disk on /reload or logout)"] =
       "строк в журнале: %d (записываются на диск при /reload или выходе)",
@@ -565,8 +565,8 @@ ns.Translations[loc] = {
       "План группы",
     ["What the group still needs, what it already holds, and who farms what."] =
       "Чего группе ещё не хватает, что уже есть и кто что добывает.",
-    ["Objective: %s (change it in Manage group > Options)."] =
-      "Цель: %s (меняется в Управление группой > Настройки).",
+    ["Objective:"] =
+      "Цель:",
     ["Lowest group cost"] =
       "Мин. затраты группы",
     ["Market value"] =
@@ -607,4 +607,174 @@ ns.Translations[loc] = {
       "Показывать трекер добычи (твои задания из Плана группы).",
     ["Plans count stock already held in the group as free (or every mat at market value: Manage group > Options). The Group plan view lists what the group still needs and its cost; take a material with I'll farm it and a small tracker follows your progress."] =
       "Планы считают бесплатными запасы, которые уже есть в группе (или каждый материал по рыночной цене: Управление группой > Настройки). Окно План группы показывает, чего группе ещё не хватает и сколько это стоит; возьми материал кнопкой Добуду я, и небольшой трекер покажет прогресс.",
+    ["Guild directory"] =
+      "Справочник гильдии",
+    ["%d crafter"] =
+      "%d ремесленник",
+    ["%d crafters"] =
+      "%d ремесленников",
+    ["Right box: list the character in the guild directory (professions and recipes only, sent to your guild)."] =
+      "Правый флажок: внести персонажа в справочник гильдии (только профессии и рецепты, отправляются твоей гильдии).",
+    ["List in guild directory"] =
+      "Внести в справочник гильдии",
+    ["Opt-in, per character: List in guild directory in Manage group (or /comrade list) sends its professions and recipes to guildmates who use ComradeCraft. Search who can craft an item, whisper them, or ask for the craft if they are in your group. Item tooltips name up to 3 guild crafters."] =
+      "По желанию, для каждого персонажа: флажок Внести в справочник гильдии в Управлении группой (или /comrade list) отправляет его профессии и рецепты согильдийцам с ComradeCraft. Ищи, кто может создать предмет, шепни ему или попроси создать, если он в твоей группе. Подсказки предметов называют до 3 ремесленников гильдии.",
+    ["Whisper"] =
+      "Шепнуть",
+    ["Nobody is listed yet. The directory is opt-in: each player lists their own characters in Manage group (List in guild directory) or with /comrade list."] =
+      "Пока никто не внесён. Справочник добровольный: каждый игрок сам вносит своих персонажей в Управлении группой (Внести в справочник гильдии) или командой /comrade list.",
+    ["Type a product or recipe name in the search box."] =
+      "Введи название предмета или рецепта в поле поиска.",
+    ["No crafter found."] =
+      "Ремесленник не найден.",
+    ["... and %d more"] =
+      "... и ещё %d",
+    ["Who in your guild can craft what. Each player lists their own characters (opt-in)."] =
+      "Кто в твоей гильдии что умеет создавать. Каждый игрок сам вносит своих персонажей (по желанию).",
+    ["Guild crafters: %s"] =
+      "Ремесленники гильдии: %s",
+    ["%s is listed in the guild directory"] =
+      "%s внесён в справочник гильдии",
+    ["%s is no longer listed in the guild directory"] =
+      "%s больше не внесён в справочник гильдии",
+    ["You are not in a guild: the entry is sent once you are."] =
+      "Ты не в гильдии: запись отправится, когда вступишь в гильдию.",
+    ["directory: %d characters listed. /comrade directory TEXT searches them."] =
+      "справочник: внесено персонажей: %d. /comrade directory ТЕКСТ ищет среди них.",
+    ["directory: no crafter for %s"] =
+      "справочник: нет ремесленника для %s",
+    -- UI polish, bags, mail & friends
+    ["%d item"] = "%d предмет",
+    ["%d items"] = "%d предметов",
+    ["Add %s"] = "Добавить %s",
+    ["Add target"] = "Добавить цель",
+    ["Cancel"] = "Отмена",
+    ["Characters"] = "Персонажи",
+    ["Click a member to highlight their items."] = "Нажми на участника, чтобы подсветить нужные ему предметы.",
+    ["Click to select recipient and highlight needed items in your bags."] =
+      "Нажми, чтобы выбрать получателя и подсветить нужные ему предметы в сумках.",
+    ["Collapse all"] = "Свернуть всё",
+    ["ComradeCraft: Add to group"] = "ComradeCraft: Добавить в группу",
+    ["Expand all"] = "Развернуть всё",
+    ["Filter recipes..."] = "Фильтр рецептов...",
+    ["Find who can craft..."] = "Кто может создать...",
+    ["For %s"] = "Для %s",
+    ["Friend"] = "Друг",
+    ["Guild"] = "Гильдия",
+    ["Highlight items for your group in your bags (and focus a recipient's items when mailing)."] =
+      "Подсвечивать в сумках предметы для группы (и выделять нужные получателю на почте).",
+    ["Highlighted in your bags"] = "Подсвечено в сумках",
+    ["Nothing to send from your bags."] = "Нечего отправить из сумок.",
+    ["Online in your party, friends or guild:"] = "В сети в твоей группе, друзьях или гильдии:",
+    ["Party"] = "Группа",
+    ["Ready to send from your bags"] = "Готово к отправке из сумок",
+    ["Retry"] = "Повторить",
+    ["Search guild crafters..."] = "Поиск ремесленников...",
+    ["Send x%d to %s"] = "Отправить x%d для %s",
+    ["Send x%d to %s (%s)"] = "Отправить x%d для %s (%s)",
+    ["To send from your bags: %s"] = "Отправить из сумок: %s",
+    ["You cannot add yourself."] = "Нельзя добавить самого себя.",
+    ["craft request"] = "запрос на создание",
+    ["waiting for reply"] = "ожидание ответа",
+    ["Share all"] = "Поделиться всеми",
+    ["Unshare all"] = "Скрыть всех",
+    ["Automatically share new characters on this account"] =
+      "Автоматически делиться новыми персонажами этого аккаунта",
+    ["All characters (%d) are now shared with your group"] =
+      "Все персонажи (%d) теперь открыты для твоей группы",
+    ["No character is shared anymore"] = "Ни один персонаж больше не открыт",
+    ["%s requires higher %s skill; skipped for waypoints until you level up."] =
+      "%s требует более высокий навык «%s»; пропущен для меток, пока не повысишь навык.",
+    ["Right-click: skip this recipe and recalculate."] =
+      "ПКМ: пропустить этот рецепт и пересчитать.",
+    ["Reset skipped (%d)"] = "Сбросить пропущенные (%d)",
+    -- Trade, Merchant, Wishlist, Cooldowns & UI rework
+    ["%d tracked"] = "отслеживается: %d",
+    ["%s wants to join your group"] = "%s хочет вступить в твою группу",
+    ["Accept to share your checked characters with them."] =
+      "Прими, чтобы делиться отмеченными персонажами.",
+    ["Add to wishlist"] = "В список желаемого",
+    ["All materials are in your bags."] = "Все материалы в твоих сумках.",
+    ["Buy plan reagents (%s)"] = "Купить реагенты (%s)",
+    ["Click to sync now with your group."] = "Нажми, чтобы синхронизироваться с группой сейчас.",
+    ["Compare routes"] = "Сравнить маршруты",
+    ["Craft"] = "Создать",
+    ["Disenchant"] = "Распыление",
+    ["For who:"] = "Для кого:",
+    ["Group cooldowns"] = "Восстановления группы",
+    ["Hide route comparison"] = "Скрыть сравнение",
+    ["Ignore"] = "Игнорировать",
+    ["Materials"] = "Материалы",
+    ["No craft pinned yet. Right-click any recipe in your Can craft tab to add it here, track its materials and get notified when ready."] =
+      "Пока ничего не закреплено. ПКМ по рецепту во вкладке Может создать, чтобы отслеживать материалы и получить уведомление о готовности.",
+    ["No disenchantable items in your bags."] = "В сумках нет предметов для распыления.",
+    ["Not enough gold (%s needed)."] = "Недостаточно золота (нужно %s).",
+    ["Note (optional):"] = "Заметка (необяз.):",
+    ["Overview"] = "Обзор",
+    ["Pin"] = "Закрепить",
+    ["Pin on screen"] = "Закрепить на экране",
+    ["Pinned crafts to track materials for yourself or friends."] =
+      "Закреплённые предметы для отслеживания материалов для себя или друзей.",
+    ["Place needed items"] = "Положить нужное",
+    ["Plan reagents"] = "Реагенты плана",
+    ["Quantity:"] = "Кол-во:",
+    ["Ready"] = "Готово",
+    ["Ready (some mats in bank/mail)"] = "Готово (часть в банке/почте)",
+    ["Ready to craft!"] = "Можно создавать!",
+    ["Right-click: add to Wishlist."] = "ПКМ: добавить в список желаемого.",
+    ["Show the wishlist tracker on screen (pinned crafts)."] =
+      "Показывать трекер закреплённых рецептов на экране.",
+    ["Trade window is full (%d slots)."] = "Окно обмена заполнено (%d ячеек).",
+    ["Unpin"] = "Открепить",
+    ["Wishlist"] = "Желаемое",
+    ["Wishlist ready: %dx %s"] = "Готово к созданию: %dx %s",
+    ["none pinned"] = "ничего не закреплено",
+    -- Synergies, Audit, Loot, AH Panel, Buy vs Farm
+    ["%d small bags (min %d slots) -> %s (%d slots)"] = "%d мал. сумок (мин. %d яч.) -> %s (%d яч.)",
+    ["%s can craft %dx %s from group's %s for %s"] = "%s может создать %dx %s из %s группы для %s",
+    ["Advice"] = "Совет",
+    ["Ask"] = "Попросить",
+    ["Back"] = "Спина",
+    ["Buy"] = "Купить",
+    ["Buy/Farm"] = "Купить/Добыть",
+    ["Chest"] = "Грудь",
+    ["Click an item to search it."] = "Нажми на предмет для поиска.",
+    ["Click: search in Auction House."] = "Клик: искать на аукционе.",
+    ["Click: waypoint to farm spot."] = "Клик: метка к месту добычи.",
+    ["Cross-profession links between your group's active plans."] =
+      "Взаимосвязи между профессиями в активных планах группы.",
+    ["Disenchant %dx %s (%s)"] = "Распылить %dx %s (%s)",
+    ["Disenchant for your enchanting plan"] = "Распылить для твоего плана наложения чар",
+    ["Everyone's bags, enchants and gear are up to date."] =
+      "Сумки, чары и экипировка группы актуальны.",
+    ["Farm"] = "Добыть",
+    ["Farm %s: %s (%s %d, %d)"] = "Добыть %s: %s (%s %d, %d)",
+    ["Farm spot"] = "Место добычи",
+    ["Feet"] = "Ступни",
+    ["Gear"] = "Экипировка",
+    ["Gold: %s"] = "Золото: %s",
+    ["Group synergies"] = "Синергии группы",
+    ["Group upgrades"] = "Улучшения группы",
+    ["Hands"] = "Кисти рук",
+    ["Known by %s"] = "Знает %s",
+    ["Loot roll: %s - needed now by %s"] = "Добыча: %s - нужно сейчас для %s",
+    ["Loot roll: %s - unknown by %s"] = "Добыча: %s - не знает %s",
+    ["No known farm location for %s."] = "Неизвестное место добычи для %s.",
+    ["Send %dx %s to %s to disenchant (%s)"] = "Отправить %dx %s для %s на распыление (%s)",
+    ["Send to %s to disenchant"] = "Отправить %s на распыление",
+    ["Shield"] = "Щит",
+    ["Small bags, unenchanted gear and craftable upgrades your group can make."] =
+      "Маленькие сумки, незачарованная экипировка и улучшения, которые может создать группа.",
+    ["To buy at the AH"] = "Купить на аукционе",
+    ["Total: %s (you have %s)"] = "Итого: %s (у тебя %s)",
+    ["Unenchanted %s -> %s"] = "Без чар (%s) -> %s",
+    ["Unknown by %s (%s %d/%d)"] = "Не знает %s (%s %d/%d)",
+    ["Upgrades"] = "Улучшения",
+    ["Vendor"] = "Торговец",
+    ["Waypoint: %s (%s %d, %d)"] = "Метка: %s (%s %d, %d)",
+    ["Wrist"] = "Запястья",
+    ["Your gold: %s"] = "Твоё золото: %s",
+    ["by %s"] = "от %s",
+    ["can learn now"] = "можно выучить",
+    ["needs skill %d"] = "требуется %d",
 }

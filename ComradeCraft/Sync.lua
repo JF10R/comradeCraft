@@ -3,8 +3,10 @@
 --   HELLO: summaries of the characters the player chose to share; whispered ONLY to players
 --          the player added, at login and at most once a minute after a shared change.
 --   REQ:   asks for full records that changed. DATA: one full record (shared characters only).
--- Privacy: nothing about a character leaves the client unless it is marked shared, and only
--- added players receive it. Everything received is validated before it is stored.
+--   DIR:   guild directory entry ("G", Directory.lua): professions and recipes of listed characters.
+-- Privacy: nothing about a character leaves the client unless it is marked shared (full record,
+-- only to added players) or listed (professions and recipes, only to the guild). Everything
+-- received is validated before it is stored.
 local _, ns = ...
 local L = ns.L
 
@@ -57,6 +59,7 @@ local function Class(v)
   v = Str(v, 16)
   return v and v:match("^[A-Z]+$") and v or nil
 end
+Sync.Num, Sync.Str, Sync.Class = Num, Str, Class
 
 -- Skill-up totals per color ({ [color] = { n, gained, expected } }), for the shared calibration.
 local COLORS = { orange = true, yellow = true, green = true, grey = true }
@@ -156,6 +159,42 @@ function Sync.CleanRecord(r)
     end
   end
   out.farm = nf > 0 and farm or nil
+  -- Profession cooldowns: { [spellID] = readyAt }, up to 20 entries.
+  local cds, nc = {}, 0
+  for spell, readyAt in pairs(type(r.cooldowns) == "table" and r.cooldowns or {}) do
+    spell, readyAt = Num(spell, 1, 2 ^ 31), Num(readyAt, 0, 2 ^ 31)
+    if spell and readyAt and ns.Recipes[spell] and nc < 20 then
+      cds[spell] = readyAt
+      nc = nc + 1
+    end
+  end
+  out.cooldowns = nc > 0 and cds or nil
+  -- Equipped enchant IDs & bag sizes (for Group Upgrades audit).
+  local ench, ne = {}, 0
+  for slot, eid in pairs(type(r.enchants) == "table" and r.enchants or {}) do
+    slot, eid = Num(slot, 1, 19), Num(eid, 0, 2 ^ 24)
+    if slot and eid and ne < 12 then ench[slot] = eid ne = ne + 1 end
+  end
+  out.enchants = ne > 0 and ench or nil
+  local bs = {}
+  for i = 1, 4 do
+    local sz = type(r.bagSizes) == "table" and Num(r.bagSizes[i], 0, 64)
+    if sz then bs[i] = sz end
+  end
+  out.bagSizes = #bs > 0 and bs or nil
+  -- Shared wishlist items pinned by this peer character (max 15).
+  local wl = {}
+  for _, e in ipairs(type(r.wishlist) == "table" and r.wishlist or {}) do
+    if type(e) == "table" and #wl < 15 then
+      local sp, qty = Num(e.s, 1, 2 ^ 31), Num(e.q, 1, 999)
+      local rec = sp and ns.Recipes[sp]
+      if rec and qty then
+        wl[#wl + 1] = { id = Str(e.id, 32) or tostring(sp), spell = sp, item = rec[5] or 0,
+          qty = qty, forWho = Str(e.w, 40), note = Str(e.n, 80) }
+      end
+    end
+  end
+  out.wishlist = #wl > 0 and wl or nil
   return out
 end
 
@@ -177,7 +216,7 @@ local function Record(c, key)
     known[line] = list
   end
   local owned = {}
-  for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
+  for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
     for item, n in pairs(src) do
       if ns.ItemPrices[item] then owned[item] = (owned[item] or 0) + n end
     end
@@ -193,14 +232,27 @@ local function Record(c, key)
       nf = nf + 1
     end
   end
+  local cds, nc = {}, 0
+  for spell, readyAt in pairs(c.cooldowns or {}) do
+    if nc < 20 then cds[spell] = readyAt nc = nc + 1 end
+  end
+  local wl = {}
+  for _, e in ipairs(ComradeCraftDB.wishlist or {}) do
+    if e.char == key and #wl < 15 then
+      wl[#wl + 1] = { id = e.id, s = e.spell, q = e.qty, w = e.forWho, n = e.note }
+    end
+  end
   return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon, route = c.route, updated = c.updated,
-    professions = profs, known = known, owned = owned, equipped = c.equipped, farm = nf > 0 and farm or nil }
+    professions = profs, known = known, owned = owned, equipped = c.equipped, enchants = c.enchants,
+    bagSizes = c.bagSizes, farm = nf > 0 and farm or nil, cooldowns = nc > 0 and cds or nil,
+    wishlist = #wl > 0 and wl or nil }
 end
 
 local function DB()
   local db = ComradeCraftDB
   db.peers = db.peers or {}
   db.remote = db.remote or {}
+  db.pendingAdd = db.pendingAdd or {}
   if not db.accountId then
     db.accountId = ("%08x%06x"):format(math.random(0, 0x7fffffff), (time() or 0) % 0x1000000)
   end
@@ -270,9 +322,13 @@ end
 -- Shared summaries, whispered to the players the player added (never to the guild).
 function Sync.AnnounceToGroup()
   if not ComradeCraftDB then return end
+  local db = DB()
   local hello = Sync.Hello()
-  for _, peer in pairs(DB().peers) do
+  for _, peer in pairs(db.peers) do
     if peer.included and peer.name then Sync.Send(hello, "WHISPER", peer.name) end
+  end
+  for _, p in pairs(db.pendingAdd) do
+    if p and p.name then Sync.Send(hello, "WHISPER", p.name) end
   end
 end
 
@@ -283,6 +339,7 @@ function Sync.Announce()
   db.settings = db.settings or {}
   if db.settings.guildPing ~= false and IsInGuild and IsInGuild() then
     Sync.Send({ t = "P", v = PROTO, id = db.accountId }, "GUILD")
+    if ns.Directory then ns.Directory.NotePing() end
   end
   Sync.AnnounceToGroup()
 end
@@ -320,6 +377,18 @@ function Sync.SetShared(key, on)
   if ns.RefreshWindow then ns.RefreshWindow() end
 end
 
+-- Marks every local character on this account shared or not (one announce).
+function Sync.SetAllShared(on)
+  local n = 0
+  for _, c in pairs(ComradeCraftDB.chars or {}) do
+    c.shared = on or nil
+    n = n + 1
+  end
+  Sync.AnnounceToGroup()
+  if ns.RefreshWindow then ns.RefreshWindow() end
+  return n
+end
+
 -- Receiving -------------------------------------------------------------------------------
 
 local function Self() return UnitName and UnitName("player") end
@@ -348,6 +417,9 @@ function Sync.OnMessage(text, dist, sender)
       peer.replied = time()
       Sync.Send(Sync.Hello(true), "WHISPER", sender)
     end
+    if ns.Directory then ns.Directory.OnPing(sender, dist) end
+  elseif msg.t == "G" then
+    if ns.Directory then ns.Directory.OnEntry(id, msg, dist, sender) end
   elseif msg.t == "H" then
     local chars, n = {}, 0
     for key, s in pairs(type(msg.c) == "table" and msg.c or {}) do
@@ -360,14 +432,30 @@ function Sync.OnMessage(text, dist, sender)
     end
     peer.chars = chars
     peer.skillups = Sync.CleanSkillups(msg.sk)
-    if Sync.pendingAdd and Sync.pendingAdd[sender:lower()] then
-      Sync.pendingAdd[sender:lower()] = nil
+    local low, shortLow = sender:lower(), (sender:match("^[^-]+") or sender):lower()
+    if db.pendingAdd[low] or db.pendingAdd[shortLow] or (Sync.pendingAdd and (Sync.pendingAdd[low] or Sync.pendingAdd[shortLow])) then
+      db.pendingAdd[low], db.pendingAdd[shortLow] = nil, nil
+      if Sync.pendingAdd then Sync.pendingAdd[low], Sync.pendingAdd[shortLow] = nil, nil end
       peer.included = true
     end
     -- They added us (only added players get HELLOs). Not added back: shown as "wants to
-    -- join". Added: answer once with our own summaries, then fetch what changed.
+    -- join" + toast so you can accept on the spot. Added: answer once, then fetch changes.
     if not peer.included then
+      local firstAsk = not peer.asked
       peer.asked = true
+      if firstAsk and ns.Alerts and ns.Alerts.Notify then
+        local peerId, who = id, sender
+        ns.Alerts.Notify({
+          title = L["%s wants to join your group"]:format(who),
+          text = L["Accept to share your checked characters with them."],
+          icon = ns.LOGO,
+          sticky = true,
+          buttons = {
+            { L["Accept"], function() Sync.Include(peerId) end },
+            { L["Ignore"], function() end },
+          },
+        })
+      end
     elseif not msg.r and (time() - (peer.replied or 0)) >= REPLY_COOLDOWN then
       peer.replied = time()
       Sync.Send(Sync.Hello(true), "WHISPER", sender)
@@ -399,6 +487,7 @@ function Sync.OnMessage(text, dist, sender)
         db.remote[key] = rec
         ns.UpdateNeeds(rec)
         if ns.Alerts then ns.Alerts.CheckUpgrades() end
+        if ns.Bags and ns.Bags.Refresh then ns.Bags.Refresh() end
       end
     end
   end
@@ -429,11 +518,135 @@ end
 
 local function PeerByName(name)
   name = name and name:lower()
+  if not name then return nil end
+  local short = name:match("^[^-]+") or name
   for id, peer in pairs(DB().peers) do
-    if peer.name and peer.name:lower() == name then return id, peer end
+    if peer.name then
+      local pn = peer.name:lower()
+      if pn == name or (pn:match("^[^-]+") or pn) == short then return id, peer end
+    end
   end
 end
 Sync.PeerByName = PeerByName
+
+-- Adds a player by name: includes immediately if already seen, else stores a pending invite
+-- and whispers HELLO (retried automatically on login / sync).
+function Sync.AddByName(name)
+  name = type(name) == "string" and name:match("^%s*(.-)%s*$") or ""
+  if name == "" then return false end
+  local short = name:match("^[^-]+") or name
+  if Self() and short:lower() == Self():lower() then
+    ns.Print(L["You cannot add yourself."])
+    return false
+  end
+  local id = PeerByName(name)
+  if id then
+    local db = DB()
+    db.pendingAdd[name:lower()], db.pendingAdd[short:lower()] = nil, nil
+    Sync.Include(id)
+    ns.Print(L["%s added to the group"]:format(name))
+    return true
+  end
+  local db = DB()
+  db.pendingAdd[short:lower()] = { name = name, t = time() }
+  Sync.Send(Sync.Hello(), "WHISPER", name)
+  ns.Print(L["%s contacted; added as soon as they answer"]:format(name))
+  if ns.RefreshWindow then ns.RefreshWindow() end
+  return true
+end
+
+function Sync.PendingAdds()
+  local out = {}
+  for k, p in pairs(DB().pendingAdd) do
+    if p and p.name then out[#out + 1] = { key = k, name = p.name, t = p.t } end
+  end
+  table.sort(out, function(a, b) return a.name < b.name end)
+  return out
+end
+
+function Sync.CancelAdd(key)
+  local db = DB()
+  if key then db.pendingAdd[key] = nil end
+  if ns.RefreshWindow then ns.RefreshWindow() end
+end
+
+function Sync.RetryAdd(key)
+  local p = key and DB().pendingAdd[key]
+  if not (p and p.name) then return end
+  p.t = time()
+  Sync.Send(Sync.Hello(), "WHISPER", p.name)
+  ns.Print(L["%s contacted; added as soon as they answer"]:format(p.name))
+  if ns.RefreshWindow then ns.RefreshWindow() end
+end
+
+-- Friendly player currently targeted (nil if none or self).
+function Sync.TargetPlayerName()
+  if not (UnitExists and UnitExists("target") and UnitIsPlayer and UnitIsPlayer("target")) then return nil end
+  if UnitIsFriend and not UnitIsFriend("player", "target") then return nil end
+  if UnitIsUnit and UnitIsUnit("player", "target") then return nil end
+  local name = UnitName and UnitName("target")
+  if not name or (issecretvalue and issecretvalue(name)) then return nil end
+  return name
+end
+
+-- Online candidates from party/raid, friends list and guild not yet in peers or pending.
+-- Returns { { name, class, source = "party"|"friend"|"guild" }, ... }.
+function Sync.QuickAddCandidates()
+  local db = DB()
+  local skip, out = {}, {}
+  local me = Self()
+  if me then skip[me:lower()] = true end
+  for _, peer in pairs(db.peers) do
+    if peer.name then
+      local s = (peer.name:match("^[^-]+") or peer.name):lower()
+      skip[s] = true
+    end
+  end
+  for k in pairs(db.pendingAdd) do skip[k] = true end
+  local function Push(name, class, source)
+    if not name or name == "" or (issecretvalue and issecretvalue(name)) then return end
+    local short = name:match("^[^-]+") or name
+    local low = short:lower()
+    if skip[low] then return end
+    skip[low] = true
+    out[#out + 1] = { name = short, class = class, source = source }
+  end
+  -- Party / raid
+  local nGroup = GetNumGroupMembers and GetNumGroupMembers() or 0
+  if nGroup > 0 then
+    local prefix = IsInRaid and IsInRaid() and "raid" or "party"
+    for i = 1, nGroup do
+      local unit = prefix .. i
+      if UnitExists and UnitExists(unit) and (not UnitIsConnected or UnitIsConnected(unit))
+        and (not UnitIsUnit or not UnitIsUnit(unit, "player")) then
+        local _, cls = UnitClass and UnitClass(unit)
+        Push(UnitName and UnitName(unit), cls, "party")
+      end
+    end
+  end
+  -- Online friends
+  if C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex then
+    for i = 1, C_FriendList.GetNumFriends() do
+      local info = C_FriendList.GetFriendInfoByIndex(i)
+      if info and info.connected and info.name then
+        Push(info.name, nil, "friend")
+      end
+    end
+  end
+  -- Online guildmates
+  if IsInGuild and IsInGuild() and GetNumGuildMembers and GetGuildRosterInfo then
+    for i = 1, GetNumGuildMembers() do
+      local gname, _, _, _, _, _, _, _, online, _, cls = GetGuildRosterInfo(i)
+      if online and gname then Push(gname, cls, "guild") end
+    end
+  end
+  local order = { party = 1, friend = 2, guild = 3 }
+  table.sort(out, function(a, b)
+    if order[a.source] ~= order[b.source] then return order[a.source] < order[b.source] end
+    return a.name < b.name
+  end)
+  return out
+end
 
 -- Wiring ----------------------------------------------------------------------------------
 
@@ -452,6 +665,25 @@ ns.On("PLAYER_LOGIN", function()
     end)
   end
   if C_Timer then C_Timer.After(10, Sync.Announce) end
+  if Menu and Menu.ModifyMenu then
+    local tags = { "MENU_UNIT_PLAYER", "MENU_UNIT_PARTY", "MENU_UNIT_RAID_PLAYER", "MENU_UNIT_FRIEND", "MENU_UNIT_COMMUNITIES_GUILD_MEMBER" }
+    for _, tag in ipairs(tags) do
+      pcall(Menu.ModifyMenu, tag, function(_, root, ctx)
+        local name = ctx and ctx.name
+        if not name and ctx and ctx.unit and UnitIsPlayer and UnitIsPlayer(ctx.unit)
+          and (not UnitIsFriend or UnitIsFriend("player", ctx.unit)) then
+          name = UnitName and UnitName(ctx.unit)
+        end
+        if not name or name == "" or (issecretvalue and issecretvalue(name)) then return end
+        local short = name:match("^[^-]+") or name
+        if Self() and short:lower() == Self():lower() then return end
+        local _, peer = PeerByName(short)
+        if peer and peer.included then return end
+        root:CreateDivider()
+        root:CreateButton(L["ComradeCraft: Add to group"], function() Sync.AddByName(short) end)
+      end)
+    end
+  end
 end)
 ns.On("PLAYER_ENTERING_WORLD", function() Sync.Flush() end)
 ns.On("ZONE_CHANGED_NEW_AREA", function() Sync.Flush() end)
@@ -463,8 +695,17 @@ ns.commands.sync = function()
   ns.Print(L["sync: sent to the players in your group"])
 end
 
--- /comrade share [on|off]: share the current character (or stop).
+-- /comrade share [on|off|all|none]: share the current character or every character on this account.
 ns.commands.share = function(arg)
+  if arg == "all" then
+    local n = Sync.SetAllShared(true)
+    ns.Print(L["All characters (%d) are now shared with your group"]:format(n))
+    return
+  elseif arg == "none" then
+    Sync.SetAllShared(false)
+    ns.Print(L["No character is shared anymore"])
+    return
+  end
   local on = arg ~= "off"
   Sync.SetShared(ns.CharKey(), on)
   ns.Print((on and L["%s is shared with your group"] or L["%s is no longer shared"]):format(ns.CharKey()))
@@ -491,16 +732,7 @@ ns.commands.peers = function()
 end
 
 ns.commands.add = function(name)
-  local id = PeerByName(name)
-  if id then
-    Sync.Include(id)
-    ns.Print(L["%s added to the group"]:format(name))
-  elseif name and name ~= "" then
-    Sync.pendingAdd = Sync.pendingAdd or {}
-    Sync.pendingAdd[name:lower()] = true
-    Sync.Send(Sync.Hello(), "WHISPER", name)
-    ns.Print(L["%s contacted; added as soon as they answer"]:format(name))
-  end
+  Sync.AddByName(name)
 end
 
 ns.commands.remove = function(name)

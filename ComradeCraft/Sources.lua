@@ -70,18 +70,67 @@ local function Places(npc)
   return out
 end
 
+local function CurrentSkillRank(line)
+  local c = ComradeCraftDB and ComradeCraftDB.chars and ComradeCraftDB.chars[ns.CharKey()]
+  for _, p in pairs(c and c.professions or {}) do
+    if p.skillLine == line then return p.rank or 0 end
+  end
+end
+
+local function TrainerDisqualified(npc, spell, line)
+  if not ComradeCraftDB then return false end
+  -- Visited trainer whose services were scanned: exclude if they didn't offer this recipe.
+  local spot = ComradeCraftDB.trainerSpots and ComradeCraftDB.trainerSpots[npc]
+  if spot and spot.scanned and spot.spells and not spot.spells[spell] then return true end
+  -- Trainer who refused us ("You'll need more training...") at or above our current rank.
+  local ref = ComradeCraftDB.trainerRefused and ComradeCraftDB.trainerRefused[npc]
+  if ref and ref.line == line then
+    local rank = CurrentSkillRank(line)
+    if rank and rank <= (ref.rank or 0) then return true end
+  end
+  return false
+end
+
+-- True if at least one friendly trainer can teach `spell` right now; false if every known
+-- friendly trainer was refused at current rank or scanned without offering it; nil if unknown.
+function ns.HasEligibleTrainer(spell)
+  local r = ns.Recipes[spell]
+  if not r then return nil end
+  for npc, t in pairs(ComradeCraftDB and ComradeCraftDB.trainerSpots or {}) do
+    if t.scanned and t.spells and t.spells[spell] and not TrainerDisqualified(npc, spell, r[1]) then
+      return true
+    end
+  end
+  local lib = Lib()
+  local src = lib and lib.GetRecipeSources and lib:GetRecipeSources(spell)
+  local list = src and src.trainer
+  if not (list and #list > 0) then return nil end
+  local friendlySeen = 0
+  for _, e in ipairs(list) do
+    if Friendly(e.id) then
+      friendlySeen = friendlySeen + 1
+      if not TrainerDisqualified(e.id, spell, r[1]) then return true end
+    end
+  end
+  if friendlySeen > 0 then return false end
+  return nil
+end
+
 -- Where a recipe comes from: { kind = { total, list = { { npc, name, place } } } }, each list
 -- sorted nearest first (same map as the player, by distance). nil when nothing is known.
 function ns.RecipeSources(spell)
   local lib = Lib()
   local src = lib and lib.GetRecipeSources and lib:GetRecipeSources(spell)
   local r = ns.Recipes[spell]
-  -- Trainers you visited of this profession (exact Forever positions) join the trainer list.
+  -- Trainers you visited who actually offered this recipe (exact Forever positions) join the list.
   local visited = {}
   if r and (src and src.trainer or ns.TrainerSeen(spell)) then
     for npc, t in pairs(ComradeCraftDB and ComradeCraftDB.trainerSpots or {}) do
-      if t.line == r[1] then visited[#visited + 1] = { id = npc, name = t.name, visited = true,
-        place = { uiMap = t.map, x = t.x, y = t.y } } end
+      local teaches = t.scanned and (t.spells and t.spells[spell]) or (not t.scanned and t.line == r[1])
+      if teaches and t.map and not TrainerDisqualified(npc, spell, r[1]) then
+        visited[#visited + 1] = { id = npc, name = t.name, visited = true,
+          place = { uiMap = t.map, x = t.x, y = t.y } }
+      end
     end
   end
   if not src and #visited == 0 then return nil end
@@ -96,6 +145,7 @@ function ns.RecipeSources(spell)
         local x = { id = e.id, name = e.name }
         if kind ~= "quest" then
           if (kind == "trainer" or kind == "vendor") and not Friendly(e.id) then x = nil end
+          if x and kind == "trainer" and r and TrainerDisqualified(e.id, spell, r[1]) then x = nil end
           if x then
             local best, bestD
             for _, p in ipairs(Places(e.id)) do

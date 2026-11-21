@@ -15,28 +15,81 @@ function ns.UrgencyText(step)
   return ("|cff%s(%s)|r"):format(URGENCY_COLOR[u], ns.L[u])
 end
 
+local function ReasonText(prof, spell)
+  local parts = {}
+  if prof and prof ~= "" then parts[#parts + 1] = prof end
+  if spell and ns.SpellName then
+    local sn = ns.SpellName(spell)
+    if sn and not sn:find("^spell:") then parts[#parts + 1] = sn end
+  end
+  return table.concat(parts, " - ")
+end
+
 local function AddNeeds(tooltip, itemID)
   if not (itemID and ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local mailTarget = ns.Mail and ns.Mail.CurrentRecipient and ns.Mail.CurrentRecipient() or nil
   local rows, total = {}, 0
   for key, c in pairs(ns.AllChars()) do
     for _, r in ipairs(ns.NeedRows(c, itemID)) do
-      rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, n = r.n, step = r.step }
+      rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, spell = r.spell, n = r.n, step = r.step }
       total = total + r.n
     end
   end
-  if #rows == 0 then return end
+  -- Items in this character's bags that can be sent (spare mats + accepted craft requests).
+  local sends, targetSend = {}, nil
+  local me = ns.CharKey()
+  local myBags = (ComradeCraftDB.chars[me] or {}).bags or {}
+  if (myBags[itemID] or 0) > 0 then
+    for _, g in ipairs(ns.GiveList(me)) do
+      if g.item == itemID then
+        local e = { to = g.to, n = g.n, prof = g.prof, spell = g.spell, step = g.step }
+        sends[#sends + 1] = e
+        if mailTarget and g.to == mailTarget and not targetSend then targetSend = e end
+      end
+    end
+    for _, r in pairs(ComradeCraftDB.requests or {}) do
+      if r.status == "accepted" and ns.Requests and ns.Requests.Role(r) == "crafter" and r.item == itemID then
+        local qty = math.min(myBags[itemID], r.qty * math.max(1, (ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1))
+        local e = { to = r.from, n = qty, spell = r.spell, request = true }
+        sends[#sends + 1] = e
+        if mailTarget and r.from == mailTarget and not targetSend then targetSend = e end
+      end
+    end
+  end
+  if #rows == 0 and #sends == 0 then return end
   local supply, holders = ns.GroupSupply(itemID)
-  -- Most urgent first, then the biggest quantity.
+  -- Active mail recipient first, then most urgent, then biggest quantity.
   table.sort(rows, function(a, b)
+    if mailTarget and (a.key == mailTarget) ~= (b.key == mailTarget) then return a.key == mailTarget end
     local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
     if ua ~= ub then return ua < ub end
     return a.n > b.n
   end)
   tooltip:AddLine(" ")
   tooltip:AddLine("ComradeCraft", 1, 0.82, 0)
+  if targetSend then
+    local who = targetSend.to:match("^[^-]+") or targetSend.to
+    local why = targetSend.request and ns.L["craft request"] or ReasonText(targetSend.prof, targetSend.spell)
+    local msg = why ~= "" and ns.L["Send x%d to %s (%s)"]:format(targetSend.n, who, why)
+      or ns.L["Send x%d to %s"]:format(targetSend.n, who)
+    tooltip:AddLine(msg, 0.3, 1, 0.4, true)
+  elseif #sends > 0 then
+    local parts = {}
+    for i = 1, math.min(#sends, 2) do
+      local s = sends[i]
+      local who = s.to:match("^[^-]+") or s.to
+      local why = s.request and ns.L["craft request"] or (s.prof or "")
+      parts[#parts + 1] = why ~= "" and ("x%d -> %s (%s)"):format(s.n, who, why) or ("x%d -> %s"):format(s.n, who)
+    end
+    tooltip:AddLine(ns.L["To send from your bags: %s"]:format(table.concat(parts, ", ")), 0.3, 1, 0.4, true)
+  end
   for _, r in ipairs(rows) do
-    tooltip:AddDoubleLine(("%s |cff9d9d9d%s|r"):format(ns.ClassColored(r.key, r.class), r.prof or ""),
-      ns.L["needs %d"]:format(r.n) .. " " .. ns.UrgencyText(r.step), 1, 1, 1, 1, 0.82, 0.4)
+    local why = ReasonText(r.prof, r.spell)
+    local focus = mailTarget and r.key == mailTarget
+    local left = focus and ("|cff40ff40>|r %s |cffcccccc%s|r"):format(ns.ClassColored(r.key, r.class), why)
+      or ("%s |cff9d9d9d%s|r"):format(ns.ClassColored(r.key, r.class), why)
+    tooltip:AddDoubleLine(left, ns.L["needs %d"]:format(r.n) .. " " .. ns.UrgencyText(r.step),
+      1, 1, 1, focus and 0.4 or 1, focus and 1 or 0.82, focus and 0.4 or 0.4)
   end
   if #rows > 1 then
     tooltip:AddDoubleLine(ns.L["Group total"], tostring(total), 0.8, 0.8, 0.8, 1, 0.82, 0)
@@ -58,15 +111,23 @@ local function AddNeeds(tooltip, itemID)
 end
 ns.AddNeeds = AddNeeds
 
+-- Group needs, recipe-item status, then the guild directory's crafters of this item.
+local function OnItem(tooltip, id)
+  AddNeeds(tooltip, id)
+  if ns.Loot then ns.Loot.AddTooltip(tooltip, id) end
+  if ns.Directory then ns.Directory.AddTooltip(tooltip, id) end
+end
+ns.OnItemTooltip = OnItem
+
 if TooltipDataProcessor and Enum and Enum.TooltipDataType then
   TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-    if data and data.id then AddNeeds(tooltip, data.id) end
+    if data and data.id then OnItem(tooltip, data.id) end
   end)
 elseif GameTooltip then
   local function OnSetItem(tooltip)
     local _, link = tooltip:GetItem()
     local id = link and tonumber(link:match("item:(%d+)"))
-    AddNeeds(tooltip, id)
+    OnItem(tooltip, id)
   end
   for _, tt in ipairs({ GameTooltip, ItemRefTooltip }) do
     if tt then tt:HookScript("OnTooltipSetItem", OnSetItem) end

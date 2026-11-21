@@ -319,9 +319,23 @@ def main():
       GetTrainerServiceInfo = function(i) return ({ "Brown Linen Vest", "Linen Belt" })[i], nil, "available" end
       GetTrainerServiceSkillReq = function(i) return "Tailoring", ({ 12, 15 })[i], true end
       GetTrainerServiceCost = function(i) return ({ 50, 125 })[i] end
+      UnitGUID = function() return "Creature-0-562-0-10969380-2485-AAAFD0FD82" end
+      strsplit = function(sep, s)
+        local t = {}
+        for part in (s .. sep):gmatch("([^" .. sep .. "]*)" .. sep) do t[#t + 1] = part end
+        return unpack(t)
+      end
+      C_Map = {
+        GetBestMapForUnit = function() return 1453 end,
+        GetPlayerMapPosition = function() return { x = 0.5123, y = 0.4267 } end,
+      }
       f.onEvent(f, "TRAINER_SHOW")
+      UnitGUID, strsplit, C_Map = nil, nil, nil
       local tv = ComradeCraftDB.trainer[2385]
       assert(tv and tv.cost == 50 and tv.req == 12, "trainer: vest recorded")
+      local ts = ComradeCraftDB.trainerSpots and ComradeCraftDB.trainerSpots[2485]
+      assert(ts and ts.line == 197 and ts.map == 1453, "trainer: spot recorded from Creature GUID")
+      ComradeCraftDB.trainerSpots = nil
       assert(filters.unavailable == false, "trainer: filter restored")
       assert(ns.TrainerRecipes(197, 75, {})[2385] == 12, "trainer: seen req wins over LibProfessionDB")
       assert(ns.Money(12345) == "1g 23s 45c", "money: " .. ns.Money(12345))
@@ -1062,6 +1076,504 @@ def main():
       ComradeCraftDB.farm, ComradeCraftDB.remote["Vez-Realm"], ComradeCraftDB.peers.pvF = nil, nil, nil
       ComradeCraftDB.chars = savedF
       ns.RefreshFarm()
+
+      -- Guild directory: opt-in per character, its own storage, validated, debounced, whispered catch-up.
+      local dme = ns.CharData()
+      local dSaved = { dme.professions, dme.known }
+      dme.professions = { Tailoring = { skillLine = 197, rank = 80, max = 150 } }
+      dme.known = { [197] = { [2963] = true } }
+      local function FromD(msg, sender, dist) ns.Sync.OnMessage(ns.Sync.Encode(msg), dist or "GUILD", sender) end
+      local function Dir() return OfType("G") end
+      sent = {}
+      ns.Directory.Flush()
+      ns.Directory.Broadcast()
+      FromD({ t = "P", v = 1, id = "gPing" }, "Pinger")
+      assert(#Dir() == 0, "directory: nothing sent while no character is listed")
+      SlashCmdList.COMRADECRAFT("list")
+      local g1 = Dir()[1]
+      assert(#Dir() == 1 and g1.dist == "GUILD" and g1.msg.c["Test-Realm"].r[197][1] == 2963
+        and g1.msg.c["Test-Realm"].p[197][1] == 80, "directory: listing broadcasts on the guild")
+      sent = {}
+      dme.updated = (dme.updated or 0) + 10
+      ns.Directory.MarkDirty()
+      ns.Directory.Flush()
+      assert(#Dir() == 0, "directory: a bag-only change does not rebroadcast")
+      dme.known[197][2385] = true
+      ns.Directory.Flush()
+      assert(#Dir() == 1 and #Dir()[1].msg.c["Test-Realm"].r[197] == 2, "directory: a new recipe rebroadcasts")
+      sent = {}
+      ns.Directory.Broadcast() -- the login broadcast (PLAYER_LOGIN is not fired here)
+      assert(#Dir() == 1 and Dir()[1].dist == "GUILD", "directory: login broadcast while listed")
+      -- Account-wide SavedVariables: an alt listed in another guild is not sent, and entries
+      -- received in guild A are hidden while playing in guild B.
+      GetGuildInfo = function() return "GuildA" end
+      ComradeCraftDB.chars["Alt-Realm"] = { listed = true, guild = "GuildB", class = "MAGE",
+        professions = { Tailoring = { skillLine = 197, rank = 5, max = 75 } }, known = { [197] = { [2963] = true } } }
+      sent = {}
+      ns.Directory.Broadcast()
+      assert(Dir()[1].msg.c["Test-Realm"] and not Dir()[1].msg.c["Alt-Realm"], "directory: alt of another guild not sent")
+      FromD({ t = "G", v = 1, id = "gA", c = { ["Gil-Realm"] = { cl = "MAGE", p = { [197] = { 50, 75 } }, r = { [197] = { 2963 } } } } }, "Gil")
+      ns.Directory.Flush()
+      assert(ns.Directory.Index().chars["Gil-Realm"], "directory: guild A entry shown in guild A")
+      GetGuildInfo = function() return "GuildB" end
+      ns.handlers.PLAYER_GUILD_UPDATE()
+      local idxB = ns.Directory.Index().chars
+      assert(not idxB["Gil-Realm"] and idxB["Alt-Realm"], "directory: guild B shows its own entries only")
+      GetGuildInfo = nil
+      ComradeCraftDB.chars["Alt-Realm"], ComradeCraftDB.directory["Gil-Realm"] = nil, nil
+      dme.guild = nil
+      ns.Directory.Broadcast()
+      sent = {}
+      -- Received: cleaned, kept apart from the group data; own keys and malformed entries dropped.
+      FromD({ t = "G", v = 1, id = "gAcc", c = {
+        ["Mira-Realm"] = { cl = "MAGE", lv = 30, p = { [197] = { 120, 150, "Tailoring" } }, r = { [197] = { 2963, 999999, 2657 }, [164] = { 2663 } } },
+        ["bad|key"] = { cl = "MAGE", p = {} }, ["Junk-Realm"] = "x", ["Test-Realm"] = { cl = "MAGE", p = {} } } }, "Mira")
+      local dir = ComradeCraftDB.directory
+      local dm = dir["Mira-Realm"]
+      assert(dm and dm.peer == "gAcc" and dm.name == "Mira" and dm.r[2963] and not dm.r[999999] and not dm.r[2657]
+        and not dm.r[2663] and dm.p[197][1] == 120 and dm.cl == "MAGE", "directory: entry cleaned (unknown spell, wrong skill line)")
+      assert(not dir["bad|key"] and not dir["Junk-Realm"] and not dir["Test-Realm"], "directory: malformed and own keys dropped")
+      assert(not ns.AllChars()["Mira-Realm"] and not ComradeCraftDB.remote["Mira-Realm"], "directory: never in the group data")
+      FromD({ t = "G", v = 1, id = "gAcc2", c = "nope" }, "Bad")
+      FromD({ t = "G", v = 1, id = "gAcc2", c = { ["Odd-Realm"] = { cl = "<b>", lv = "x", p = { [197] = "y" }, r = { [197] = { 2963 } } } } }, "Bad")
+      assert(dir["Odd-Realm"] and dir["Odd-Realm"].cl == nil and not next(dir["Odd-Realm"].r), "directory: bad fields dropped")
+      local many = {}
+      for i = 1, 60 do many["C" .. i .. "-Realm"] = { cl = "MAGE", p = {} } end
+      FromD({ t = "G", v = 1, id = "gAcc2", c = many }, "Bad")
+      local nMany = 0
+      for _, e in pairs(dir) do if e.peer == "gAcc2" then nMany = nMany + 1 end end
+      assert(nMany == 50 and not dir["Odd-Realm"], "directory: 50 characters per account, replaced, got " .. nMany)
+      -- Whispered entries only shortly after our own guild ping.
+      local realTime = time
+      time = function() return realTime() + 3600 end
+      local wis = { t = "G", v = 1, id = "gW", c = { ["Wis-Realm"] = { cl = "MAGE", p = { [197] = { 1, 75 } }, r = {} } } }
+      FromD(wis, "Wis", "WHISPER")
+      assert(not dir["Wis-Realm"], "directory: whisper outside the ping window dropped")
+      ns.Sync.Announce()
+      FromD(wis, "Wis", "WHISPER")
+      assert(dir["Wis-Realm"], "directory: whispered answer to our ping kept")
+      time = realTime
+      dir["Wis-Realm"].seen = time() - 31 * 86400
+      FromD({ t = "G", v = 1, id = "gAcc3", c = {} }, "Other")
+      assert(not dir["Wis-Realm"] and dir["Mira-Realm"], "directory: entries unseen for 30 days expire")
+      -- Catch-up: a guildmate's login ping gets one whispered entry (cooldown).
+      sent = {}
+      FromD({ t = "P", v = 1, id = "gPing" }, "Pinger")
+      FromD({ t = "P", v = 1, id = "gPing" }, "Pinger")
+      FromD({ t = "P", v = 1, id = "gPing2" }, "Pinger2", "WHISPER")
+      assert(#Dir() == 1 and Dir()[1].dist == "WHISPER" and Dir()[1].target == "Pinger", "directory: one whispered answer to a guild ping")
+      -- Search, tooltip, whisper, view and commands.
+      local bolt2 = ns.Recipes[2963][5]
+      local found = ns.Directory.Search("item" .. bolt2)
+      local fm = false
+      for _, k in ipairs(found[1] and found[1].crafters or {}) do if k == "Mira-Realm" then fm = true end end
+      assert(found[1] and found[1].spell == 2963 and fm, "directory: search by product name")
+      local dtt = { lines = {}, AddDoubleLine = function() end, Show = function() end }
+      dtt.AddLine = function(self, l) self.lines[#self.lines + 1] = l end
+      ns.OnItemTooltip(dtt, bolt2)
+      local dl = dtt.lines[#dtt.lines] or ""
+      assert(dl:find("Guild crafters: ", 1, true) and dl:find("Mira", 1, true), "directory: tooltip line " .. dl)
+      local opened
+      ChatFrame_OpenChat = function(t) opened = t end
+      ns.Directory.Whisper("Mira-Realm")
+      assert(opened == "/w Mira " and not ns.Directory.WhisperTarget("Test-Realm") and not ns.Directory.CanRequest("Mira-Realm"),
+        "directory: whisper the crafter, no request outside the group")
+      ChatFrame_OpenChat = nil
+      if not ComradeCraftFrame:IsShown() then SlashCmdList.COMRADECRAFT("") end
+      ComradeCraftDB.ui.sel = "directory"
+      ComradeCraftFrame.search.text = "item" .. bolt2
+      ns.RefreshWindow()
+      assert(ComradeCraftDB.ui.sel == "directory" and ComradeCraftFrame.title.text == "Guild directory", "directory: view rendered")
+      ComradeCraftFrame.search.text = nil
+      ns.RefreshWindow()
+      ComradeCraftDB.ui.sel = "manage"
+      ns.RefreshWindow()
+      SlashCmdList.COMRADECRAFT("directory item" .. bolt2)
+      SlashCmdList.COMRADECRAFT("directory")
+      -- An empty entry removes that account's characters; unlisting sends one, then nothing.
+      FromD({ t = "G", v = 1, id = "gAcc", c = {} }, "Mira")
+      assert(not dir["Mira-Realm"], "directory: empty entry removes that account's characters")
+      sent = {}
+      SlashCmdList.COMRADECRAFT("list off")
+      assert(#Dir() == 1 and Dir()[1].dist == "GUILD" and next(Dir()[1].msg.c) == nil, "directory: unlisting broadcasts an empty entry")
+      sent = {}
+      ns.Directory.Broadcast()
+      ns.Directory.Flush()
+      assert(#Dir() == 0, "directory: nothing more once unlisted")
+      IsInGuild = function() return false end
+      SlashCmdList.COMRADECRAFT("list")
+      assert(#Dir() == 0, "directory: nothing sent outside a guild")
+      IsInGuild = function() return true end
+      dme.listed, ComradeCraftDB.directory, ComradeCraftDB.directoryAnnounced = nil, nil, nil
+      dme.professions, dme.known = dSaved[1], dSaved[2]
+      for _, id in ipairs({ "gAcc", "gAcc2", "gAcc3", "gW", "gPing", "gPing2" }) do ComradeCraftDB.peers[id] = nil end
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+
+      ;(function() -- Friends add flow + Bags highlight + Mail recipient focus + enriched tooltips.
+      assert(not ns.Sync.AddByName("Test"), "sync: cannot add self")
+      sent = {}
+      assert(ns.Sync.AddByName("Nova"), "sync: pending add")
+      local pend = ns.Sync.PendingAdds()
+      assert(#pend == 1 and pend[1].name == "Nova", "sync: pending list")
+      GetNumGroupMembers = function() return 1 end
+      UnitExists = function(u) return u == "party1" end
+      UnitName = function(u) return u == "party1" and "PartyPal" or "Test" end
+      UnitClass = function() return "Mage", "MAGE" end
+      C_FriendList = {
+        GetNumFriends = function() return 2 end,
+        GetFriendInfoByIndex = function(i)
+          return i == 1 and { name = "FriendOnline", connected = true } or { name = "Nova", connected = true }
+        end,
+      }
+      local qc = ns.Sync.QuickAddCandidates()
+      assert(#qc == 2 and qc[1].name == "PartyPal" and qc[1].source == "party"
+        and qc[2].name == "FriendOnline" and qc[2].source == "friend", "sync: quick add excludes pending, party first")
+      ns.Sync.CancelAdd("nova")
+      assert(#ns.Sync.PendingAdds() == 0, "sync: cancel pending add")
+      -- Share all / none + autoShareNew for new alts.
+      ComradeCraftDB.chars["Alt2-Realm"] = { class = "WARRIOR", level = 15 }
+      SlashCmdList.COMRADECRAFT("share all")
+      assert(ComradeCraftDB.chars["Test-Realm"].shared and ComradeCraftDB.chars["Alt2-Realm"].shared, "sync: share all")
+      SlashCmdList.COMRADECRAFT("share none")
+      assert(not ComradeCraftDB.chars["Test-Realm"].shared and not ComradeCraftDB.chars["Alt2-Realm"].shared, "sync: share none")
+      ComradeCraftDB.settings.autoShareNew = true
+      UnitName = function() return "FreshAlt" end
+      assert(ns.CharData().shared == true, "core: autoShareNew shares newly created character")
+      ComradeCraftDB.chars["FreshAlt-Realm"], ComradeCraftDB.chars["Alt2-Realm"], ComradeCraftDB.settings.autoShareNew = nil, nil, nil
+      ComradeCraftDB.chars["Test-Realm"].shared = true
+      -- Broken "Name-" and spaced vs normalized realm duplicates are merged (newest data + share flags kept).
+      ComradeCraftDB.chars["Test-"] = { class = "MAGE", level = 26, listed = true, updated = 1 }
+      ComradeCraftDB.chars["Dup-My Realm PvE"] = { class = "MAGE", level = 26, shared = true, updated = 100 }
+      ComradeCraftDB.chars["Dup-MyRealmPvE"] = { class = "MAGE", level = 29, updated = 200 }
+      f.onEvent(f, "PLAYER_ENTERING_WORLD")
+      assert(ComradeCraftDB.chars["Test-"] == nil and ComradeCraftDB.chars["Test-Realm"].listed == true,
+        "core: broken trailing-dash char key merged and removed")
+      assert(ComradeCraftDB.chars["Dup-MyRealmPvE"] == nil and ComradeCraftDB.chars["Dup-My Realm PvE"]
+        and ComradeCraftDB.chars["Dup-My Realm PvE"].level == 29 and ComradeCraftDB.chars["Dup-My Realm PvE"].shared == true,
+        "core: spaced vs normalized realm duplicate merged keeping newest level and shared flag")
+      ComradeCraftDB.chars["Dup-My Realm PvE"] = nil
+      ComradeCraftDB.chars["Test-Realm"].listed = nil
+      -- Trainer refusal (GOSSIP_SHOW with 0 options) and scanned trainer spell filtering.
+      local origProfsT = ComradeCraftDB.chars["Test-Realm"].professions
+      ComradeCraftDB.chars["Test-Realm"].professions = { Tailoring = { skillLine = 197, rank = 115, max = 150 } }
+      UnitGUID = function() return "Creature-0-562-0-1-1346-AAAFD0FD82" end
+      UnitName = function(u) return u == "npc" and "Georgio Bolero" or "Test" end
+      strsplit = function(sep, s)
+        local t = {}
+        for part in (s .. sep):gmatch("([^" .. sep .. "]*)" .. sep) do t[#t + 1] = part end
+        return unpack(t)
+      end
+      C_GossipInfo = { GetOptions = function() return {} end }
+      f.onEvent(f, "GOSSIP_SHOW")
+      assert(ComradeCraftDB.trainerRefused and ComradeCraftDB.trainerRefused[1346], "trainer: refusal recorded")
+      local has1346 = false
+      for _, e in ipairs((ns.RecipeSources(3848) or {}).trainer and ns.RecipeSources(3848).trainer.list or {}) do
+        if e.id == 1346 then has1346 = true end
+      end
+      assert(not has1346, "trainer: refused NPC excluded at current rank")
+      ComradeCraftDB.chars["Test-Realm"].professions.Tailoring.rank = 125
+      for _, e in ipairs((ns.RecipeSources(3848) or {}).trainer and ns.RecipeSources(3848).trainer.list or {}) do
+        if e.id == 1346 then has1346 = true end
+      end
+      assert(has1346, "trainer: refused NPC eligible again after leveling up")
+      ComradeCraftDB.trainerSpots = { [1346] = { name = "Georgio Bolero", line = 197, scanned = true, spells = { [2385] = true }, maxReq = 125 } }
+      has1346 = false
+      for _, e in ipairs((ns.RecipeSources(3848) or {}).trainer and ns.RecipeSources(3848).trainer.list or {}) do
+        if e.id == 1346 then has1346 = true end
+      end
+      assert(not has1346, "trainer: scanned NPC without spell excluded")
+      assert(ns.TrainerRecipes(197, 150, {})[3848] == nil, "trainer: absent from tier trainer excluded from plan")
+      ComradeCraftDB.trainerSpots = nil
+      ComradeCraftDB.skippedLearn = { [3848] = true }
+      assert(ns.TrainerRecipes(197, 150, {})[3848] == nil, "trainer: user-skipped recipe excluded from plan")
+      -- NEW_RECIPE_LEARNED immediately learns the recipe and clears skippedLearn.
+      f.onEvent(f, "NEW_RECIPE_LEARNED", 3848)
+      assert(ComradeCraftDB.chars["Test-Realm"].known[197][3848] and not ComradeCraftDB.skippedLearn[3848],
+        "scan: NEW_RECIPE_LEARNED updates known recipes immediately")
+      ComradeCraftDB.chars["Test-Realm"].known[197][3848] = nil
+      ComradeCraftDB.skippedLearn = nil
+      -- BoP items: no AH resale in Profitable, not shared/given to others.
+      local origGetItemInfoB = GetItemInfo
+      local origPSB = ns.PriceSource
+      ns.PriceSource = function() return 50000 end
+      GetItemInfo = function(id)
+        if id == 99998 then return "BoPItem", "|Hitem:99998|h", 2, 20, 1, "", "", 1, "", 134400, 500, 0, 0, 1 end
+        return origGetItemInfoB(id)
+      end
+      assert(ns.IsBoP(99998), "bop: detected via bindType 1")
+      local bo = ns.ResaleOptions(99998)
+      assert(bo.ah == nil and bo.vendor == 500, "bop: no AH resale, vendor price kept")
+      assert(ns.GroupSupply(99998) == 0, "bop: never counted as shareable group supply")
+      GetItemInfo, ns.PriceSource = origGetItemInfoB, origPSB
+      ComradeCraftDB.trainerRefused, ComradeCraftDB.trainerSpots = nil, nil
+      ComradeCraftDB.chars["Test-Realm"].professions = origProfsT
+      UnitGUID, strsplit, C_GossipInfo = nil, nil, nil
+      GetNumGroupMembers, UnitExists, C_FriendList = nil, nil, nil
+      UnitName = function() return "Test" end
+
+      local bMe = ns.CharData()
+      local savedBags = bMe.bags
+      bMe.bags = { [2592] = 15, [99999] = 1 }
+      ComradeCraftDB.chars["Vez-Realm"] = { class = "DRUID", level = 20, professions = {},
+        needs = { [197] = { name = "Tailoring", items = { [2592] = 10 }, when = { [2592] = 1 },
+          plan = { { spell = 2963 } } } } }
+      local stGive = ns.Bags.ItemState(2592)
+      assert(stGive and stGive.mode == "give" and stGive.urgency == 1, "bags: spare item flagged for group")
+      assert(ns.Bags.ItemState(99999) == nil, "bags: unneeded item not flagged")
+      local recips = ns.Mail.Recipients()
+      assert(#recips == 1 and recips[1].key == "Vez-Realm" and recips[1].items == 1, "mail: recipients list")
+      MailFrame = MockWidget()
+      SendMailFrame = MockWidget()
+      SendMailNameEditBox = MockWidget()
+      SendMailSubjectEditBox = MockWidget()
+      f.onEvent(f, "MAIL_SHOW")
+      SendMailNameEditBox:SetText("Vez")
+      assert(ns.Mail.CurrentRecipient() == "Vez-Realm", "mail: active recipient from SendMailNameEditBox")
+      local stFocus = ns.Bags.ItemState(2592, "Vez-Realm")
+      assert(stFocus and stFocus.mode == "focus" and stFocus.entry.prof == "Tailoring" and stFocus.entry.spell == 2963,
+        "bags: recipient focus includes profession and recipe")
+      local mtt = { lines = {}, Show = function() end }
+      mtt.AddLine = function(self, l) if l then self.lines[#self.lines + 1] = l end end
+      mtt.AddDoubleLine = function(self, l, r) self.lines[#self.lines + 1] = l .. "|" .. r end
+      ns.AddNeeds(mtt, 2592)
+      local mj = table.concat(mtt.lines, " / ")
+      assert(mj:find("Send x10 to Vez (Tailoring)", 1, true), "tooltip: recipient action line " .. mj)
+      local btn1, btn2 = MockWidget(), MockWidget()
+      btn1.GetBagID, btn1.GetID = function() return 0 end, function() return 1 end
+      btn2.GetBagID, btn2.GetID = function() return 0 end, function() return 2 end
+      local oldGetInfo = C_Container.GetContainerItemInfo
+      C_Container.GetContainerItemInfo = function(_, slot)
+        return slot == 1 and { itemID = 2592, stackCount = 15 } or { itemID = 99999, stackCount = 1 }
+      end
+      ContainerFrameCombinedBags = MockWidget()
+      ContainerFrameCombinedBags.Items = { btn1, btn2 }
+      ns.Bags.Refresh()
+      ns.Mail.UpdatePanel()
+      assert(rawget(btn1, "ccOverlay") == nil, "bags: no fields written onto Blizzard item button")
+      f.onEvent(f, "MAIL_CLOSED")
+      C_Container.GetContainerItemInfo = oldGetInfo
+      ContainerFrameCombinedBags, MailFrame, SendMailFrame, SendMailNameEditBox, SendMailSubjectEditBox = nil, nil, nil, nil, nil
+      bMe.bags = savedBags
+      ComradeCraftDB.chars["Vez-Realm"] = nil
+      ComradeCraftDB.ui.sel = "group"
+      ns.RefreshWindow()
+      end)()
+
+      ;(function() -- Custom Forever recipes, live AH prices, inbox mail, Wishlist, Trade, Merchant, Baganator, Group sub-tabs.
+      -- 1. Dynamic custom Forever recipe discovery via GetRecipeSchematic.
+      local origTS = C_TradeSkillUI
+      C_TradeSkillUI = {
+        GetBaseProfessionInfo = function() return { professionID = 197, skillLevel = 115 } end,
+        GetAllRecipeIDs = function() return { 999901 } end,
+        GetRecipeInfo = function(id) return id == 999901 and { learned = true, relativeDifficulty = 1 } or nil end,
+        GetRecipeSchematic = function(id)
+          if id == 999901 then
+            return { outputItemID = 999902, quantityMin = 1,
+              reagentSlotSchematics = { { required = true, quantityRequired = 3, reagents = { { itemID = 2589 } } } } }
+          end
+        end,
+      }
+      f.onEvent(f, "TRADE_SKILL_LIST_UPDATE")
+      assert(ns.Recipes[999901] and ns.Recipes[999901][5] == 999902 and ns.Recipes[999901][7][1] == 2589,
+        "custom recipe: discovered dynamically via GetRecipeSchematic")
+      ns.Recipes[999901], ComradeCraftDB.customRecipes = nil, nil
+      C_TradeSkillUI = origTS
+
+      -- 2. Live AH prices + TSM/Auctionator fallback.
+      C_AuctionHouse = {
+        GetBrowseResults = function() return { { itemKey = { itemID = 2589 }, minPrice = 42 } } end,
+      }
+      f.onEvent(f, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+      assert(ns.LiveAHPrice(2589) == 42 and ns.PriceSource and ns.PriceSource(2589) == 42, "ah: live browse price captured")
+      ComradeCraftDB.ahPrices, C_AuctionHouse = nil, nil
+      ns.DetectPriceSource()
+
+      -- 3. Inbox mail counted in Surplus / owned.
+      local me = ns.CharData()
+      local oldBags, oldMail = me.bags, me.mail
+      me.bags = {}
+      GetInboxNumItems = function() return 1 end
+      GetInboxItem = function(i, a) if i == 1 and a == 1 then return "Wool", 2592, 134400, 12 end end
+      f.onEvent(f, "MAIL_INBOX_UPDATE")
+      assert(me.mail and me.mail[2592] == 12 and ns.Surplus(me, 2592) == 12, "mail inbox: counted as owned")
+      GetInboxNumItems, GetInboxItem = nil, nil
+      me.mail = oldMail
+
+      -- 4. Wishlist: add, progress, needs injection, ready alert, tracker & UI view.
+      me.bags = { [2589] = 4 }
+      local w = ns.Wishlist.Add(2963, 2, "Vez", "pour ses sacs", true)
+      assert(w and #ns.Wishlist.List() == 1, "wishlist: entry added")
+      local prog = ns.Wishlist.Progress(w, me)
+      assert(prog.bagReady and prog.ready, "wishlist: 4 linen covers 2x Bolt of Linen")
+      ns.Wishlist.CheckReady()
+      assert(w.readyAlerted, "wishlist: ready toast fired")
+      me.bags = { [2589] = 1 }
+      ns.UpdateNeeds(me)
+      assert(me.needs[0] and me.needs[0].items[2589] == 3, "wishlist: missing mats injected into needs[0]")
+      ComradeCraftDB.ui.sel = "wishlist"
+      ns.RefreshWindow()
+      assert(ComradeCraftFrame.title.text == "Wishlist", "wishlist: UI view rendered")
+      ns.Wishlist.Remove(w.id)
+      assert(#ns.Wishlist.List() == 0, "wishlist: removed cleanly")
+
+      -- 5. Merchant auto-buy plan reagents.
+      me.needs = { [197] = { name = "Tailoring", items = {}, vendor = { [2320] = 6 }, gross = {}, have = {} } }
+      GetMerchantNumItems = function() return 1 end
+      GetMerchantItemID = function() return 2320 end
+      GetMerchantItemInfo = function() return "Coarse Thread", 134400, 10, 1, -1 end
+      GetMerchantItemMaxStack = function() return 20 end
+      GetMoney = function() return 10000 end
+      local boughtCount = 0
+      BuyMerchantItem = function(_, n) boughtCount = boughtCount + n end
+      MerchantFrame = MockWidget()
+      f.onEvent(f, "MERCHANT_SHOW")
+      local mp, mTotal = ns.Merchant.PlanItems()
+      assert(#mp == 1 and mp[1].need == 6 and mTotal == 60, "merchant: plan vendor items detected")
+      assert(ns.Merchant.BuyAll() == 6 and boughtCount == 6, "merchant: bought exact missing vendor qty")
+      f.onEvent(f, "MERCHANT_CLOSED")
+      GetMerchantNumItems, GetMerchantItemID, GetMerchantItemInfo, GetMerchantItemMaxStack, GetMoney, BuyMerchantItem, MerchantFrame = nil, nil, nil, nil, nil, nil, nil
+
+      -- 6. Trade helper + Baganator integration.
+      me.bags = { [2592] = 10 }
+      me.needs = {}
+      ComradeCraftDB.chars["Vez-Realm"] = { class = "DRUID", level = 20, professions = {},
+        cooldowns = { [2963] = time() + 3600 },
+        needs = { [197] = { name = "Tailoring", items = { [2592] = 8 }, when = { [2592] = 1 }, plan = { { spell = 2963 } } } } }
+      local bagReg = false
+      Baganator = { API = {
+        RegisterCornerWidget = function() bagReg = true end,
+        RequestItemButtonsRefresh = function() end,
+      } }
+      TradeFrame = MockWidget()
+      UnitName = function(u) return u == "NPC" and "Vez" or "Test" end
+      f.onEvent(f, "PLAYER_ENTERING_WORLD")
+      assert(bagReg, "bags: Baganator corner widget registered")
+      f.onEvent(f, "TRADE_SHOW")
+      assert(ns.Trade.CurrentRecipient() == "Vez-Realm" and ns.Bags.ActiveRecipient() == "Vez-Realm",
+        "trade: active recipient synced with Bags")
+      f.onEvent(f, "TRADE_CLOSED")
+      assert(ns.Trade.CurrentRecipient() == nil, "trade: cleared on close")
+
+      -- 7. Group sub-tabs (overview / mats / upgrades / de) + cooldowns render cleanly.
+      ComradeCraftDB.ui.sel = "group"
+      for _, gt in ipairs({ "overview", "mats", "upgrades", "de" }) do
+        ComradeCraftDB.ui.groupTab = gt
+        ns.RefreshWindow()
+      end
+      ComradeCraftDB.ui.groupTab = "overview"
+      Baganator, TradeFrame = nil, nil
+      UnitName = function() return "Test" end
+      ComradeCraftDB.chars["Vez-Realm"] = nil
+      me.bags = oldBags
+      ns.UpdateNeeds(me)
+      ns.RefreshWindow()
+      end)()
+
+      ;(function() -- Trainer refusal deferral + Synergies + Audit + Loot + AH Panel + Buy-vs-Farm gold arbitrage.
+      -- 1. Trainer refused at 115 defers unconfirmed ~110 recipes to 125 (so known crafts level 115->125).
+      ComradeCraftDB.trainerRefused = { [1346] = { line = 197, rank = 115, name = "Georgio Bolero" } }
+      local tr = ns.TrainerRecipes(197, 150, {})
+      assert(tr[3848] == 125, "trainer deferral: req 110 deferred to 125 when refused at 115, got " .. tostring(tr[3848]))
+      ComradeCraftDB.trainerRefused = nil
+
+      -- 2. Group Upgrades Audit: small bags & missing enchants.
+      local me = ns.CharData()
+      local savedB, savedK, savedBS, savedEn, savedEq = me.bags, me.known, me.bagSizes, me.enchants, me.equipped
+      me.known = { [197] = { [3755] = true, [2963] = true } } -- 3755 = Linen Bag / Woolen Bag check via 3813 (Woolen Bag 8-slot)
+      if ns.Recipes[3813] then me.known[197][3813] = true end
+      ComradeCraftDB.chars["Wo-Realm"] = { class = "MAGE", level = 10, bagSizes = { 6, 6, 6, 6 },
+        professions = { Tailoring = { skillLine = 197, rank = 45, max = 75 } },
+        needs = { [197] = { name = "Tailoring", items = { [2996] = 10 }, when = { [2996] = 1 } } } }
+      local aud = ns.Audit.Run()
+      local foundBag = false
+      for _, grp in ipairs(aud) do
+        if grp.targetKey == "Wo-Realm" then
+          for _, u in ipairs(grp.items) do if u.kind == "bag" then foundBag = true end end
+        end
+      end
+      assert(foundBag, "audit: small bags detected for Wo")
+
+      -- 3. Cross-profession synergy: group spare Linen Cloth (2589) -> Test crafts Bolt (2996) for Wo.
+      me.bags = { [2589] = 40 }
+      me.needs = {}
+      local syns = ns.Synergies.Find()
+      assert(#syns >= 1 and syns[1].kind == "craft", "synergies: raw->intermediate synergy detected")
+
+      -- 4. Gold-aware Buy vs Farm arbitrage.
+      local oldPS = ns.PriceSource
+      ns.PriceSource = function() return 100 end -- 1s each
+      local cheapAdv = ns.FarmAdvice.Evaluate(2589, 10, 1000000) -- 10s vs 100g -> buy
+      local expAdv = ns.FarmAdvice.Evaluate(2589, 10, 500)       -- 10s vs 5s -> farm
+      assert(cheapAdv.action == "buy" and expAdv.action == "farm", "farm advice: respects player gold balance")
+      ns.PriceSource = oldPS
+
+      -- 5. Auction House side panel + 1-click search.
+      me.needs = { [197] = { name = "Tailoring", items = { [2589] = 20 }, when = { [2589] = 1 } } }
+      local searched
+      C_AuctionHouse = { SendBrowseQuery = function(q) searched = q.searchString end }
+      AuctionHouseFrame = MockWidget()
+      f.onEvent(f, "AUCTION_HOUSE_SHOW")
+      local ahItems = ns.AuctionPanel.Items()
+      assert(#ahItems == 1 and ahItems[1].item == 2589, "ah panel: missing mats listed")
+      assert(ns.AuctionPanel.SearchItem(2589) and searched == "Item2589", "ah panel: 1-click AH search")
+      f.onEvent(f, "AUCTION_HOUSE_CLOSED")
+      C_AuctionHouse, AuctionHouseFrame = nil, nil
+
+      -- 6. Loot roll hint on urgent material.
+      GetLootRollItemLink = function() return "|Hitem:2996|h[Bolt]|h" end
+      local logBefore = #__log
+      f.onEvent(f, "START_LOOT_ROLL", 1)
+      assert(#__log > logBefore and __log[#__log]:find("Wo x10", 1, true), "loot: roll hint printed for urgent mat")
+      GetLootRollItemLink = nil
+
+      ComradeCraftDB.chars["Wo-Realm"] = nil
+      me.bags, me.known, me.bagSizes, me.enchants, me.equipped = savedB, savedK, savedBS, savedEn, savedEq
+      ns.UpdateNeeds(me)
+      end)()
+
+      -- BoP / soulbound gear: never suggest keeping for another player, never suggest AH sell,
+      -- and only suggest disenchant when the holder themselves is an enchanter.
+      ;(function()
+        local me = ComradeCraftDB.chars["Test-Realm"]
+        local savedB, savedBound, savedP = me.bags, me.bound, me.professions
+        local savedGet = GetItemInfo
+        local savedPS = ns.PriceSource
+        ComradeCraftDB.chars["Acuponctus-Realm"] = {
+          class = "MAGE", level = 29, equipped = {},
+          professions = { Enchanting = { skillLine = 333, rank = 75, max = 150 } },
+        }
+        -- Item 281318: BoP (bindType=1) green off-hand (classID=4, sub=0, INVTYPE_HOLDABLE).
+        -- Item 281319: BoE (bindType=2) green off-hand, but soulbound in bags via me.bound.
+        GetItemInfo = function(id)
+          if id == 281318 then
+            return "Bouquet of Auberdine Flowers", "|Hitem:281318|h[Bouquet]|h", 2, 29, 25,
+              "Armor", "Miscellaneous", 1, "INVTYPE_HOLDABLE", 1, 1578, 4, 0, 1
+          elseif id == 281319 then
+            return "Soulbound Offhand", "|Hitem:281319|h[Soulbound]|h", 2, 29, 25,
+              "Armor", "Miscellaneous", 1, "INVTYPE_HOLDABLE", 1, 1578, 4, 0, 2
+          end
+          return savedGet(id)
+        end
+        ns.PriceSource = function() return 999999 end
+        -- Case 1: holder IS an enchanter -> disenchant (not gear for Acuponctus, not AH sell, no enchanter redirect).
+        me.professions = { Enchanting = { skillLine = 333, rank = 100, max = 150 } }
+        me.bags = { [281318] = 1, [281319] = 1 }
+        me.bound = { [281319] = true }
+        local adv = ns.BagAdvice("Test-Realm")
+        assert(#adv == 2, "bop advice (enchanter): expected 2 entries, got " .. #adv)
+        for _, a in ipairs(adv) do
+          assert(a.verdict == "disenchant" and a.to == nil and a.enchanter == nil,
+            "bop advice (enchanter): got verdict=" .. tostring(a.verdict) .. " to=" .. tostring(a.to))
+        end
+        -- Case 2: holder is NOT an enchanter -> omitted (cannot give BoP/soulbound gear nor send to another enchanter).
+        me.professions = { Tailoring = { skillLine = 197, rank = 115, max = 150 } }
+        local adv2 = ns.BagAdvice("Test-Realm")
+        assert(#adv2 == 0, "bop advice (non-enchanter): expected 0 entries, got " .. #adv2)
+        ComradeCraftDB.chars["Acuponctus-Realm"] = nil
+        me.bags, me.bound, me.professions = savedB, savedBound, savedP
+        GetItemInfo, ns.PriceSource = savedGet, savedPS
+      end)()
 
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log

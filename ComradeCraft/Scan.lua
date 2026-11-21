@@ -31,7 +31,7 @@ end
 local function GetItem(bag, slot)
   if C_Container and C_Container.GetContainerItemInfo then
     local info = C_Container.GetContainerItemInfo(bag, slot)
-    if info then return info.itemID, info.stackCount end
+    if info then return info.itemID, info.stackCount, info.isBound end
     return nil
   end
   if GetContainerItemInfo then
@@ -40,16 +40,24 @@ local function GetItem(bag, slot)
   end
 end
 
--- Sums itemID -> count over a list of bag indexes.
+-- Sums itemID -> count over a list of bag indexes; also returns { [itemID] = true }
+-- for items whose every stack in those bags is already soulbound.
 local function ScanBags(bags)
-  local out = {}
+  local out, boundAny, unbound = {}, {}, {}
   for _, bag in ipairs(bags) do
     for slot = 1, GetSlots(bag) or 0 do
-      local id, count = GetItem(bag, slot)
-      if id then out[id] = (out[id] or 0) + (count or 1) end
+      local id, count, isBound = GetItem(bag, slot)
+      if id then
+        out[id] = (out[id] or 0) + (count or 1)
+        if isBound then boundAny[id] = true else unbound[id] = true end
+      end
     end
   end
-  return out
+  local bound = {}
+  for id in pairs(boundAny) do
+    if not unbound[id] then bound[id] = true end
+  end
+  return out, bound
 end
 
 local function BagIndexes()
@@ -109,7 +117,30 @@ end
 
 -- Current bag contents { [itemID] = count } (bank excluded).
 function ns.ScanBagContents()
-  return ScanBags(BagIndexes())
+  local out = ScanBags(BagIndexes())
+  return out
+end
+
+-- Equipped enchant IDs { [slot] = enchantID (0 = unenchanted) } for enchantable slots.
+local ENCHANT_SLOTS = { 5, 8, 9, 10, 15, 16, 17 }
+function ns.ScanEnchants()
+  local out = {}
+  if not GetInventoryItemLink then return out end
+  for _, slot in ipairs(ENCHANT_SLOTS) do
+    local link = GetInventoryItemLink("player", slot)
+    if link then
+      local ench = tonumber(link:match("item:%d+:(%d+)")) or 0
+      out[slot] = ench
+    end
+  end
+  return out
+end
+
+-- Equipped bag slot sizes { s1, s2, s3, s4 } (0 = empty bag slot).
+function ns.ScanBagSizes()
+  local out = {}
+  for b = 1, (NUM_BAG_SLOTS or 4) do out[b] = GetSlots(b) or 0 end
+  return out
 end
 
 function ns.ScanAll()
@@ -117,27 +148,89 @@ function ns.ScanAll()
   local c = ns.CharData()
   c.spec, c.specIcon = ns.ScanSpec()
   c.equipped = ns.ScanEquipped()
+  c.enchants = ns.ScanEnchants()
+  c.bagSizes = ns.ScanBagSizes()
   c.professions = ScanProfessions()
-  c.bags = ScanBags(BagIndexes())
+  c.bags, c.bound = ScanBags(BagIndexes())
   c.updated = time()
   ns.RequestRefresh()
 end
 
--- Known recipes of the open profession window, keyed by skill line (from our table).
+-- Restores dynamically discovered Forever custom recipes into ns.Recipes on load.
+local function LoadCustomRecipes()
+  if not (ComradeCraftDB and ComradeCraftDB.customRecipes and ns.Recipes) then return end
+  for id, r in pairs(ComradeCraftDB.customRecipes) do
+    if not ns.Recipes[id] and type(r) == "table" and r[1] and r[7] then ns.Recipes[id] = r end
+  end
+end
+
+local function OpenProfessionLineAndRank()
+  local T = C_TradeSkillUI
+  if not T then return nil, nil end
+  for _, fn in ipairs({ "GetChildProfessionInfo", "GetBaseProfessionInfo" }) do
+    if T[fn] then
+      local ok, info = pcall(T[fn])
+      if ok and info and (info.professionID or info.parentProfessionID) then
+        local line = info.parentProfessionID or info.professionID
+        if info.skillLevel and info.skillLevel > 0 then return line, info.skillLevel end
+      end
+    end
+  end
+end
+
+-- Discovers a custom/new Forever recipe via C_TradeSkillUI.GetRecipeSchematic and saves it.
+local function DiscoverRecipe(id, info, line, rank)
+  local T = C_TradeSkillUI
+  if not (T and T.GetRecipeSchematic and line) then return nil end
+  local ok, sch = pcall(T.GetRecipeSchematic, id, false)
+  if not (ok and type(sch) == "table") then return nil end
+  local reag = {}
+  for _, slot in ipairs(sch.reagentSlotSchematics or {}) do
+    local first = slot.reagents and slot.reagents[1]
+    if slot.required ~= false and first and first.itemID and (slot.quantityRequired or 0) > 0 then
+      reag[#reag + 1] = first.itemID
+      reag[#reag + 1] = slot.quantityRequired
+    end
+  end
+  if #reag == 0 then return nil end
+  rank = rank or 1
+  local diff = info and info.relativeDifficulty
+  local yellow, grey
+  if diff == 0 then yellow, grey = rank + 15, rank + 35
+  elseif diff == 1 then yellow, grey = math.max(1, rank - 5), rank + 20
+  elseif diff == 2 then yellow, grey = math.max(1, rank - 15), rank + 10
+  elseif diff == 3 then yellow, grey = 1, rank
+  else yellow, grey = rank + 10, rank + 25 end
+  local row = { line, yellow, grey, 1, sch.outputItemID or 0, math.max(1, sch.quantityMin or 1), reag }
+  ComradeCraftDB.customRecipes = ComradeCraftDB.customRecipes or {}
+  ComradeCraftDB.customRecipes[id] = row
+  ns.Recipes[id] = row
+  return row
+end
+
+-- Known recipes of the open profession window, keyed by skill line (static + Forever custom).
 local function ScanKnownRecipes()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  LoadCustomRecipes()
   local T = C_TradeSkillUI
   if not (T and T.GetAllRecipeIDs and T.GetRecipeInfo) then return end
   if T.IsTradeSkillLinked and T.IsTradeSkillLinked() then return end
   if T.IsTradeSkillGuild and T.IsTradeSkillGuild() then return end
   local c = ns.CharData()
   c.known = c.known or {}
+  local openLine, openRank = OpenProfessionLineAndRank()
   local found = {}
   for _, id in ipairs(T.GetAllRecipeIDs() or {}) do
-    local r = ns.Recipes[id]
-    if r then
-      local info = T.GetRecipeInfo(id)
-      if info and info.learned then
+    local info = T.GetRecipeInfo(id)
+    if info and info.learned then
+      local r = ns.Recipes[id] or DiscoverRecipe(id, info, openLine, openRank)
+      if r then
+        -- Refine custom recipe color bounds as we observe new difficulties at higher ranks.
+        if ComradeCraftDB.customRecipes and ComradeCraftDB.customRecipes[id] and openRank then
+          local d = info.relativeDifficulty
+          if d == 0 and r[2] <= openRank then r[2] = openRank + 10 r[3] = math.max(r[3], r[2] + 20)
+          elseif d == 3 and r[3] > openRank then r[3] = openRank r[2] = math.min(r[2], openRank) end
+        end
         found[r[1]] = found[r[1]] or {}
         found[r[1]][id] = true
       end
@@ -163,7 +256,68 @@ local function ScanBank()
   ns.RequestRefresh()
 end
 
-ns.On("PLAYER_ENTERING_WORLD", ns.ScanAll)
+-- Inbox items waiting to be looted: counted as owned so the group doesn't double-farm/buy them.
+local function ScanInbox()
+  if not (ComradeCraftDB and ComradeCraftDB.chars and GetInboxNumItems) then return end
+  local out = {}
+  local n = GetInboxNumItems() or 0
+  for i = 1, n do
+    for a = 1, (ATTACHMENTS_MAX_RECEIVE or 16) do
+      local id, count
+      if GetInboxItem then
+        local _, itemID, _, qty = GetInboxItem(i, a)
+        if type(itemID) == "number" then id, count = itemID, qty end
+      end
+      if not id and GetInboxItemLink then
+        local link = GetInboxItemLink(i, a)
+        id = link and tonumber(link:match("item:(%d+)"))
+        if id and GetInboxItem then local _, _, _, qty = GetInboxItem(i, a) count = qty end
+      end
+      if id then out[id] = (out[id] or 0) + (count or 1) end
+    end
+  end
+  local c = ns.CharData()
+  c.mail = next(out) and out or nil
+  c.updated = time()
+  ns.RequestRefresh()
+end
+
+-- Captures live lowest unit buyout prices while browsing the AH (modern & classic APIs).
+local function RecordAHPrice(item, unitPrice)
+  if not (ComradeCraftDB and item and unitPrice and unitPrice > 0) then return end
+  ComradeCraftDB.ahPrices = ComradeCraftDB.ahPrices or {}
+  local cur = ComradeCraftDB.ahPrices[item]
+  local now = time()
+  if not cur or (now - (cur.t or 0)) > 60 or unitPrice < cur.price then
+    ComradeCraftDB.ahPrices[item] = { price = math.floor(unitPrice), t = now }
+  end
+end
+
+local function ScanAHBrowse()
+  if not (C_AuctionHouse and C_AuctionHouse.GetBrowseResults) then return end
+  local ok, res = pcall(C_AuctionHouse.GetBrowseResults)
+  if not (ok and type(res) == "table") then return end
+  for _, e in ipairs(res) do
+    local id = e.itemKey and e.itemKey.itemID
+    if id and e.minPrice and e.minPrice > 0 then RecordAHPrice(id, e.minPrice) end
+  end
+  ns.DetectPriceSource()
+end
+
+local function ScanAHClassic()
+  if not (GetNumAuctionItems and GetAuctionItemInfo) then return end
+  local n = GetNumAuctionItems("list") or 0
+  for i = 1, math.min(n, 200) do
+    local _, _, count, _, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID = GetAuctionItemInfo("list", i)
+    if itemID and buyout and buyout > 0 and count and count > 0 then
+      RecordAHPrice(itemID, buyout / count)
+    end
+  end
+  ns.DetectPriceSource()
+end
+
+ns.On("PLAYER_LOGIN", LoadCustomRecipes)
+ns.On("PLAYER_ENTERING_WORLD", function() LoadCustomRecipes() ns.ScanAll() end)
 ns.On("SKILL_LINES_CHANGED", ns.ScanAll)
 ns.On("BAG_UPDATE_DELAYED", ns.ScanAll)
 ns.On("CHAT_MSG_SKILL", ns.ScanAll) -- "Your skill in X has increased to N"
@@ -173,7 +327,20 @@ for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE
 end
 ns.On("PLAYER_EQUIPMENT_CHANGED", ns.ScanAll)
 ns.On("BANKFRAME_OPENED", ScanBank)
+ns.On("MAIL_INBOX_UPDATE", ScanInbox)
+ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", ScanAHBrowse)
+ns.On("AUCTION_ITEM_LIST_UPDATE", ScanAHClassic)
 ns.On("TRADE_SKILL_LIST_UPDATE", ScanKnownRecipes)
+ns.On("NEW_RECIPE_LEARNED", function(spell)
+  if not (ComradeCraftDB and ComradeCraftDB.chars and spell and ns.Recipes[spell]) then return end
+  local c = ns.CharData()
+  local line = ns.Recipes[spell][1]
+  c.known = c.known or {}
+  c.known[line] = c.known[line] or {}
+  c.known[line][spell] = true
+  if ComradeCraftDB.skippedLearn then ComradeCraftDB.skippedLearn[spell] = nil end
+  ns.RequestRefresh()
+end)
 
 -- Remembers items merchants sell in unlimited supply: those are bought, not shared.
 ns.On("MERCHANT_SHOW", function()
@@ -229,7 +396,7 @@ local function ScanTrainer()
   local lines = {}
   for name, p in pairs(ns.CharData().professions or {}) do lines[name] = p.skillLine end
   ComradeCraftDB.trainer = ComradeCraftDB.trainer or {}
-  local found, lineCount = 0, {}
+  local found, lineCount, offered, maxReqByLine = 0, {}, {}, {}
   for i = 1, GetNumTrainerServices() do
     local name, _, kind = GetTrainerServiceInfo(i)
     if name and kind ~= "header" then
@@ -239,9 +406,12 @@ local function ScanTrainer()
       local line = skillName and lines[skillName]
       for _, spell in ipairs(SpellIDsByName(name) or {}) do
         if not line or ns.Recipes[spell][1] == line then
+          local sl = ns.Recipes[spell][1]
           ComradeCraftDB.trainer[spell] = { cost = cost, req = req, t = time() }
+          offered[spell] = true
+          if req and req > (maxReqByLine[sl] or 0) then maxReqByLine[sl] = req end
           found = found + 1
-          lineCount[ns.Recipes[spell][1]] = (lineCount[ns.Recipes[spell][1]] or 0) + 1
+          lineCount[sl] = (lineCount[sl] or 0) + 1
         end
       end
     end
@@ -250,25 +420,75 @@ local function ScanTrainer()
     if not v then SetFilter(k, false) end
   end
   scanningTrainer = false
-  -- Where this trainer stands (exact, unlike the capped lists of LibProfessionDB): used first
-  -- for "Learn" waypoints. Their position is the player's while the window is open.
+  -- Where this trainer stands and which recipes they actually teach (unlike LibProfessionDB's
+  -- flat lists): used for "Learn" waypoints so Apprentice trainers aren't picked for high-rank recipes.
   local guid = UnitGUID and UnitGUID("npc")
-  local npc = guid and tonumber(select(6, strsplit("-", guid)))
+  local id = guid and select(6, strsplit("-", guid))
+  local npc = tonumber(id)
   local best, most = nil, 0
   for l, n in pairs(lineCount) do if n > most then best, most = l, n end end
   local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
   local pos = map and C_Map.GetPlayerMapPosition and C_Map.GetPlayerMapPosition(map, "player")
-  if npc and best and pos then
-    local x, y
-    if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
+  if npc then
+    if ComradeCraftDB.trainerRefused then ComradeCraftDB.trainerRefused[npc] = nil end
     ComradeCraftDB.trainerSpots = ComradeCraftDB.trainerSpots or {}
-    ComradeCraftDB.trainerSpots[npc] = { name = UnitName("npc"), line = best, map = map,
-      x = math.floor(x * 10000) / 100, y = math.floor(y * 10000) / 100, t = time() }
+    local spot = ComradeCraftDB.trainerSpots[npc] or {}
+    spot.name = UnitName and UnitName("npc") or spot.name
+    spot.line = best or spot.line
+    spot.scanned = true
+    spot.spells = offered
+    spot.maxReq = best and maxReqByLine[best] or 0
+    spot.t = time()
+    if pos then
+      local x, y
+      if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
+      spot.map, spot.x, spot.y = map, math.floor(x * 10000) / 100, math.floor(y * 10000) / 100
+    end
+    ComradeCraftDB.trainerSpots[npc] = spot
   end
   ns.Log(("trainer: %d recipes recorded, npc %s line %s"):format(found, tostring(npc), tostring(best)))
   ns.RequestRefresh()
 end
 ns.On("TRAINER_SHOW", ScanTrainer)
+
+-- Expert/Artisan trainers on Classic/Forever open a gossip box ("You'll need more training...")
+-- with zero options when your skill is too low. Remember that so waypoints skip them until you level up.
+local function CheckTrainerRefusal()
+  if not (ComradeCraftDB and UnitGUID and strsplit) then return end
+  local opts = (C_GossipInfo and C_GossipInfo.GetOptions and #(C_GossipInfo.GetOptions() or {}))
+    or (GetNumGossipOptions and GetNumGossipOptions()) or 0
+  if opts > 0 then return end
+  local guid = UnitGUID("npc")
+  if not guid or (issecretvalue and issecretvalue(guid)) then return end
+  local id = select(6, strsplit("-", guid))
+  local npc = tonumber(id)
+  if not npc then return end
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local c = ns.CharData()
+  for pname, p in pairs(c.professions or {}) do
+    local line = p.skillLine
+    if line and not ns.GATHERING[line] and lib and lib.GetRecipes and lib.GetRecipeSources then
+      local matched = false
+      for spell in pairs(lib:GetRecipes(line) or {}) do
+        local src = lib:GetRecipeSources(spell)
+        for _, t in ipairs(src and src.trainer or {}) do
+          if t.id == npc then matched = true break end
+        end
+        if matched then break end
+      end
+      if matched then
+        ComradeCraftDB.trainerRefused = ComradeCraftDB.trainerRefused or {}
+        ComradeCraftDB.trainerRefused[npc] = { line = line, rank = p.rank or 0,
+          name = UnitName and UnitName("npc") or ("#" .. npc), t = time() }
+        ns.Print(ns.L["%s requires higher %s skill; skipped for waypoints until you level up."]
+          :format(ComradeCraftDB.trainerRefused[npc].name, pname))
+        ns.RequestRefresh()
+        return
+      end
+    end
+  end
+end
+ns.On("GOSSIP_SHOW", CheckTrainerRefusal)
 
 ns.commands.scan = function()
   ns.ScanAll()

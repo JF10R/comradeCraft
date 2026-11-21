@@ -18,11 +18,12 @@
 
 <h2>Features</h2>
 <ul>
-<li><strong>Group plan</strong>: by default, routes spend the least gold for the whole group (materials a member already holds count as free). One view shows what the group still needs, who holds spare stock, and what is left to buy.</li>
-<li><strong>Farming assignments</strong> (opt-in): "200 Light Leather needed for X, Y, Z. Farm them?" Accept and a small tracker follows your progress; the group sees who farms what.</li>
+<li><strong>Group plan &amp; synergies</strong>: by default, routes spend the least gold for the whole group (materials a member already holds count as free). One view shows what the group still needs, who holds spare stock, cross-profession synergies, and what is left to buy.</li>
+<li><strong>Shared craft wishlist</strong>: pin any craft for yourself or a friend (bags, gear, enchants), track its materials in a movable on-screen tracker, and get alerted when it is ready to craft.</li>
+<li><strong>Farming assignments &amp; Buy vs Farm advice</strong>: opt-in farming tracker for group needs plus gold-aware Buy vs Farm recommendations with QuestieDB farm spots and TomTom waypoints.</li>
+<li><strong>Bag highlights &amp; tooltips</strong>: highlights group-needed items directly in Blizzard bags, Baganator, Bagnon, Combuctor and ElvUI, focusing on the active mailbox or trade recipient. Hover any material or recipe item to see who needs it and how soon.</li>
 <li><strong>Keep for the group</strong>: at a merchant or the auction house, the items in your bags that your group needs. Sell one anyway and a "Buy back" button appears.</li>
-<li><strong>Group material tooltip</strong>: hover any item to see who in your group needs it, how many, and how soon.</li>
-<li><strong>Personal leveling route</strong>: recipes to learn, intermediates to craft, skill-up chance of each step, and total cost, computed from your bags, your known recipes and live prices.</li>
+<li><strong>Personal leveling route</strong>: recipes to learn, intermediates to craft, skill-up chance of each step, and total cost, recalculated automatically from your bags, newly learned recipes (world drops, vendors, Forever custom recipes) and live prices.</li>
 <li><strong>Cheapest or Profitable route</strong>: Profitable counts what each product brings back (merchant, disenchant or auction house, after the 5% cut and the deposit). Cost and net cost for every 75-point milestone.</li>
 <li><strong>Step panel and craft queue</strong> next to the profession window: current step, skill-up chance, crafts your bags allow, and a "Craft next" button.</li>
 </ul>
@@ -31,13 +32,14 @@
 <p style="text-align: center;"><img src="URL_STEP_PANEL" alt="ComradeCraft step panel with the Craft next button" width="360"></p>
 
 <ul>
-<li><strong>Shopping lists</strong>: export missing materials to Auctionator, or copy a search text and group import for TradeSkillMaster.</li>
-<li><strong>Where to learn a recipe</strong>: trainers, vendors and drops, with a TomTom waypoint to the nearest one.</li>
+<li><strong>Shopping, Merchant &amp; Auction House panels</strong>: export missing materials to Auctionator or TSM, auto-buy vendor reagents in one click at merchants, and search missing materials directly at the Auction House with your gold balance in view.</li>
+<li><strong>Where to learn a recipe</strong>: trainers, vendors and drops, with a TomTom waypoint to the nearest one. Trainer visits are remembered and refused recipes are deferred automatically.</li>
 <li><strong>Next rank guidance</strong>: the Expert book of Cooking, First Aid and Fishing, the Artisan quest (with Questie), or the trainer.</li>
 <li><strong>Craft requests</strong>: ask a friend to craft a recipe for you. The request waits until you are both online.</li>
-<li><strong>Mail helper</strong>: attaches what a group member needs. You still press Send.</li>
-<li><strong>Disenchant or keep</strong>: advice for the items in your bags, based on group needs and prices.</li>
-<li><strong>Alerts</strong>, each one can be turned off: materials ready, cooldowns ready on any of your characters, new craft requests, and (opt-in) upgrades a friend can craft for you.</li>
+<li><strong>Mail &amp; Trade helpers</strong>: compact side panels at the Mailbox and Trade window to attach or place what a group member needs in one click. You still press Send or Accept.</li>
+<li><strong>Guild directory</strong> (opt-in, per character): search who in your guild can craft an item and whisper them. Item tooltips name up to 3 guild crafters.</li>
+<li><strong>Group upgrades audit &amp; Disenchant or keep</strong>: spot small bags, missing enchants and craftable gear upgrades across the group, plus BoP-safe disenchant-or-keep advice for your bags.</li>
+<li><strong>Loot hints &amp; Alerts</strong>, each one can be turned off: group loot roll notes, materials ready, wishlist ready, cooldowns ready on any of your characters, new craft requests, and (opt-in) upgrades a friend can craft for you.</li>
 </ul>
 
 <h2>Get started in 3 clicks</h2>
@@ -55,13 +57,14 @@
 <li><strong>Questie</strong>: positions of trainers, vendors and quest givers.</li>
 <li><strong>TomTom</strong>: waypoints.</li>
 <li><strong>Pawn</strong>: upgrade detection with each friend's stat scale (item level otherwise).</li>
+<li><strong>Baganator, Bagnon, Combuctor, ElvUI</strong>: bag badges and mail/trade highlights (Blizzard bags supported natively).</li>
 </ul>
 
 <h2>FAQ</h2>
 <p><strong>Which game version?</strong> WoW Forever, client 1.60.1 (Interface 16001).</p>
 <p><strong>Which professions?</strong> Alchemy, Blacksmithing, Cooking, Enchanting, Engineering, First Aid, Leatherworking and Tailoring get leveling routes. Fishing, Mining, Herbalism and Skinning are tracked for group needs.</p>
 <p><strong>Do my friends need the addon?</strong> Yes, to share their needs, farm for the group and receive craft requests. Your own route works without them.</p>
-<p><strong>Is my data sent to anyone?</strong> No character data leaves your game until you share a character, and then only by addon whisper to the players you added who added you back. At login, a presence signal without character data goes to your guild's addon channel so guildmates can find each other; <code>/comrade guildping off</code> turns it off.</p>
+<p><strong>Is my data sent to anyone?</strong> No character data leaves your game until you share a character, and then only by addon whisper to the players you added who added you back. At login, a presence signal without character data goes to your guild's addon channel so guildmates can find each other; <code>/comrade guildping off</code> turns it off. A character you list in the guild directory sends its professions and known recipes (nothing else) to your guild's addon channel.</p>
 <p><strong>Where do the skill-up chances come from?</strong> The Classic formula, calibrated with the crafts you and your group log.</p>
 <p><strong>Languages?</strong> English, French, German, Spanish, Italian, Brazilian Portuguese and Russian, following your game language. Translation fixes are welcome.</p>
 

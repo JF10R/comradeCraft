@@ -4,8 +4,8 @@ local loc = GetLocale and GetLocale()
 if loc ~= "esES" and loc ~= "esMX" then return end
 ns.Translations = ns.Translations or {}
 ns.Translations[loc] = {
-    ["commands: /comrade (window) | share [off] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"] =
-      "comandos: /comrade (ventana) | share [off] | add NOMBRE | remove NOMBRE | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NOMBRE | scan | needs | stats | api | audit | log clear",
+    ["commands: /comrade (window) | share [off] | list [off] | directory [text] | add NAME | remove NAME | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NAME | scan | needs | stats | api | audit | log clear"] =
+      "comandos: /comrade (ventana) | share [off] | list [off] | directory [texto] | add NOMBRE | remove NOMBRE | peers | sync | guildping [off] | shop [profession] | tracker [reset] | mail NOMBRE | scan | needs | stats | api | audit | log clear",
     ["log cleared"] =
       "registro borrado",
     ["%d lines in the log (written to disk on /reload or logout)"] =
@@ -693,8 +693,8 @@ ns.Translations[loc] = {
       "Plan de grupo",
     ["What the group still needs, what it already holds, and who farms what."] =
       "Lo que aún le falta al grupo, lo que ya tiene y quién farmea qué.",
-    ["Objective: %s (change it in Manage group > Options)."] =
-      "Objetivo: %s (cámbialo en Gestionar grupo > Opciones).",
+    ["Objective:"] =
+      "Objetivo:",
     ["Lowest group cost"] =
       "Menor coste de grupo",
     ["Market value"] =
@@ -735,4 +735,174 @@ ns.Translations[loc] = {
       "Mostrar el seguimiento de farmeo (tus tareas de farmeo del Plan de grupo).",
     ["Plans count stock already held in the group as free (or every mat at market value: Manage group > Options). The Group plan view lists what the group still needs and its cost; take a material with I'll farm it and a small tracker follows your progress."] =
       "Los planes cuentan como gratis el stock que ya tiene el grupo (o cada material a su valor de mercado: Gestionar grupo > Opciones). La vista Plan de grupo lista lo que aún le falta al grupo y su coste; toma un material con Yo lo farmeo y un pequeño seguimiento muestra tu progreso.",
+    ["Guild directory"] =
+      "Directorio de hermandad",
+    ["%d crafter"] =
+      "%d artesano",
+    ["%d crafters"] =
+      "%d artesanos",
+    ["Right box: list the character in the guild directory (professions and recipes only, sent to your guild)."] =
+      "Casilla derecha: inscribir al personaje en el directorio de hermandad (solo profesiones y recetas, enviadas a tu hermandad).",
+    ["List in guild directory"] =
+      "Inscribir en el directorio de hermandad",
+    ["Opt-in, per character: List in guild directory in Manage group (or /comrade list) sends its professions and recipes to guildmates who use ComradeCraft. Search who can craft an item, whisper them, or ask for the craft if they are in your group. Item tooltips name up to 3 guild crafters."] =
+      "Opcional, por personaje: Inscribir en el directorio de hermandad, en Gestionar grupo (o /comrade list), envía sus profesiones y recetas a los miembros de tu hermandad que usan ComradeCraft. Busca quién puede fabricar un objeto, susúrrale o pídele que lo fabrique si está en tu grupo. Las descripciones de objetos muestran hasta 3 artesanos de la hermandad.",
+    ["Whisper"] =
+      "Susurrar",
+    ["Nobody is listed yet. The directory is opt-in: each player lists their own characters in Manage group (List in guild directory) or with /comrade list."] =
+      "Todavía no hay nadie inscrito. El directorio es opcional: cada jugador inscribe sus propios personajes en Gestionar grupo (Inscribir en el directorio de hermandad) o con /comrade list.",
+    ["Type a product or recipe name in the search box."] =
+      "Escribe el nombre de un objeto o una receta en el cuadro de búsqueda.",
+    ["No crafter found."] =
+      "No se encontró ningún artesano.",
+    ["... and %d more"] =
+      "... y %d más",
+    ["Who in your guild can craft what. Each player lists their own characters (opt-in)."] =
+      "Quién de tu hermandad puede fabricar qué. Cada jugador inscribe sus propios personajes (opcional).",
+    ["Guild crafters: %s"] =
+      "Artesanos de la hermandad: %s",
+    ["%s is listed in the guild directory"] =
+      "%s está inscrito en el directorio de hermandad",
+    ["%s is no longer listed in the guild directory"] =
+      "%s ya no está inscrito en el directorio de hermandad",
+    ["You are not in a guild: the entry is sent once you are."] =
+      "No estás en una hermandad: la inscripción se enviará cuando estés en una.",
+    ["directory: %d characters listed. /comrade directory TEXT searches them."] =
+      "directorio: %d personajes inscritos. /comrade directory TEXTO busca entre ellos.",
+    ["directory: no crafter for %s"] =
+      "directorio: ningún artesano para %s",
+    -- UI polish, bags, mail & friends
+    ["%d item"] = "%d objeto",
+    ["%d items"] = "%d objetos",
+    ["Add %s"] = "Añadir a %s",
+    ["Add target"] = "Añadir objetivo",
+    ["Cancel"] = "Cancelar",
+    ["Characters"] = "Personajes",
+    ["Click a member to highlight their items."] = "Haz clic en un miembro para resaltar sus objetos.",
+    ["Click to select recipient and highlight needed items in your bags."] =
+      "Haz clic para elegir destinatario y resaltar en tus bolsas lo que necesita.",
+    ["Collapse all"] = "Contraer todo",
+    ["ComradeCraft: Add to group"] = "ComradeCraft: Añadir al grupo",
+    ["Expand all"] = "Expandir todo",
+    ["Filter recipes..."] = "Filtrar recetas...",
+    ["Find who can craft..."] = "Quién puede fabricar...",
+    ["For %s"] = "Para %s",
+    ["Friend"] = "Amigo",
+    ["Guild"] = "Hermandad",
+    ["Highlight items for your group in your bags (and focus a recipient's items when mailing)."] =
+      "Resaltar en tus bolsas los objetos para tu grupo (y enfocar los del destinatario al enviar correo).",
+    ["Highlighted in your bags"] = "Resaltado en tus bolsas",
+    ["Nothing to send from your bags."] = "Nada que enviar desde tus bolsas.",
+    ["Online in your party, friends or guild:"] = "Conectados en tu grupo, amigos o hermandad:",
+    ["Party"] = "Grupo",
+    ["Ready to send from your bags"] = "Listo para enviar desde tus bolsas",
+    ["Retry"] = "Reintentar",
+    ["Search guild crafters..."] = "Buscar artesanos...",
+    ["Send x%d to %s"] = "Enviar x%d a %s",
+    ["Send x%d to %s (%s)"] = "Enviar x%d a %s (%s)",
+    ["To send from your bags: %s"] = "Para enviar de tus bolsas: %s",
+    ["You cannot add yourself."] = "No puedes añadirte a ti mismo.",
+    ["craft request"] = "solicitud de fabricación",
+    ["waiting for reply"] = "esperando respuesta",
+    ["Share all"] = "Compartir todos",
+    ["Unshare all"] = "Dejar de compartir",
+    ["Automatically share new characters on this account"] =
+      "Compartir automáticamente los nuevos personajes de esta cuenta",
+    ["All characters (%d) are now shared with your group"] =
+      "Todos los personajes (%d) ahora se comparten con tu grupo",
+    ["No character is shared anymore"] = "Ya no se comparte ningún personaje",
+    ["%s requires higher %s skill; skipped for waypoints until you level up."] =
+      "%s requiere mayor habilidad en %s; omitido para los puntos de ruta hasta que subas.",
+    ["Right-click: skip this recipe and recalculate."] =
+      "Clic derecho: omitir esta receta y recalcular.",
+    ["Reset skipped (%d)"] = "Restablecer omitidas (%d)",
+    -- Trade, Merchant, Wishlist, Cooldowns & UI rework
+    ["%d tracked"] = "%d en seguimiento",
+    ["%s wants to join your group"] = "%s quiere unirse a tu grupo",
+    ["Accept to share your checked characters with them."] =
+      "Acepta para compartir tus personajes marcados con ellos.",
+    ["Add to wishlist"] = "Añadir a la lista",
+    ["All materials are in your bags."] = "Todos los materiales están en tus bolsas.",
+    ["Buy plan reagents (%s)"] = "Comprar componentes (%s)",
+    ["Click to sync now with your group."] = "Haz clic para sincronizar ahora con tu grupo.",
+    ["Compare routes"] = "Comparar rutas",
+    ["Craft"] = "Fabricar",
+    ["Disenchant"] = "Desencantar",
+    ["For who:"] = "Para quién:",
+    ["Group cooldowns"] = "Reutilizaciones del grupo",
+    ["Hide route comparison"] = "Ocultar comparación",
+    ["Ignore"] = "Ignorar",
+    ["Materials"] = "Materiales",
+    ["No craft pinned yet. Right-click any recipe in your Can craft tab to add it here, track its materials and get notified when ready."] =
+      "Ninguna fabricación fijada. Haz clic derecho en una receta en Puede fabricar para añadirla aquí, seguir sus materiales y recibir aviso cuando esté lista.",
+    ["No disenchantable items in your bags."] = "No hay objetos desencantables en tus bolsas.",
+    ["Not enough gold (%s needed)."] = "No hay suficiente oro (hacen falta %s).",
+    ["Note (optional):"] = "Nota (opcional):",
+    ["Overview"] = "Resumen",
+    ["Pin"] = "Fijar",
+    ["Pin on screen"] = "Fijar en pantalla",
+    ["Pinned crafts to track materials for yourself or friends."] =
+      "Fabricaciones fijadas para seguir los materiales para ti o tus amigos.",
+    ["Place needed items"] = "Colocar lo necesario",
+    ["Plan reagents"] = "Componentes del plan",
+    ["Quantity:"] = "Cantidad:",
+    ["Ready"] = "Listo",
+    ["Ready (some mats in bank/mail)"] = "Listo (mats en banco/correo)",
+    ["Ready to craft!"] = "¡Listo para fabricar!",
+    ["Right-click: add to Wishlist."] = "Clic derecho: añadir a la lista de deseos.",
+    ["Show the wishlist tracker on screen (pinned crafts)."] =
+      "Mostrar el seguimiento de la lista de deseos en pantalla.",
+    ["Trade window is full (%d slots)."] = "La ventana de comercio está llena (%d espacios).",
+    ["Unpin"] = "Desfijar",
+    ["Wishlist"] = "Lista de deseos",
+    ["Wishlist ready: %dx %s"] = "Listo para fabricar: %dx %s",
+    ["none pinned"] = "ninguno fijado",
+    -- Synergies, Audit, Loot, AH Panel, Buy vs Farm
+    ["%d small bags (min %d slots) -> %s (%d slots)"] = "%d bolsas pequeñas (mín. %d cas.) -> %s (%d cas.)",
+    ["%s can craft %dx %s from group's %s for %s"] = "%s puede fabricar %dx %s con %s del grupo para %s",
+    ["Advice"] = "Consejo",
+    ["Ask"] = "Pedir",
+    ["Back"] = "Espalda",
+    ["Buy"] = "Comprar",
+    ["Buy/Farm"] = "Compra/Farm",
+    ["Chest"] = "Pecho",
+    ["Click an item to search it."] = "Haz clic en un objeto para buscarlo.",
+    ["Click: search in Auction House."] = "Clic: buscar en la Casa de Subastas.",
+    ["Click: waypoint to farm spot."] = "Clic: punto de ruta a la zona de farmeo.",
+    ["Cross-profession links between your group's active plans."] =
+      "Sinergias entre profesiones en los planes activos del grupo.",
+    ["Disenchant %dx %s (%s)"] = "Desencantar %dx %s (%s)",
+    ["Disenchant for your enchanting plan"] = "Desencantar para tu plan de encantamiento",
+    ["Everyone's bags, enchants and gear are up to date."] =
+      "Las bolsas, encantamientos y equipo del grupo están al día.",
+    ["Farm"] = "Farmear",
+    ["Farm %s: %s (%s %d, %d)"] = "Farmear %s: %s (%s %d, %d)",
+    ["Farm spot"] = "Zona de farmeo",
+    ["Feet"] = "Pies",
+    ["Gear"] = "Equipo",
+    ["Gold: %s"] = "Oro: %s",
+    ["Group synergies"] = "Sinergias del grupo",
+    ["Group upgrades"] = "Mejoras del grupo",
+    ["Hands"] = "Manos",
+    ["Known by %s"] = "Conocido por %s",
+    ["Loot roll: %s - needed now by %s"] = "Botín: %s - necesario ahora para %s",
+    ["Loot roll: %s - unknown by %s"] = "Botín: %s - desconocido por %s",
+    ["No known farm location for %s."] = "No se conoce zona de farmeo para %s.",
+    ["Send %dx %s to %s to disenchant (%s)"] = "Enviar %dx %s a %s para desencantar (%s)",
+    ["Send to %s to disenchant"] = "Enviar a %s para desencantar",
+    ["Shield"] = "Escudo",
+    ["Small bags, unenchanted gear and craftable upgrades your group can make."] =
+      "Bolsas pequeñas, equipo sin encantar y mejoras que tu grupo puede fabricar.",
+    ["To buy at the AH"] = "Para comprar en subasta",
+    ["Total: %s (you have %s)"] = "Total: %s (tienes %s)",
+    ["Unenchanted %s -> %s"] = "%s sin encantar -> %s",
+    ["Unknown by %s (%s %d/%d)"] = "Desconocido por %s (%s %d/%d)",
+    ["Upgrades"] = "Mejoras",
+    ["Vendor"] = "Vendedor",
+    ["Waypoint: %s (%s %d, %d)"] = "Punto de ruta: %s (%s %d, %d)",
+    ["Wrist"] = "Muñecas",
+    ["Your gold: %s"] = "Tu oro: %s",
+    ["by %s"] = "por %s",
+    ["can learn now"] = "aprendible ahora",
+    ["needs skill %d"] = "requiere %d",
 }
