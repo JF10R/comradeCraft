@@ -76,18 +76,17 @@ local function BankIndexes()
   return list
 end
 
--- Specialization: the modern API if present, else the talent tree with the most points
--- (Classic talent tabs; return shapes differ between clients, both handled). nil if none.
+-- Specialization: modern API, else Classic talent tabs, else signature talent spells (Forever).
 function ns.ScanSpec()
   if GetSpecialization and GetSpecializationInfo then
     local i = GetSpecialization()
     if i then
       local _, name, _, icon = GetSpecializationInfo(i)
-      if name then return name, icon end
+      if name then return name, icon, i end
     end
   end
   if GetNumTalentTabs and GetTalentTabInfo then
-    local bestName, bestIcon, bestPoints = nil, nil, 0
+    local bestName, bestIcon, bestPoints, bestIdx = nil, nil, 0, nil
     for t = 1, GetNumTalentTabs() or 0 do
       local r = { GetTalentTabInfo(t) }
       local name, icon, points
@@ -97,22 +96,31 @@ function ns.ScanSpec()
         name, icon, points = r[2], r[4], r[5]       -- id, name, description, icon, pointsSpent, ...
       end
       if type(points) == "number" and points > bestPoints then
-        bestName, bestIcon, bestPoints = name, icon, points
+        bestName, bestIcon, bestPoints, bestIdx = name, icon, points, t
       end
     end
-    return bestName, bestIcon
+    if bestName then return bestName, bestIcon, bestIdx end
+  end
+  if ns.GearScore and ns.GearScore.DetectSpecFromSpells and UnitClass then
+    local _, class = UnitClass("player")
+    local key = ns.GearScore.DetectSpecFromSpells(class)
+    if key then return ns.GearScore.SpecLabel(key), nil, nil end
   end
 end
 
--- Equipped items { [slot 1-19] = itemID }, used to tell upgrades for group members.
+-- Equipped items { [slot 1-19] = itemID } and links { [slot] = itemLink } (for random suffixes).
 function ns.ScanEquipped()
-  local out = {}
-  if not GetInventoryItemID then return out end
+  local out, links = {}, {}
+  if not GetInventoryItemID then return out, links end
   for slot = 1, 19 do
     local id = GetInventoryItemID("player", slot)
-    if id then out[slot] = id end
+    if id then
+      out[slot] = id
+      local link = GetInventoryItemLink and GetInventoryItemLink("player", slot)
+      if link then links[slot] = link end
+    end
   end
-  return out
+  return out, links
 end
 
 -- Current bag contents { [itemID] = count } (bank excluded).
@@ -121,8 +129,8 @@ function ns.ScanBagContents()
   return out
 end
 
--- Equipped enchant IDs { [slot] = enchantID (0 = unenchanted) } for enchantable slots.
-local ENCHANT_SLOTS = { 5, 8, 9, 10, 15, 16, 17 }
+-- Equipped enchant IDs { [slot] = enchantID (0 = unenchanted) } for enchantable slots (incl. Neck on Forever).
+local ENCHANT_SLOTS = { 2, 5, 8, 9, 10, 15, 16, 17 }
 function ns.ScanEnchants()
   local out = {}
   if not GetInventoryItemLink then return out end
@@ -146,8 +154,8 @@ end
 function ns.ScanAll()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
   local c = ns.CharData()
-  c.spec, c.specIcon = ns.ScanSpec()
-  c.equipped = ns.ScanEquipped()
+  c.spec, c.specIcon, c.specIdx = ns.ScanSpec()
+  c.equipped, c.equippedLinks = ns.ScanEquipped()
   c.enchants = ns.ScanEnchants()
   c.bagSizes = ns.ScanBagSizes()
   c.professions = ScanProfessions()
@@ -208,10 +216,45 @@ local function DiscoverRecipe(id, info, line, rank)
   return row
 end
 
+-- Applies saved live-observed Forever recipe difficulty bounds ({ yellow, grey }) on startup.
+local function LoadRecipeBounds()
+  if not (ComradeCraftDB and ComradeCraftDB.recipeBounds) then return end
+  for id, b in pairs(ComradeCraftDB.recipeBounds) do
+    local r = ns.Recipes and ns.Recipes[id]
+    if r and type(b) == "table" and b[1] and b[2] then
+      r[2], r[3] = b[1], b[2]
+    end
+  end
+end
+
+-- Refines yellow/grey bounds for ANY recipe observed live in WoW Forever's profession window.
+local function ObserveRecipeBound(id, r, diff, rank)
+  if not (r and diff and rank and rank > 0) then return end
+  local y, g = r[2], r[3]
+  local ny, ng = y, g
+  if diff == 0 and rank >= y then
+    ny = rank + 1
+    ng = math.max(g, ny + 15)
+  elseif diff == 1 and rank < y then
+    ny = rank
+  elseif diff == 2 and rank < y then
+    ny = math.max(1, rank - 10)
+  elseif diff == 3 and rank < g then
+    ng = rank
+    ny = math.min(y, rank)
+  end
+  if ny ~= y or ng ~= g then
+    r[2], r[3] = ny, ng
+    ComradeCraftDB.recipeBounds = ComradeCraftDB.recipeBounds or {}
+    ComradeCraftDB.recipeBounds[id] = { ny, ng }
+  end
+end
+
 -- Known recipes of the open profession window, keyed by skill line (static + Forever custom).
 local function ScanKnownRecipes()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
   LoadCustomRecipes()
+  LoadRecipeBounds()
   local T = C_TradeSkillUI
   if not (T and T.GetAllRecipeIDs and T.GetRecipeInfo) then return end
   if T.IsTradeSkillLinked and T.IsTradeSkillLinked() then return end
@@ -225,12 +268,8 @@ local function ScanKnownRecipes()
     if info and info.learned then
       local r = ns.Recipes[id] or DiscoverRecipe(id, info, openLine, openRank)
       if r then
-        -- Refine custom recipe color bounds as we observe new difficulties at higher ranks.
-        if ComradeCraftDB.customRecipes and ComradeCraftDB.customRecipes[id] and openRank then
-          local d = info.relativeDifficulty
-          if d == 0 and r[2] <= openRank then r[2] = openRank + 10 r[3] = math.max(r[3], r[2] + 20)
-          elseif d == 3 and r[3] > openRank then r[3] = openRank r[2] = math.min(r[2], openRank) end
-        end
+        -- Active Forever calibration: update yellow/grey thresholds from live client difficulty.
+        if openRank then ObserveRecipeBound(id, r, info.relativeDifficulty, openRank) end
         found[r[1]] = found[r[1]] or {}
         found[r[1]][id] = true
       end
@@ -316,16 +355,80 @@ local function ScanAHClassic()
   ns.DetectPriceSource()
 end
 
-ns.On("PLAYER_LOGIN", LoadCustomRecipes)
+local function FlatEqual(a, b)
+  if a == b then return true end
+  if type(a) ~= "table" or type(b) ~= "table" then return false end
+  for k, v in pairs(a) do if b[k] ~= v then return false end end
+  for k in pairs(b) do if a[k] == nil then return false end end
+  return true
+end
+
+local function ProfsEqual(a, b)
+  if a == b then return true end
+  if type(a) ~= "table" or type(b) ~= "table" then return false end
+  for k, p in pairs(a) do
+    local q = b[k]
+    if not q or p.rank ~= q.rank or p.max ~= q.max or p.skillLine ~= q.skillLine then return false end
+  end
+  for k in pairs(b) do if not a[k] then return false end end
+  return true
+end
+
+-- Targeted lightweight scans so frequent events (bag changes, looting, combat) never re-scan
+-- unrelated state or trigger redundant UpdateNeeds() passes when nothing actually changed.
+local function ScanBagsOnly()
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local c = ns.CharData()
+  local bags, bound = ScanBags(BagIndexes())
+  if FlatEqual(c.bags, bags) and FlatEqual(c.bound, bound) then return end
+  c.bags, c.bound = bags, bound
+  c.updated = time()
+  ns.RequestRefresh()
+end
+
+local function ScanGearOnly()
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local c = ns.CharData()
+  c.equipped, c.equippedLinks = ns.ScanEquipped()
+  c.enchants = ns.ScanEnchants()
+  c.bagSizes = ns.ScanBagSizes()
+  c.updated = time()
+  ns.RequestRefresh()
+end
+
+local function ScanSpecOnly()
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local c = ns.CharData()
+  local sp, icon, idx = ns.ScanSpec()
+  if c.spec == sp and c.specIdx == idx then return end
+  c.spec, c.specIcon, c.specIdx = sp, icon, idx
+  c.updated = time()
+  ns.RequestRefresh()
+end
+
+local function ScanProfessionsOnly()
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local c = ns.CharData()
+  local profs = ScanProfessions()
+  if ProfsEqual(c.professions, profs) then return end
+  c.professions = profs
+  c.updated = time()
+  ns.RequestRefresh()
+end
+
+ns.On("PLAYER_LOGIN", function()
+  LoadCustomRecipes()
+  LoadRecipeBounds()
+end)
 ns.On("PLAYER_ENTERING_WORLD", function() LoadCustomRecipes() ns.ScanAll() end)
-ns.On("SKILL_LINES_CHANGED", ns.ScanAll)
-ns.On("BAG_UPDATE_DELAYED", ns.ScanAll)
-ns.On("CHAT_MSG_SKILL", ns.ScanAll) -- "Your skill in X has increased to N"
+ns.On("SKILL_LINES_CHANGED", ScanProfessionsOnly)
+ns.On("BAG_UPDATE_DELAYED", ScanBagsOnly)
+ns.On("CHAT_MSG_SKILL", ScanProfessionsOnly) -- "Your skill in X has increased to N"
 for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE_TALENT_GROUP_CHANGED",
   "PLAYER_SPECIALIZATION_CHANGED" }) do
-  ns.On(e, ns.ScanAll) -- talents change the specialization
+  ns.On(e, ScanSpecOnly) -- talents change the specialization
 end
-ns.On("PLAYER_EQUIPMENT_CHANGED", ns.ScanAll)
+ns.On("PLAYER_EQUIPMENT_CHANGED", ScanGearOnly)
 ns.On("BANKFRAME_OPENED", ScanBank)
 ns.On("MAIL_INBOX_UPDATE", ScanInbox)
 ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", ScanAHBrowse)

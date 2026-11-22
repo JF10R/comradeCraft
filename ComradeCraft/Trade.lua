@@ -8,7 +8,8 @@ local Trade = {}
 ns.Trade = Trade
 
 local PANEL_W, MAX_ROWS, MAX_SLOTS = 248, 6, 6
-local isOpen, partnerKey = false, nil
+local isOpen, dismissed, partnerKey = false, false, nil
+local tradeSnap, bothAccepted = nil, false
 
 local function NotifyBags()
   if ns.Bags and ns.Bags.Refresh then ns.Bags.Refresh() end
@@ -67,27 +68,41 @@ function Trade.PlaceAll()
   local items = ns.Mail.ItemsFor(partnerKey)
   local delay = 0
   for _, it in ipairs(items) do
-    local item, qty = it.item, it.n
-    if C_Timer and delay > 0 then
-      C_Timer.After(delay, function() Trade.PlaceItem(item, qty) end)
-    else
-      if not Trade.PlaceItem(item, qty) then break end
+    local qty = it.inBags or 0
+    if qty > 0 then
+      local item = it.item
+      if C_Timer and delay > 0 then
+        C_Timer.After(delay, function() Trade.PlaceItem(item, qty) end)
+      else
+        if not Trade.PlaceItem(item, qty) then break end
+      end
+      delay = delay + 0.25
     end
-    delay = delay + 0.25
   end
 end
 
 local panel, button, rows
 
 local function ItemReason(it)
-  if it.request then return L["craft request"] end
-  local parts = {}
-  if it.prof then parts[#parts + 1] = it.prof end
-  if it.spell and ns.SpellName then
-    local sn = ns.SpellName(it.spell)
-    if sn and not sn:find("^spell:") then parts[#parts + 1] = sn end
+  local base
+  if it.reserved then
+    return "|cffc080ff" .. L["reserved"] .. "|r"
+  elseif it.request then
+    base = L["craft request"]
+  else
+    local parts = {}
+    if it.prof then parts[#parts + 1] = it.prof end
+    if it.spell and ns.SpellName then
+      local sn = ns.SpellName(it.spell)
+      if sn and not sn:find("^spell:") then parts[#parts + 1] = sn end
+    end
+    base = table.concat(parts, " - ")
   end
-  return table.concat(parts, " - ")
+  if it.convertsTo then
+    local tn = ns.ItemName and ns.ItemName(it.convertsTo) or ("item:" .. it.convertsTo)
+    return base ~= "" and (base .. " -> " .. tn) or ("-> " .. tn)
+  end
+  return base
 end
 
 local function CreateRow(parent)
@@ -119,7 +134,7 @@ local function CreateRow(parent)
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
-    if self.itemID then Trade.PlaceItem(self.itemID, self.qtyNum or 1) end
+    if self.itemID and (self.qtyNum or 0) > 0 then Trade.PlaceItem(self.itemID, self.qtyNum) end
   end)
   return b
 end
@@ -144,6 +159,13 @@ local function CreatePanel()
   panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   panel.title:SetPoint("LEFT", panel.logo, "RIGHT", 6, 0)
   panel.title:SetText("ComradeCraft")
+  panel.close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+  panel.close:SetSize(22, 22)
+  panel.close:SetPoint("TOPRIGHT", -2, -2)
+  panel.close:SetScript("OnClick", function()
+    dismissed = true
+    panel:Hide()
+  end)
   panel.sub = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   panel.sub:SetPoint("TOPLEFT", 10, -30)
   panel.sub:SetWidth(PANEL_W - 20)
@@ -160,7 +182,7 @@ end
 
 function Trade.UpdatePanel()
   if not panel then return end
-  if not (isOpen and partnerKey and ns.Mail) then
+  if dismissed or not (isOpen and partnerKey and ns.Mail) or (ns.PanelEnabled and not ns.PanelEnabled("trade")) then
     panel:Hide()
     return
   end
@@ -172,44 +194,74 @@ function Trade.UpdatePanel()
   local chars = ns.AllChars()
   panel.sub:SetText(L["For %s"]:format(ns.ClassColored(partnerKey, chars[partnerKey] and chars[partnerKey].class)))
   for _, r in ipairs(rows) do r:Hide() end
-  local y = -48
+  local y, bagReady = -48, 0
   for i = 1, math.min(#items, MAX_ROWS) do
     local it = items[i]
     local r = rows[i]
     if not r then r = CreateRow(panel) rows[i] = r end
     local name, _, icon = ItemInfo(it.item)
-    r.itemID, r.qtyNum = it.item, it.n
+    local inBags, inBank = it.inBags or 0, it.inBank or 0
+    local bankOnly = inBags == 0
+    if not bankOnly then bagReady = bagReady + 1 end
+    r.itemID, r.qtyNum = it.item, inBags
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", 10, y)
     r.icon:SetTexture(icon)
-    r.name:SetText(name or ("item:" .. it.item))
-    r.qty:SetText("|cffffd100x" .. it.n .. "|r")
+    r.icon:SetDesaturated(bankOnly)
+    r.icon:SetAlpha(bankOnly and 0.55 or 1)
+    local dname = name or ("item:" .. it.item)
+    r.name:SetText(bankOnly and ("|cff888888" .. dname .. "|r") or dname)
+    r.qty:SetText(bankOnly and ("|cff888888x%d (%s)|r"):format(inBank, L["in bank"]) or ("|cffffd100x" .. inBags .. "|r"))
     r.sub:SetText(ItemReason(it))
     r:Show()
     y = y - 30
   end
+  button:SetEnabled(bagReady > 0)
   button:ClearAllPoints()
   button:SetPoint("TOPLEFT", 10, y - 4)
   button:Show()
   y = y - 30
   panel.foot:SetPoint("TOPLEFT", 10, y - 2)
-  panel.foot:SetText("|cff80ff80" .. L["Highlighted in your bags"] .. "|r")
+  panel.foot:SetText(bagReady > 0 and ("|cff80ff80" .. L["Highlighted in your bags"] .. "|r")
+    or ("|cff9d9d9d" .. L["In bank (retrieve first)"] .. "|r"))
   panel:SetHeight(-y + 22)
   panel:Show()
 end
 
+local function SnapshotTradeItems()
+  local items = {}
+  for i = 1, MAX_SLOTS do
+    local link = GetTradePlayerItemLink and GetTradePlayerItemLink(i)
+    local id = link and tonumber(link:match("item:(%d+)"))
+    if id then
+      local _, _, count = GetTradePlayerItemInfo and GetTradePlayerItemInfo(i)
+      items[id] = (items[id] or 0) + (count or 1)
+    end
+  end
+  tradeSnap = next(items) and items or nil
+end
+
 ns.On("TRADE_SHOW", function()
-  isOpen = true
-  local name = UnitName and UnitName("NPC")
+  isOpen, dismissed, tradeSnap, bothAccepted = true, false, nil, false
+  local name = ns.UnitFullName and ns.UnitFullName("NPC") or (UnitName and UnitName("NPC"))
   if name and (issecretvalue and issecretvalue(name)) then name = nil end
   partnerKey = name and ns.Mail and ns.Mail.KeyForName(name) or nil
   CreatePanel()
   Trade.UpdatePanel()
   NotifyBags()
 end)
-
+ns.On("TRADE_PLAYER_ITEM_CHANGED", function() if isOpen then SnapshotTradeItems() end end)
+ns.On("TRADE_ACCEPT_UPDATE", function(playerAccepted, targetAccepted)
+  if isOpen then
+    SnapshotTradeItems()
+    bothAccepted = (playerAccepted == 1 and targetAccepted == 1)
+  end
+end)
 ns.On("TRADE_CLOSED", function()
-  isOpen, partnerKey = false, nil
+  if bothAccepted and partnerKey and tradeSnap and ns.Requests and ns.Requests.OnItemSent then
+    for itemID, qty in pairs(tradeSnap) do ns.Requests.OnItemSent(partnerKey, itemID, qty) end
+  end
+  isOpen, partnerKey, tradeSnap, bothAccepted = false, nil, nil, false
   if panel then panel:Hide() end
   NotifyBags()
 end)

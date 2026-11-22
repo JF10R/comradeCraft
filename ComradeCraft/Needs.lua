@@ -1,6 +1,101 @@
--- Needs: expected reagents to take a profession from its rank to its cap, using known recipes.
+-- Needs: leveling planner (expected reagents to reach a profession cap) and
+-- free bidirectional item conversions (3x Lesser <-> 1x Greater Essences).
 -- Pure logic over ns.Recipes; no WoW API calls so it is testable offline.
 local _, ns = ...
+
+-- Free bidirectional right-click conversions (no profession required):
+-- { smallID, bigID, ratio } means ratio x smallID <-> 1 x bigID.
+local TRANSFORM_PAIRS = {
+  { 10938, 10939, 3 }, -- Lesser <-> Greater Magic Essence
+  { 10998, 11082, 3 }, -- Lesser <-> Greater Astral Essence
+  { 11134, 11135, 3 }, -- Lesser <-> Greater Mystic Essence
+  { 11174, 11175, 3 }, -- Lesser <-> Greater Nether Essence
+  { 16202, 16203, 3 }, -- Lesser <-> Greater Eternal Essence
+}
+ns.ITEM_TRANSFORMS = {}
+for _, p in ipairs(TRANSFORM_PAIRS) do
+  ns.ITEM_TRANSFORMS[p[1]] = { other = p[2], ratio = p[3], isSmall = true }
+  ns.ITEM_TRANSFORMS[p[2]] = { other = p[1], ratio = p[3], isSmall = false }
+end
+
+function ns.TransformPartner(itemID)
+  local t = itemID and ns.ITEM_TRANSFORMS[itemID]
+  if t then return t.other, t.ratio, t.isSmall end
+end
+
+-- Exact allocation of a convertible pair (ratio x small <-> 1 x big) with zero double-counting.
+-- Direct matches are filled first; spare on either side covers deficits on the other.
+-- Returns haveS, missS, spareS, haveB, missB, spareB.
+function ns.PairBalance(ownS, ownB, needS, needB, ratio)
+  local dS = math.min(ownS, needS)
+  local remS, defS = ownS - dS, needS - dS
+  local dB = math.min(ownB, needB)
+  local remB, defB = ownB - dB, needB - dB
+  if defB > 0 and remS >= ratio then
+    local conv = math.min(defB, math.floor(remS / ratio))
+    remS = remS - conv * ratio
+    defB = defB - conv
+  elseif defS > 0 and remB > 0 then
+    local conv = math.min(remB, math.ceil(defS / ratio))
+    remB = remB - conv
+    defS = math.max(0, defS - conv * ratio)
+  end
+  local reserveS = defB > 0 and math.min(remS, defB * ratio) or 0
+  return needS - defS, defS, remS - reserveS, needB - defB, defB, remB
+end
+
+-- Returns { { fromItem, fromQty, toItem, toQty }, ... } when crafting `qty` of `spell`
+-- relies on right-clicking a convertible essence pair (3x Lesser <-> 1x Greater) in `stock`.
+function ns.ConversionHints(spell, qty, stock)
+  local r = ns.Recipes and ns.Recipes[spell]
+  local reag = r and r[7]
+  if not (reag and #reag > 0 and stock) then return {} end
+  qty = math.max(1, qty or 1)
+  local pairsReq, order = {}, {}
+  for i = 1, #reag, 2 do
+    local item, req = reag[i], reag[i + 1] * qty
+    local t = ns.ITEM_TRANSFORMS[item]
+    if t then
+      local small = t.isSmall and item or t.other
+      local e = pairsReq[small]
+      if not e then
+        e = { small = small, big = t.isSmall and t.other or item, ratio = t.ratio, reqS = 0, reqB = 0 }
+        pairsReq[small] = e
+        order[#order + 1] = e
+      end
+      if t.isSmall then e.reqS = e.reqS + req else e.reqB = e.reqB + req end
+    end
+  end
+  local out = {}
+  for _, e in ipairs(order) do
+    local ownS, ownB = stock[e.small] or 0, stock[e.big] or 0
+    local defB = e.reqB - ownB
+    local defS = e.reqS - ownS
+    if defB > 0 and (ownS - e.reqS) >= e.ratio then
+      local conv = math.min(defB, math.floor((ownS - e.reqS) / e.ratio))
+      if conv > 0 then
+        out[#out + 1] = { fromItem = e.small, fromQty = conv * e.ratio, toItem = e.big, toQty = conv }
+      end
+    elseif defS > 0 and (ownB - e.reqB) > 0 then
+      local conv = math.min(ownB - e.reqB, math.ceil(defS / e.ratio))
+      if conv > 0 then
+        out[#out + 1] = { fromItem = e.big, fromQty = conv, toItem = e.small, toQty = conv * e.ratio }
+      end
+    end
+  end
+  return out
+end
+
+function ns.FormatConversionHints(hints)
+  if not (hints and #hints > 0) then return nil end
+  local nameOf = ns.ItemName or function(id) return "item:" .. id end
+  local parts = {}
+  for _, h in ipairs(hints) do
+    parts[#parts + 1] = ns.L["Right-click: %dx %s -> %dx %s"]:format(
+      h.fromQty, nameOf(h.fromItem), h.toQty, nameOf(h.toItem))
+  end
+  return table.concat(parts, " | ")
+end
 
 -- Classic formula: orange 1, yellow/green (grey-rank)/(grey-yellow), grey 0. Unverified on Forever.
 function ns.FormulaChance(spell, rank)
@@ -37,156 +132,7 @@ local function Expand(spell, producers, depth, raw, subs, mult)
   end
 end
 
-local AH_PRICE_TTL = 86400 -- 24 h freshness window for directly scanned AH prices
 
-function ns.LiveAHPrice(item)
-  local e = ComradeCraftDB and ComradeCraftDB.ahPrices and ComradeCraftDB.ahPrices[item]
-  if e and e.price and e.price > 0 and (time() - (e.t or 0)) <= AH_PRICE_TTL then return e.price end
-end
-
--- Auction prices from live AH scans, TSM (latest buyout/recent/market) and/or Auctionator.
--- When both TSM and Auctionator are loaded, falls back cleanly between them so new/rare items
--- still get a price. Sets ns.PriceSource(itemID) -> copper|nil and ns.PriceSourceName.
-function ns.DetectPriceSource()
-  local hasTSM = TSM_API and TSM_API.GetCustomPriceValue ~= nil
-  local hasAuc = Auctionator and Auctionator.API and Auctionator.API.v1
-    and Auctionator.API.v1.GetAuctionPriceByItemID ~= nil
-  local hasLive = ComradeCraftDB and ComradeCraftDB.ahPrices and next(ComradeCraftDB.ahPrices) ~= nil
-  local function TSMPrice(item)
-    if not hasTSM then return nil end
-    local key = "i:" .. item
-    for _, expr in ipairs({ "DBMinBuyout", "DBRecent", "DBMarket" }) do
-      local ok, v = pcall(TSM_API.GetCustomPriceValue, expr, key)
-      if ok and type(v) == "number" and v > 0 then return v end
-    end
-  end
-  local function AucPrice(item)
-    if not hasAuc then return nil end
-    local ok, v = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "ComradeCraft", item)
-    if ok and type(v) == "number" and v > 0 then return v end
-  end
-  if hasTSM or hasAuc or hasLive then
-    ns.PriceSourceName = hasTSM and hasAuc and "TSM + Auctionator"
-      or hasTSM and "TSM" or hasAuc and "Auctionator" or "AH"
-    ns.PriceSource = function(item)
-      return ns.LiveAHPrice(item) or TSMPrice(item) or AucPrice(item)
-    end
-  else
-    ns.PriceSource, ns.PriceSourceName = nil, nil
-  end
-  -- Disenchant value of an item (AH value of its expected mats): TSM "Destroy", else Auctionator.
-  ns.DisenchantPrice = nil
-  local hasAucDE = Auctionator and Auctionator.API and Auctionator.API.v1
-    and Auctionator.API.v1.GetDisenchantPriceByItemID ~= nil
-  if hasTSM or hasAucDE then
-    ns.DisenchantPrice = function(item)
-      if hasTSM then
-        local ok, v = pcall(TSM_API.GetCustomPriceValue, "Destroy", "i:" .. item)
-        if ok and type(v) == "number" and v > 0 then return v end
-      end
-      if hasAucDE then
-        local ok, v = pcall(Auctionator.API.v1.GetDisenchantPriceByItemID, "ComradeCraft", item)
-        if ok and type(v) == "number" and v > 0 then return v end
-      end
-    end
-  end
-end
-ns.On("PLAYER_LOGIN", function()
-  ns.DetectPriceSource()
-  ns.RequestRefresh()
-end)
-ns.On("AUCTION_HOUSE_CLOSED", function()
-  ns.DetectPriceSource()
-  ns.RequestRefresh()
-end)
-
--- Cost of buying `n` of an item, in copper, or nil when no real price is known:
--- AH price, or the merchant buy price for vendor reagents. Never the sell-price proxy.
-function ns.BuyCost(item, n)
-  if ns.IsVendorItem(item) then
-    local p = ns.ItemPrices and ns.ItemPrices[item]
-    if p and p[2] > 0 then return p[2] * n end
-  end
-  local v = ns.PriceSource and ns.PriceSource(item)
-  return v and v > 0 and v * n or nil
-end
-
--- Value of one item in copper: AH price if a source is plugged in (ns.PriceSource),
--- else the merchant price (buy price for vendor reagents, sell price otherwise). Min 1.
-function ns.ItemValue(item)
-  local v = ns.PriceSource and ns.PriceSource(item)
-  if v and v > 0 then return v end
-  local p = ns.ItemPrices and ns.ItemPrices[item]
-  if p then
-    v = (ns.IsVendorItem(item) and p[2] > 0) and p[2] or p[1]
-  end
-  return math.max(1, v or 1)
-end
-
--- AH deposit, per item: measured when you post (Shopping.lua), else merchant price x ratio.
--- DEPOSIT_LOSS: share counted as lost. Forever refunds it on sale (sale mail: 2s99 + 1s deposit
--- - 14c cut = 3s85), so only expired auctions lose it; we assume a quarter expire once.
-ns.DEPOSIT_LOSS = 0.25
--- Forever, 2 h auctions: Lesser (merchant 1s10) and Greater Magic Wand (2s) both cost 1s
--- each, so a flat minimum; the % above it is Retail's 12 h rule, unconfirmed.
-ns.DEPOSIT_MIN, ns.DEPOSIT_RATIO = 100, 0.15
-ns.AH_MARGIN = 1.1 -- the AH must beat the merchant/disenchant by 10% (time, competition)
-
-function ns.AuctionDeposit(item)
-  local db = ComradeCraftDB
-  local d = db and db.deposits and db.deposits[item]
-  if d then return d end
-  local p = ns.ItemPrices and ns.ItemPrices[item]
-  local sell = p and p[1]
-  if not sell then
-    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    sell = get and select(11, get(item))
-  end
-  return math.max(ns.DEPOSIT_MIN, math.floor((sell or 0) * ns.DEPOSIT_RATIO))
-end
-
--- True for Bind on Pickup (1) and Quest (4) items: cannot be auctioned or mailed to others.
-function ns.IsBoP(item)
-  if not item or item == 0 then return false end
-  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local bind = get and select(14, get(item))
-  return bind == 1 or bind == 4
-end
-
--- What one crafted item brings back, three ways: merchant sell price, disenchant (AH value
--- of its mats; nil if unknown), auction house (price - 5% cut - expected deposit loss; nil
--- without a price source or for BoP items). deposit = the full deposit, for display.
-function ns.ResaleOptions(item)
-  if not item or item == 0 then return { vendor = 0 } end
-  local p = ns.ItemPrices and ns.ItemPrices[item]
-  local vendor = p and p[1] or 0
-  if vendor == 0 then
-    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    vendor = (get and select(11, get(item))) or 0
-  end
-  local ah = not ns.IsBoP(item) and ns.PriceSource and ns.PriceSource(item) or nil
-  local de = ns.DisenchantPrice and ns.DisenchantPrice(item)
-  if not de and ns.DisenchantEstimate then de = ns.DisenchantEstimate(item) end
-  local o = { vendor = vendor, de = de }
-  if ah and ah > 0 then
-    o.deposit = ns.AuctionDeposit(item)
-    o.ah = ah * 0.95 - o.deposit * ns.DEPOSIT_LOSS
-  end
-  return o
-end
-
--- The best way to sell (o = ResaleOptions, values may be scaled): the AH only when it beats
--- the merchant and the disenchant by AH_MARGIN.
-function ns.BestResale(o)
-  local other = math.max(o.vendor or 0, o.de or 0)
-  if o.ah and o.ah > other * ns.AH_MARGIN then return o.ah end
-  return other
-end
-
--- What the "profitable" route counts on.
-function ns.ResaleValue(item)
-  return ns.BestResale(ns.ResaleOptions(item))
-end
 
 -- Route types: "cheap" = least spent on mats; "profit" = least spent once the products are
 -- sold back (mats - resale), so recipes whose products sell well win.
@@ -305,10 +251,20 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
         local cost = a.cost * n
         if left then
           for j = 1, #a.ids do
-            local l = left[a.ids[j]]
-            if l and l > 0 then
-              local need = a.cnt[j] * n
-              cost = cost - (need < l and need or l) * a.val[j]
+            local id = a.ids[j]
+            local need = a.cnt[j] * n
+            local l = left[id] or 0
+            local direct = l > 0 and (need < l and need or l) or 0
+            if direct > 0 then cost = cost - direct * a.val[j] end
+            local rem = need - direct
+            if rem > 0 then
+              local t = ns.ITEM_TRANSFORMS[id]
+              local ol = t and left[t.other]
+              if ol and ol > 0 then
+                local avail = t.isSmall and (ol * t.ratio) or (ol / t.ratio)
+                local conv = rem < avail and rem or avail
+                if conv > 0 then cost = cost - conv * a.val[j] end
+              end
             end
           end
         end
@@ -330,9 +286,22 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       break
     end
     for item, c in pairs(best.raw) do
-      acc[item] = (acc[item] or 0) + c * bestN
-      local l = left and left[item]
-      if l and l > 0 then left[item] = math.max(0, l - c * bestN) end
+      local need = c * bestN
+      acc[item] = (acc[item] or 0) + need
+      if left then
+        local l = left[item] or 0
+        local direct = l > 0 and (need < l and need or l) or 0
+        if direct > 0 then left[item] = l - direct end
+        local rem = need - direct
+        if rem > 0 then
+          local t = ns.ITEM_TRANSFORMS[item]
+          local ol = t and left[t.other]
+          if ol and ol > 0 then
+            local usedOther = t.isSmall and (rem / t.ratio) or (rem * t.ratio)
+            left[t.other] = math.max(0, ol - usedOther)
+          end
+        end
+      end
     end
     local b = math.floor(cur / ns.MILESTONE) * ns.MILESTONE
     local m = info.milestones[b] or { mats = 0, points = 0, vendor = 0, de = 0, ah = 0, best = 0 }
@@ -380,282 +349,6 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     if n > 0 then needs[item] = n end
   end
   return needs, cur, plan, info
-end
-
--- Reagents sold by vendors (checked against ItemSparse names, build 1.60.1.70888), plus
--- whatever the addon has seen on merchants (ComradeCraftDB.vendorSeen). Not group needs.
-ns.VENDOR_ITEMS = {
-  [2320] = true, [2321] = true, [4291] = true, [8343] = true, [14341] = true, -- threads
-  [4340] = true, [6260] = true, [2604] = true, [4341] = true, [2605] = true, -- dyes
-  [2325] = true, [6261] = true, [4342] = true, [10290] = true, [2324] = true, -- dyes, bleach
-  [2678] = true, [2692] = true, [3713] = true, [159] = true, [1179] = true,   -- cooking
-  [3371] = true, [3372] = true, [8925] = true, [18256] = true,                -- vials
-  [2880] = true, [3466] = true, [3857] = true, [4289] = true, [4470] = true,  -- flux, coal, salt, wood
-  [6217] = true, [814] = true, [4399] = true, [4400] = true,                  -- rod, oil, stocks
-  [2928] = true, [2930] = true, [8923] = true, [8924] = true, [5173] = true,  -- poison reagents
-}
-
-function ns.IsVendorItem(id)
-  return ns.VENDOR_ITEMS[id] or (ComradeCraftDB and ComradeCraftDB.vendorSeen
-    and ComradeCraftDB.vendorSeen[id]) or false
-end
-
--- Item info fields used by the catalog (nil until the client has the item cached).
-local function ItemFacts(item)
-  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  if not (get and item and item ~= 0) then return nil end
-  local name, _, _, _, reqLevel, _, _, _, equipLoc, _, _, classID, subclassID = get(item)
-  if not name then return nil end
-  return { name = name, reqLevel = reqLevel or 0, equipLoc = equipLoc or "", classID = classID,
-    subclassID = subclassID }
-end
-
--- Main armor type of a class at a level: 1 cloth, 2 leather, 3 mail, 4 plate.
-local ARMOR = { MAGE = 1, PRIEST = 1, WARLOCK = 1, DRUID = 2, ROGUE = 2 }
-local function MainArmor(class, level)
-  if ARMOR[class] then return ARMOR[class] end
-  local high = (level or 0) >= 40
-  if class == "HUNTER" or class == "SHAMAN" then return high and 3 or 2 end
-  if class == "WARRIOR" or class == "PALADIN" then return high and 4 or 3 end
-  return nil
-end
-
--- Does a crafted item suit a character: its main armor type (cloaks, necks, rings and
--- trinkets suit everyone), required level between level-10 and level. Weapons: not judged.
-function ns.ItemFits(item, c)
-  local f = ItemFacts(item)
-  if not (f and c.level and f.classID == 4 and f.equipLoc ~= "") then return false end
-  if f.reqLevel > c.level or f.reqLevel < c.level - 10 then return false end
-  local anyone = f.subclassID == 0 or f.equipLoc == "INVTYPE_CLOAK"
-  return anyone or f.subclassID == MainArmor(c.class, c.level)
-end
-
--- Equipment slots an inventory type can go to (armor and jewelry; weapons not judged).
-local SLOTS_OF = { INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_BODY = { 4 },
-  INVTYPE_CHEST = { 5 }, INVTYPE_ROBE = { 5 }, INVTYPE_WAIST = { 6 }, INVTYPE_LEGS = { 7 }, INVTYPE_FEET = { 8 },
-  INVTYPE_WRIST = { 9 }, INVTYPE_HAND = { 10 }, INVTYPE_FINGER = { 11, 12 }, INVTYPE_TRINKET = { 13, 14 },
-  INVTYPE_CLOAK = { 15 } }
-local CLASS_ID = { WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5, SHAMAN = 7, MAGE = 8,
-  WARLOCK = 9, DRUID = 11 }
-
--- Optional Pawn bridge (Pawn is CC BY-NC-ND: we call it at runtime, we never copy its weights).
--- Finds a Pawn scale for the character's class (and spec name when Pawn's name contains it).
--- Pawn's scale fields are not documented: every access is guarded, nil means "use item level".
-local pawnScaleCache = {}
-function ns.PawnScaleFor(c)
-  if not (PawnCommon and type(PawnCommon.Scales) == "table" and c.class) then return nil end
-  local cacheKey = c.class .. "/" .. tostring(c.spec)
-  if pawnScaleCache[cacheKey] ~= nil then return pawnScaleCache[cacheKey] or nil end
-  local classID, best = CLASS_ID[c.class], nil
-  for name, scale in pairs(PawnCommon.Scales) do
-    if type(scale) == "table" and scale.ClassID == classID then
-      local label = tostring(scale.LocalizedName or name)
-      if c.spec and label:find(c.spec, 1, true) then
-        best = name
-        break
-      end
-      best = best or name
-    end
-  end
-  pawnScaleCache[cacheKey] = best or false
-  if best and ns.Log then ns.Log(("pawn: %s -> %s"):format(cacheKey, best)) end
-  return best
-end
-
--- Value of an item for a character: Pawn's score for its class scale when available,
--- else the item level. Returns value, "pawn"|"ilvl".
-function ns.ItemScore(item, c)
-  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local _, link, _, ilvl = get(item)
-  local scale = ns.PawnScaleFor(c)
-  if scale and link and PawnGetItemData and PawnGetSingleValueFromItem then
-    local ok, data = pcall(PawnGetItemData, link)
-    if ok and data then
-      local ok2, v = pcall(PawnGetSingleValueFromItem, data, scale)
-      if ok2 and type(v) == "number" then return v, "pawn" end
-    end
-  end
-  return ilvl or 0, "ilvl"
-end
-
--- Is `item` an upgrade for character c? It must fit (ItemFits) and score above the weakest
--- piece worn in a slot it goes to (an empty slot counts as 0). Without equipment data, a
--- fitting item counts as an upgrade with unknown gain. Returns isUpgrade, gain, how.
-function ns.UpgradeFor(item, c)
-  if not ns.ItemFits(item, c) then return false end
-  local f = ItemFacts(item)
-  local slots = f and SLOTS_OF[f.equipLoc]
-  if not (slots and c.equipped) then return true, nil, nil end
-  local score, how = ns.ItemScore(item, c)
-  local worst
-  for _, slot in ipairs(slots) do
-    local worn = c.equipped[slot]
-    local s = worn and ns.ItemScore(worn, c) or 0
-    if not worst or s < worst then worst = s end
-  end
-  if score > worst then return true, score - worst, how end
-  return false
-end
-
--- Category label key of a recipe's product (Locale keys).
-function ns.ItemCategory(item)
-  if not item or item == 0 then return "Enchant" end
-  local f = ItemFacts(item)
-  if not f then return "Other" end
-  return ({ [0] = "Consumable", [1] = "Bag", [2] = "Weapon", [4] = "Armor", [7] = "Reagent" })[f.classID]
-    or "Other"
-end
-
--- Recipes a character knows, annotated for the "can craft" view:
--- { spell, line, item, color, category, needers = { {key, n} }, fits = { key } }.
--- Sorted: helps someone first, then fits someone, then by name.
-function ns.CraftCatalog(key)
-  local chars = ns.AllChars()
-  local c = chars[key]
-  local rankOf = {}
-  for _, p in pairs(c.professions or {}) do
-    if p.skillLine then rankOf[p.skillLine] = p.rank end
-  end
-  local out = {}
-  for line, set in pairs(c.known or {}) do
-    for spell in pairs(set) do
-      local r = ns.Recipes[spell]
-      if r then
-        local e = { spell = spell, line = line, item = r[5], needers = {}, fits = {},
-          color = rankOf[line] and ns.RecipeColor(spell, rankOf[line]) or "grey",
-          category = ns.ItemCategory(r[5]) }
-        local bop = r[5] ~= 0 and ns.IsBoP(r[5])
-        if not bop then
-          for other, oc in pairs(chars) do
-            if other ~= key then
-              local n = r[5] ~= 0 and ns.NeedOf(oc, r[5]) or 0
-              if n > 0 then e.needers[#e.needers + 1] = { key = other, n = n } end
-              if r[5] ~= 0 then
-                local up, gain = ns.UpgradeFor(r[5], oc)
-                if up then e.fits[#e.fits + 1] = { key = other, gain = gain } end
-              end
-            end
-          end
-        end
-        e.name = ns.SpellName and ns.SpellName(spell) or tostring(spell)
-        out[#out + 1] = e
-      end
-    end
-  end
-  table.sort(out, function(a, b)
-    local ra = #a.needers > 0 and 1 or #a.fits > 0 and 2 or 3
-    local rb = #b.needers > 0 and 1 or #b.fits > 0 and 2 or 3
-    if ra ~= rb then return ra < rb end
-    return a.name < b.name
-  end)
-  return out
-end
-
--- Group-wide missing materials: { { item, total, by = { {key, n} } } }, most needed first.
--- lineOK (optional): function(skillLine) -> bool, to follow the profession filter.
-function ns.GroupMaterials(lineOK)
-  local acc = {}
-  for key, c in pairs(ns.AllChars()) do
-    for line, need in pairs(c.needs or {}) do
-      for item, n in pairs((not lineOK or lineOK(line)) and need.items or {}) do
-        local a = acc[item] or { item = item, total = 0, by = {} }
-        acc[item] = a
-        a.total = a.total + n
-        local step = need.when and need.when[item]
-        a.by[#a.by + 1] = { key = key, n = n, step = step }
-        if step and (not a.step or step < a.step) then a.step = step end
-      end
-    end
-  end
-  local list = {}
-  for _, a in pairs(acc) do
-    table.sort(a.by, function(x, y) return (x.step or 99) < (y.step or 99) end)
-    list[#list + 1] = a
-  end
-  -- Most urgent first (now, soon, later), then the biggest quantity.
-  table.sort(list, function(a, b)
-    local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
-    if ua ~= ub then return ua < ub end
-    return a.total > b.total or (a.total == b.total and a.item < b.item)
-  end)
-  return list
-end
-
--- What a character can give away: owned (bags + bank + inbox) minus what its own plans use.
-function ns.Surplus(c, item)
-  local owned = ((c.bags or {})[item] or 0) + ((c.bank or {})[item] or 0) + ((c.mail or {})[item] or 0)
-  if owned == 0 then return 0 end
-  local used = 0
-  for _, need in pairs(c.needs or {}) do used = used + ((need.gross or {})[item] or 0) end
-  return math.max(0, owned - used)
-end
-
--- Who in the group has spare `item`: total and { {key, n} } (largest first), `except` left out.
-function ns.GroupSupply(item, except)
-  local total, list = 0, {}
-  if ns.IsBoP(item) then return total, list end
-  for key, c in pairs(ns.AllChars()) do
-    if key ~= except then
-      local n = ns.Surplus(c, item)
-      if n > 0 then
-        total = total + n
-        list[#list + 1] = { key = key, n = n }
-      end
-    end
-  end
-  table.sort(list, function(a, b) return a.n > b.n end)
-  return total, list
-end
-
--- What `key` can give: its spare items that other characters need, one entry per
--- (item, receiver): { item, to, n = min(spare left, need), step }. Most urgent first.
-function ns.GiveList(key)
-  local chars = ns.AllChars()
-  local c = chars[key]
-  local out = {}
-  if not c then return out end
-  local items = {}
-  for _, src in ipairs({ c.bags or {}, c.bank or {} }) do
-    for item in pairs(src) do items[item] = true end
-  end
-  for item in pairs(items) do
-    local bound = ns.IsBoP(item) or (c.bound and c.bound[item] and (c.bank and c.bank[item] or 0) == 0)
-    local spare = not bound and ns.Surplus(c, item) or 0
-    if spare > 0 then
-      local wants = {}
-      for other, oc in pairs(chars) do
-        if other ~= key then
-          for _, r in ipairs(ns.NeedRows(oc, item)) do
-            wants[#wants + 1] = { to = other, n = r.n, step = r.step, prof = r.prof, spell = r.spell }
-          end
-        end
-      end
-      table.sort(wants, function(a, b) return (a.step or 99) < (b.step or 99) end)
-      for _, w in ipairs(wants) do
-        if spare <= 0 then break end
-        local n = math.min(spare, w.n)
-        spare = spare - n
-        out[#out + 1] = { item = item, to = w.to, n = n, step = w.step, prof = w.prof, spell = w.spell }
-      end
-    end
-  end
-  table.sort(out, function(a, b)
-    local ua, ub = ns.UrgencyRank(a.step), ns.UrgencyRank(b.step)
-    if ua ~= ub then return ua < ub end
-    return a.n > b.n
-  end)
-  return out
-end
-
--- When a material is needed, from the first plan step using it: step 1 = "now",
--- steps 2-4 = "soon", 5+ (or unknown) = "later". Locale keys.
-function ns.Urgency(step)
-  if step == 1 then return "now" end
-  if step and step <= 4 then return "soon" end
-  return "later"
-end
-function ns.UrgencyRank(step)
-  return ({ now = 1, soon = 2, later = 3 })[ns.Urgency(step)]
 end
 
 -- [itemID] = index of the first plan step whose crafts (main recipe or intermediates) use it.
@@ -842,8 +535,13 @@ function ns.GroupStock(c)
 end
 
 -- Recomputes c.needs[skillLine] for one character record (rank -> cap, minus owned).
+-- Shared bank alts never reserve materials for leveling: all of their stock is group surplus.
 function ns.UpdateNeeds(c)
   c.needs = {}
+  if c.bankAlt then
+    if ns.ClearGiveCache then ns.ClearGiveCache() end
+    return
+  end
   if not (c.professions and c.known) then return end
   local all = {}
   for _, set in pairs(c.known) do
@@ -865,11 +563,34 @@ function ns.UpdateNeeds(c)
       local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, nil, mode, stock)
       local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, mode, stock)
       local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, other, stock)
-      local net, vendor, have = {}, {}, {}
+      local net, vendor, have, handled = {}, {}, {}, {}
       for item, n in pairs(gross) do
-        have[item] = owned[item] or 0
-        if n > have[item] then
-          if ns.IsVendorItem(item) then vendor[item] = n - have[item] else net[item] = n - have[item] end
+        if not handled[item] then
+          local t = ns.ITEM_TRANSFORMS[item]
+          if t then
+            local small = t.isSmall and item or t.other
+            local big = t.isSmall and t.other or item
+            handled[small], handled[big] = true, true
+            local nS, nB = gross[small] or 0, gross[big] or 0
+            local hS, mS, _, hB, mB = ns.PairBalance(owned[small] or 0, owned[big] or 0, nS, nB, t.ratio)
+            if nS > 0 then
+              have[small] = hS
+              if mS > 0 then
+                if ns.IsVendorItem(small) then vendor[small] = mS else net[small] = mS end
+              end
+            end
+            if nB > 0 then
+              have[big] = hB
+              if mB > 0 then
+                if ns.IsVendorItem(big) then vendor[big] = mB else net[big] = mB end
+              end
+            end
+          else
+            have[item] = owned[item] or 0
+            if n > have[item] then
+              if ns.IsVendorItem(item) then vendor[item] = n - have[item] else net[item] = n - have[item] end
+            end
+          end
         end
       end
       c.needs[p.skillLine] = { name = name, items = net, vendor = vendor, gross = gross, have = have,
@@ -887,25 +608,5 @@ function ns.UpdateNeeds(c)
     end
     if foundKey then ns.Wishlist.InjectNeeds(c, foundKey) end
   end
-end
-
--- Total need of one item for a character, across professions.
-function ns.NeedOf(c, itemID)
-  local n = 0
-  for _, need in pairs(c.needs or {}) do n = n + (need.items[itemID] or 0) end
-  return n
-end
-
--- Per-profession needs of one item: { { prof = name, n = count, step = i, spell = id }, ... }.
-function ns.NeedRows(c, itemID)
-  local rows = {}
-  for _, need in pairs(c.needs or {}) do
-    local n = need.items[itemID]
-    if n and n > 0 then
-      local step = need.when and need.when[itemID]
-      local planStep = step and need.plan and need.plan[step]
-      rows[#rows + 1] = { prof = need.name, n = n, step = step, spell = planStep and planStep.spell or nil }
-    end
-  end
-  return rows
+  if ns.ClearGiveCache then ns.ClearGiveCache() end
 end

@@ -119,7 +119,7 @@ function ns.SkillupStatsLines()
     local n, gained, expected = ns.SkillupTotals(color) -- includes players in the group
     if n > 0 then
       local f = ns.Calibration(color)
-      lines[#lines + 1] = ns.L["  %s: %d crafts, %d points, Classic formula %.1f%s"]:format(ns.L[color], n, gained,
+      lines[#lines + 1] = ns.L["  %s: %d crafts, %d points (expected %.1f)%s"]:format(ns.L[color], n, gained,
         expected, f and ns.L[" -> factor %.2f applied"]:format(f) or "")
     end
   end

@@ -13,8 +13,11 @@
 ## X-Curse-Project-ID: 1799561
 ## Version: @project-version@
 ## SavedVariables: ComradeCraftDB
-## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom, Baganator, Bagnon, Combuctor, BetterBags, ElvUI
+## OptionalDeps: Pawn, TradeSkillMaster, Auctionator, Questie, QuestieDB, TomTom, Baganator, Bagnon, BagBrother, Combuctor, BetterBags, ArkInventory, ElvUI, Postbox, Postal
 ## IconTexture: Interface\AddOns\ComradeCraft\Media\Logo
+## AddonCompartmentFunc: ComradeCraft_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ComradeCraft_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ComradeCraft_OnAddonCompartmentLeave
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
@@ -49,7 +52,12 @@ Locales\ruRU.lua
 Locale.lua
 Core.lua
 Data\Recipes.lua
+Data\DropRates.lua
+Pricing.lua
 Needs.lua
+GroupNeeds.lua
+Reserve.lua
+GearScore.lua
 Scan.lua
 SkillLog.lua
 Disenchant.lua
@@ -57,7 +65,9 @@ Tooltip.lua
 Sync.lua
 Mail.lua
 Trade.lua
+Bank.lua
 Merchant.lua
+Trainer.lua
 AuctionPanel.lua
 Bags.lua
 Requests.lua
@@ -72,4 +82,9 @@ FarmAdvice.lua
 Tracker.lua
 Farm.lua
 Wishlist.lua
-UI.lua
+UI\Widgets.lua
+UI\Plan.lua
+UI\Group.lua
+UI\Social.lua
+Options.lua
+UI\Window.lua

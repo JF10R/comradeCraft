@@ -15,14 +15,19 @@ function ns.UrgencyText(step)
   return ("|cff%s(%s)|r"):format(URGENCY_COLOR[u], ns.L[u])
 end
 
-local function ReasonText(prof, spell)
+local function ReasonText(prof, spell, convertsTo)
   local parts = {}
   if prof and prof ~= "" then parts[#parts + 1] = prof end
   if spell and ns.SpellName then
     local sn = ns.SpellName(spell)
     if sn and not sn:find("^spell:") then parts[#parts + 1] = sn end
   end
-  return table.concat(parts, " - ")
+  local base = table.concat(parts, " - ")
+  if convertsTo then
+    local tn = ns.ItemName and ns.ItemName(convertsTo) or ("item:" .. convertsTo)
+    return base ~= "" and (base .. " -> " .. tn) or ("-> " .. tn)
+  end
+  return base
 end
 
 local function AddNeeds(tooltip, itemID)
@@ -31,7 +36,8 @@ local function AddNeeds(tooltip, itemID)
   local rows, total = {}, 0
   for key, c in pairs(ns.AllChars()) do
     for _, r in ipairs(ns.NeedRows(c, itemID)) do
-      rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, spell = r.spell, n = r.n, step = r.step }
+      rows[#rows + 1] = { key = key, class = c.class, prof = r.prof, spell = r.spell, n = r.n, step = r.step,
+        convertsTo = r.convertsTo }
       total = total + r.n
     end
   end
@@ -42,7 +48,7 @@ local function AddNeeds(tooltip, itemID)
   if (myBags[itemID] or 0) > 0 then
     for _, g in ipairs(ns.GiveList(me)) do
       if g.item == itemID then
-        local e = { to = g.to, n = g.n, prof = g.prof, spell = g.spell, step = g.step }
+        local e = { to = g.to, n = g.n, prof = g.prof, spell = g.spell, step = g.step, convertsTo = g.convertsTo }
         sends[#sends + 1] = e
         if mailTarget and g.to == mailTarget and not targetSend then targetSend = e end
       end
@@ -56,7 +62,9 @@ local function AddNeeds(tooltip, itemID)
       end
     end
   end
-  if #rows == 0 and #sends == 0 then return end
+  local myReserve = ns.Reserve and ns.Reserve.Get and ns.Reserve.Get(itemID) or nil
+  local incomingRes = ns.Reserve and ns.Reserve.IncomingFor and ns.Reserve.IncomingFor(me, itemID) or {}
+  if #rows == 0 and #sends == 0 and not myReserve and #incomingRes == 0 then return end
   local supply, holders = ns.GroupSupply(itemID)
   -- Active mail recipient first, then most urgent, then biggest quantity.
   table.sort(rows, function(a, b)
@@ -67,9 +75,18 @@ local function AddNeeds(tooltip, itemID)
   end)
   tooltip:AddLine(" ")
   tooltip:AddLine("ComradeCraft", 1, 0.82, 0)
+  if myReserve and myReserve.to then
+    local who = myReserve.to:match("^[^-]+") or myReserve.to
+    tooltip:AddLine(ns.L["Reserved for %s (x%d) - Alt+Right-click to unlock"]:format(who, myReserve.qty or 1),
+      0.78, 0.48, 1, true)
+  end
+  for _, ir in ipairs(incomingRes) do
+    tooltip:AddLine(ns.L["Reserved for you by %s (x%d)"]:format(ns.ClassColored(ir.from, ir.class), ir.qty),
+      0.35, 1, 0.55, true)
+  end
   if targetSend then
     local who = targetSend.to:match("^[^-]+") or targetSend.to
-    local why = targetSend.request and ns.L["craft request"] or ReasonText(targetSend.prof, targetSend.spell)
+    local why = targetSend.request and ns.L["craft request"] or ReasonText(targetSend.prof, targetSend.spell, targetSend.convertsTo)
     local msg = why ~= "" and ns.L["Send x%d to %s (%s)"]:format(targetSend.n, who, why)
       or ns.L["Send x%d to %s"]:format(targetSend.n, who)
     tooltip:AddLine(msg, 0.3, 1, 0.4, true)
@@ -78,13 +95,13 @@ local function AddNeeds(tooltip, itemID)
     for i = 1, math.min(#sends, 2) do
       local s = sends[i]
       local who = s.to:match("^[^-]+") or s.to
-      local why = s.request and ns.L["craft request"] or (s.prof or "")
+      local why = s.request and ns.L["craft request"] or ReasonText(s.prof, nil, s.convertsTo)
       parts[#parts + 1] = why ~= "" and ("x%d -> %s (%s)"):format(s.n, who, why) or ("x%d -> %s"):format(s.n, who)
     end
     tooltip:AddLine(ns.L["To send from your bags: %s"]:format(table.concat(parts, ", ")), 0.3, 1, 0.4, true)
   end
   for _, r in ipairs(rows) do
-    local why = ReasonText(r.prof, r.spell)
+    local why = ReasonText(r.prof, r.spell, r.convertsTo)
     local focus = mailTarget and r.key == mailTarget
     local left = focus and ("|cff40ff40>|r %s |cffcccccc%s|r"):format(ns.ClassColored(r.key, r.class), why)
       or ("%s |cff9d9d9d%s|r"):format(ns.ClassColored(r.key, r.class), why)
@@ -238,16 +255,133 @@ function ns.OpenRecipe(spell)
 end
 
 
--- Next rank of a profession (raises the cap by 75). Secondary professions learn Expert from a
--- book (LibProfessionDB: item, required skill, vendors; also on the AH); otherwise a trainer,
--- with Classic's requirements marked unconfirmed. Returns { title, entries, notes } or nil.
+-- Next rank of a profession (raises the cap by 75). Covers Expert (150->225) and Artisan (225->300)
+-- trainers for all 12 professions (Alliance & Horde), plus books and Artisan quests.
 local RANK_NAMES = { [75] = "Journeyman", [150] = "Expert", [225] = "Artisan", [300] = "Master" }
 local SECONDARY = { [185] = true, [129] = true, [356] = true }
 local CLASSIC_REQ = { [75] = { 50, 10 }, [150] = { 125, 20 }, [225] = { 200, 35 }, [300] = { 275, 50 } }
 
+-- Classic/Forever Expert (cap 150) and Artisan (cap 225) trainers by [cap][skillLine][faction].
+-- Each entry: { npcID, name, zone, faction, fallbackPlace = { uiMap, x, y } }.
+-- Faction: "A" Alliance, "H" Horde, "AH" neutral/both. Fallback coords ensure 1-click TomTom even without Questie.
+ns.RANK_TRAINERS = {
+  [150] = {
+    [164] = {
+      { 4258, "Bengus Deepforge", "Ironforge", "A", { uiMap = 1455, x = 51.0, y = 43.0 } },
+      { 3355, "Saru Steelfury", "Orgrimmar", "H", { uiMap = 1454, x = 82.0, y = 23.0 } },
+      { 2836, "Brikk Keencraft", "Booty Bay", "AH", { uiMap = 1434, x = 29.0, y = 75.5 } },
+    },
+    [165] = {
+      { 4212, "Telonis", "Darnassus", "A", { uiMap = 1457, x = 64.5, y = 21.6 } },
+      { 3007, "Una", "Thunder Bluff", "H", { uiMap = 1456, x = 41.8, y = 42.6 } },
+    },
+    [171] = {
+      { 4160, "Ainethil", "Darnassus", "A", { uiMap = 1457, x = 55.0, y = 24.0 } },
+      { 4611, "Doctor Herbert Halsey", "Undercity", "H", { uiMap = 1458, x = 47.6, y = 73.0 } },
+    },
+    [182] = {
+      { 4204, "Firodren Mooncaller", "Darnassus", "A", { uiMap = 1457, x = 48.0, y = 68.4 } },
+      { 4614, "Martha Alliestar", "Undercity", "H", { uiMap = 1458, x = 54.2, y = 49.6 } },
+      { 3013, "Komin Winterhoof", "Thunder Bluff", "H", { uiMap = 1456, x = 49.8, y = 39.8 } },
+    },
+    [186] = {
+      { 4254, "Geofram Bouldertoe", "Ironforge", "A", { uiMap = 1455, x = 50.4, y = 26.0 } },
+      { 3357, "Makaru", "Orgrimmar", "H", { uiMap = 1454, x = 73.0, y = 26.6 } },
+      { 3001, "Brek Stonehoof", "Thunder Bluff", "H", { uiMap = 1456, x = 34.4, y = 57.6 } },
+    },
+    [197] = {
+      { 1346, "Georgio Bolero", "Stormwind", "A", { uiMap = 1453, x = 43.2, y = 73.6 } },
+      { 4576, "Josef Gregorian", "Undercity", "H", { uiMap = 1458, x = 70.6, y = 30.6 } },
+    },
+    [202] = {
+      { 5174, "Springspindle Fizzlegear", "Ironforge", "A", { uiMap = 1455, x = 68.4, y = 44.0 } },
+      { 11017, "Roxxik", "Orgrimmar", "H", { uiMap = 1454, x = 76.0, y = 25.0 } },
+    },
+    [333] = {
+      { 11072, "Kitta Firewind", "Elwynn Forest", "A", { uiMap = 1429, x = 64.9, y = 70.6 } },
+      { 11074, "Hgarth", "Stonetalon Mountains", "H", { uiMap = 1442, x = 49.2, y = 57.2 } },
+    },
+    [393] = {
+      { 6292, "Eladriel", "Darnassus", "A", { uiMap = 1457, x = 64.2, y = 21.0 } },
+      { 7088, "Thuwd", "Orgrimmar", "H", { uiMap = 1454, x = 63.2, y = 45.2 } },
+      { 3373, "Mooranta", "Thunder Bluff", "H", { uiMap = 1456, x = 44.4, y = 43.0 } },
+    },
+    [185] = {
+      { 3955, "Shandrina", "Ashenvale", "A", { uiMap = 1440, x = 49.5, y = 67.1 } },
+      { 12033, "Wulan", "Desolace", "H", { uiMap = 1443, x = 26.2, y = 69.7 } },
+    },
+    [129] = {
+      { 2805, "Deneb Walker", "Arathi Highlands", "A", { uiMap = 1417, x = 27.0, y = 58.8 } },
+      { 13529, "Balai Lok'Wein", "Dustwallow Marsh", "H", { uiMap = 1445, x = 36.5, y = 30.4 } },
+    },
+    [356] = {
+      { 2626, "Old Man Heming", "Booty Bay", "AH", { uiMap = 1434, x = 27.4, y = 77.0 } },
+    },
+  },
+  [225] = {
+    [164] = {
+      { 2836, "Brikk Keencraft", "Booty Bay", "AH", { uiMap = 1434, x = 29.0, y = 75.5 } },
+    },
+    [165] = {
+      { 11097, "Drakk Stonehand", "The Hinterlands", "A", { uiMap = 1425, x = 13.4, y = 43.4 } },
+      { 11098, "Hahrana Ironhide", "Feralas", "H", { uiMap = 1444, x = 74.4, y = 43.0 } },
+    },
+    [171] = {
+      { 7948, "Kylanna Windwhisper", "Feralas", "A", { uiMap = 1444, x = 32.6, y = 43.8 } },
+      { 1386, "Rogvar", "Swamp of Sorrows", "H", { uiMap = 1435, x = 48.4, y = 55.6 } },
+    },
+    [182] = {
+      { 4204, "Firodren Mooncaller", "Darnassus", "A", { uiMap = 1457, x = 48.0, y = 68.4 } },
+      { 4614, "Martha Alliestar", "Undercity", "H", { uiMap = 1458, x = 54.2, y = 49.6 } },
+      { 3013, "Komin Winterhoof", "Thunder Bluff", "H", { uiMap = 1456, x = 49.8, y = 39.8 } },
+    },
+    [186] = {
+      { 4254, "Geofram Bouldertoe", "Ironforge", "A", { uiMap = 1455, x = 50.4, y = 26.0 } },
+      { 3357, "Makaru", "Orgrimmar", "H", { uiMap = 1454, x = 73.0, y = 26.6 } },
+      { 8128, "Pikkle", "Tanaris", "AH", { uiMap = 1446, x = 51.0, y = 28.0 } },
+    },
+    [197] = {
+      { 11052, "Timothy Worthington", "Dustwallow Marsh", "A", { uiMap = 1445, x = 66.2, y = 51.6 } },
+      { 2399, "Daryl Stack", "Hillsbrad Foothills", "H", { uiMap = 1424, x = 63.6, y = 20.8 } },
+    },
+    [202] = {
+      { 8736, "Buzzek Bracketswing", "Tanaris", "AH", { uiMap = 1446, x = 52.2, y = 27.6 } },
+    },
+    [333] = {
+      { 11073, "Annora", "Uldaman", "AH", { uiMap = 1418, x = 42.8, y = 13.4 } },
+    },
+    [393] = {
+      { 6291, "Balthus Stoneflayer", "Ironforge", "A", { uiMap = 1455, x = 40.0, y = 32.6 } },
+      { 7088, "Thuwd", "Orgrimmar", "H", { uiMap = 1454, x = 63.2, y = 45.2 } },
+    },
+    [185] = {
+      { 8125, "Dirge Quikcleave", "Tanaris", "AH", { uiMap = 1446, x = 52.6, y = 28.0 } },
+    },
+    [129] = {
+      { 12340, "Doctor Gustaf VanHowzen", "Dustwallow Marsh", "A", { uiMap = 1445, x = 67.8, y = 49.0 } },
+      { 12920, "Doctor Gregory Victor", "Arathi Highlands", "H", { uiMap = 1417, x = 73.4, y = 36.8 } },
+    },
+    [356] = {
+      { 12919, "Nat Pagle", "Dustwallow Marsh", "AH", { uiMap = 1445, x = 58.6, y = 60.2 } },
+    },
+  },
+}
+
+local function RankTrainersFor(line, max)
+  local faction = UnitFactionGroup and UnitFactionGroup("player")
+  if not faction then return {} end
+  local fcode = faction == "Alliance" and "A" or "H"
+  local list = ns.RANK_TRAINERS[max] and ns.RANK_TRAINERS[max][line] or {}
+  local out = {}
+  for _, t in ipairs(list) do
+    if t[4] == "AH" or t[4] == fcode then out[#out + 1] = t end
+  end
+  return out
+end
+
 function ns.RankAdvice(p)
   local line, max = p.skillLine, p.max
-  if not (line and max and RANK_NAMES[max]) or ns.GATHERING[line] and line ~= 356 then return nil end
+  if not (line and max and RANK_NAMES[max]) then return nil end
   local out = { title = ns.L["Next rank: %s (%d to %d)"]:format(ns.L[RANK_NAMES[max]], max, max + 75),
     entries = {}, notes = {} }
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
@@ -264,15 +398,22 @@ function ns.RankAdvice(p)
     local name, _, _, _, reqLevel = get(item)
     local parts = { ns.L["skill %d"]:format(bookData.requiredSkill) }
     if reqLevel and reqLevel > 1 then parts[#parts + 1] = ns.L["level %d"]:format(reqLevel) end
-    local src = ns.RecipeSources and ns.RecipeSources(book)
-    if src and src.vendor then
-      local names = {}
-      for i = 1, math.min(2, #src.vendor.list) do names[#names + 1] = src.vendor.list[i].name or "?" end
-      parts[#parts + 1] = ns.L["sold by %s"]:format(table.concat(names, ", "))
+    local trs = RankTrainersFor(line, max)
+    if trs[1] then
+      parts[#parts + 1] = ns.L["sold by %s"]:format(trs[1][2] .. " (" .. trs[1][3] .. ")")
+    else
+      local src = ns.RecipeSources and ns.RecipeSources(book)
+      if src and src.vendor then
+        local names = {}
+        for i = 1, math.min(2, #src.vendor.list) do names[#names + 1] = src.vendor.list[i].name or "?" end
+        parts[#parts + 1] = ns.L["sold by %s"]:format(table.concat(names, ", "))
+      end
     end
     local ah = ns.PriceSource and ns.PriceSource(item)
     parts[#parts + 1] = ah and ns.L["or at the AH (~%s)"]:format(ns.Money(math.floor(ah))) or ns.L["or at the AH"]
     out.entries[1] = { kind = "learn", spell = book, item = item, label = name or ItemName(item),
+      npc = trs[1] and trs[1][1] or nil, npcName = trs[1] and trs[1][2] or nil,
+      zone = trs[1] and trs[1][3] or nil, fallbackPlace = trs[1] and trs[1][5] or nil,
       text = ns.L["Learn %s"]:format(name or ItemName(item)), detail = table.concat(parts, " - ") }
   elseif SECONDARY[line] and max >= 225 then
     -- Artisan comes from a quest that requires the current cap in the skill (QuestieDB).
@@ -280,6 +421,11 @@ function ns.RankAdvice(p)
     if quests == nil then
       out.notes[1] = ns.L["Looking for the quest in Questie..."]
     elseif #quests == 0 then
+      local trs = RankTrainersFor(line, max)
+      for _, t in ipairs(trs) do
+        out.entries[#out.entries + 1] = { kind = "trainer", npc = t[1], zone = t[3], label = t[2], fallbackPlace = t[5],
+          text = t[2] .. " (" .. t[3] .. ")", detail = t[3] .. " - " .. ns.L["skill %d"]:format(CLASSIC_REQ[max][1]) }
+      end
       out.notes[1] = ns.L["This rank comes from a quest (install Questie to find it)."]
     else
       for i = 1, math.min(3, #quests) do
@@ -294,7 +440,13 @@ function ns.RankAdvice(p)
     end
   else
     local req = CLASSIC_REQ[max]
-    out.notes[1] = ns.L["Learn it from a trainer of this profession (in Classic: skill %d and character level %d; unconfirmed on Forever)."]
+    for _, t in ipairs(RankTrainersFor(line, max)) do
+      local place = ns.NpcPlace and ns.NpcPlace(t[1])
+      local where = place and ns.SourcePlaceText and ns.SourcePlaceText({ id = t[1], name = t[2], place = place }) or (t[2] .. " (" .. t[3] .. ")")
+      out.entries[#out.entries + 1] = { kind = "trainer", npc = t[1], zone = t[3], label = t[2], fallbackPlace = t[5],
+        text = where, detail = ("%s - %s, %s"):format(t[3], ns.L["skill %d"]:format(req[1]), ns.L["level %d"]:format(req[2])) }
+    end
+    out.notes[1] = ns.L["Learn from a trainer of this profession (requires skill %d, level %d)."]
       :format(req[1], req[2])
   end
   return out
@@ -305,7 +457,9 @@ end
 function ns.DescribeNeed(p, c)
   local line = p.skillLine
   if ns.GATHERING[line] then
-    return { status = ns.L["Gathering profession: levels by gathering, not crafting."] }
+    local nearCap = p.rank and p.max and p.rank >= p.max - 25
+    return { status = ns.L["Gathering profession: levels by gathering, not crafting."],
+      rank = nearCap and ns.RankAdvice(p) or nil }
   end
   local known = line and c.known and c.known[line]
   local need = line and c.needs and c.needs[line]

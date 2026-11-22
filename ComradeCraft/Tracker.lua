@@ -9,11 +9,33 @@ local COLOR = { orange = "ff8040", yellow = "ffff00", green = "40c040", grey = "
 local panel, lastAnchor
 
 -- Pure: how many crafts of `spell` the bags allow right now (0 if a mat is missing).
+-- Counts free bidirectional essence conversions (3x Lesser <-> 1x Greater) losslessly.
 function ns.CraftableNow(spell, bags)
   local r = ns.Recipes[spell]
   if not r or #r[7] == 0 then return 0 end
-  local n = math.huge
-  for i = 1, #r[7], 2 do n = math.min(n, math.floor((bags[r[7][i]] or 0) / r[7][i + 1])) end
+  local n, pairsReq = math.huge, nil
+  for i = 1, #r[7], 2 do
+    local item, req = r[7][i], r[7][i + 1]
+    local t = ns.ITEM_TRANSFORMS and ns.ITEM_TRANSFORMS[item]
+    if t then
+      pairsReq = pairsReq or {}
+      local small = t.isSmall and item or t.other
+      local e = pairsReq[small]
+      if not e then
+        e = { small = small, big = t.isSmall and t.other or item, ratio = t.ratio, units = 0 }
+        pairsReq[small] = e
+      end
+      e.units = e.units + (t.isSmall and req or req * t.ratio)
+    else
+      n = math.min(n, math.floor((bags[item] or 0) / req))
+    end
+  end
+  if pairsReq then
+    for _, e in pairs(pairsReq) do
+      local ownUnits = (bags[e.small] or 0) + (bags[e.big] or 0) * e.ratio
+      n = math.min(n, math.floor(ownUnits / e.units))
+    end
+  end
   return n
 end
 
@@ -296,6 +318,17 @@ function ns.RefreshTracker()
     end
     local after = {}
     if more > 0 then after[#after + 1] = "|cff9d9d9d" .. L["+%d more"]:format(more) .. "|r" end
+    if ns.ConversionHints and ns.FormatConversionHints then
+      for _, q in ipairs(queue) do
+        if not q.learn and (q.ready or 0) > 0 then
+          local hint = ns.FormatConversionHints(ns.ConversionHints(q.spell, q.ready, c.bags or {}))
+          if hint then
+            after[#after + 1] = "|cff66ccff" .. hint .. "|r"
+            break
+          end
+        end
+      end
+    end
     panel.after:SetText(table.concat(after, "\n"))
     if #after > 0 then
       panel.after:ClearAllPoints()

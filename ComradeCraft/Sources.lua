@@ -196,19 +196,21 @@ function ns.AddSourceLines(tooltip, spell)
     return
   end
   tooltip:AddLine(L["Where to get it:"], 1, 0.82, 0)
+  local lib = Lib()
+  local recipeItem = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
   for _, kind in ipairs(KINDS) do
     local s = src[kind]
     if s then
       local names = {}
       for i = 1, math.min(MAX_LIST, #s.list) do names[#names + 1] = PlaceText(s.list[i]) end
       local more = s.total - #names
-      tooltip:AddDoubleLine(L[kind], table.concat(names, ", ") .. (more > 0 and (" " .. L["and %d more"]:format(more)) or ""),
-        0.8, 0.8, 0.8, 1, 1, 1)
+      local right = table.concat(names, ", ") .. (more > 0 and (" " .. L["and %d more"]:format(more)) or "")
+      if kind == "drop" and ns.DropRateText then
+        local rate = ns.DropRateText(recipeItem, spell)
+        if rate then right = right .. (" (~%s)"):format(rate) end
+      end
+      tooltip:AddDoubleLine(L[kind], right, 0.8, 0.8, 0.8, 1, 1, 1)
     end
-  end
-  local lib = Lib()
-  if lib and lib.IsBorrowed and lib:IsBorrowed(spell, "sources") then
-    tooltip:AddLine(L["Sources taken from another game version, unconfirmed on Forever."], 0.6, 0.6, 0.6, true)
   end
   if not NpcDB() then
     tooltip:AddLine(L["Install Questie for locations; TomTom for waypoints."], 0.6, 0.6, 0.6, true)
@@ -321,6 +323,35 @@ function ns.SkillQuests(line, value)
   end
   table.sort(out, function(a, b) return (a.dist or 2e9) < (b.dist or 2e9) end)
   return out
+end
+
+-- Waypoint to a specific NPC ID (used for Expert/Artisan rank trainers), via QuestieDB + TomTom.
+function ns.NpcPlace(npcId)
+  if not npcId then return nil end
+  local map, px, py = PlayerPos()
+  local best, bestD
+  for _, p in ipairs(Places(npcId)) do
+    local d = Distance(p, map, px, py)
+    if not best or d < bestD then best, bestD = p, d end
+  end
+  return best
+end
+
+function ns.WaypointNpc(npcId, label, fallbackZone, fallbackPlace)
+  local place = ns.NpcPlace(npcId) or fallbackPlace
+  if not (place and place.uiMap) then
+    ns.Print(("%s (%s)"):format(label or ("#" .. tostring(npcId)), fallbackZone or "?"))
+    return false
+  end
+  local where = PlaceText({ id = npcId, name = label, place = place })
+  if not (TomTom and TomTom.AddWaypoint) then
+    ns.Print(L["%s: %s. Install TomTom for a waypoint."]:format(label or "?", where))
+    return false
+  end
+  local ok = pcall(TomTom.AddWaypoint, TomTom, place.uiMap, place.x / 100, place.y / 100,
+    { title = label or where, persistent = false, from = "ComradeCraft" })
+  if ok then ns.Print(L["Waypoint: %s"]:format(where)) end
+  return ok
 end
 
 -- Waypoint to a quest giver found by ns.SkillQuests.

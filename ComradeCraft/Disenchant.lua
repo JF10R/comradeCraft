@@ -33,10 +33,10 @@ ns.ENCHANTING = 333
 -- Facts needed to judge an item; nil until the client has it cached.
 local function Facts(item)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local name, _, quality, _, reqLevel, _, _, _, equipLoc, _, sellPrice, classID = get(item)
+  local name, _, quality, _, reqLevel, _, _, _, equipLoc, _, sellPrice, classID, subclassID = get(item)
   if not name then return nil end
   return { name = name, quality = quality or 0, reqLevel = reqLevel or 0, equipLoc = equipLoc or "",
-    sellPrice = sellPrice or 0, classID = classID }
+    sellPrice = sellPrice or 0, classID = classID, subclassID = subclassID }
 end
 
 -- Expected mats of one disenchant: { [itemID] = expected count }, or nil if not disenchantable.
@@ -134,7 +134,10 @@ function ns.BagAdvice(key)
     local entry = { item = item, yield = cand.yield }
     local inv = INVTYPE[f.equipLoc]
     for i, s in ipairs(slots) do
-      if inv and f.classID == s.class and Bit(s.mask, inv) then
+      local match = ns.GearScore and ns.GearScore.EnchantMatchesItem
+        and ns.GearScore.EnchantMatchesItem(s.spell, f.classID, inv, f.subclassID)
+        or (inv and f.classID == s.class and Bit(s.mask, inv))
+      if match then
         entry.verdict, entry.spell = "target", s.spell
         table.remove(slots, i)
         break

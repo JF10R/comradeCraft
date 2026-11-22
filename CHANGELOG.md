@@ -1,5 +1,36 @@
 # ComradeCraft
 
+## v0.3.0
+
+### Highlights
+- **Built-In Craftable BiS Engine & `Patterns` Tab (All 9 Classes, 29 Specs)**: Auto-detects your spec and shows the best craftable gear, enchants, wands, consumables, and upcoming `+1-4 lvl` upgrades across yourself, your alts, your friends, and your guild. A new **`Patterns`** tab on every character sheet lists valuable unlearned gear, enchant formulas, bags, and consumables to buy or farm (with drop rates for 358 Classic recipes, BoE AH prices, and 1-click TomTom waypoints).
+- **Shared Bank Alts & Item Requests**: Flag any alt as a **Shared bank alt** so its entire stock (bags, bank, mail) shows as available to your group, and friends can request items directly through the addon.
+- **Reserve Items for Friends (`Alt+Right-Click`)**: Lock any item in your bags for a specific friend. Shows a violet lock badge, warns before vendoring/AHing, queues automatically in Bank/Mail/Trade, and shows up in their **Reserved for you** banner before you even send it.
+- **Sync Across Timezones (100% In-Game)**: Friends automatically relay updates for offline group members (Mesh Sync) and guild alt-switches sync right away, with zero external apps or servers.
+- **Smart Craft Requests**: Glowing sidebar indicator for incoming requests, live material/stock progress visible to both players (`Missing X`, `Ready to craft`, `Ready to ship`), and automatic tracking (`Crafting` when you cast it, `Shipped` when you mail or trade it).
+- **Bank, Merchant & Trainer Companion Panels**: 1-click **Withdraw needed** beside your Bank, native vendor slot highlights + 1-click buying (even for Page 3 books like *Expert Cookbook* for a friend), and a Trainer panel highlighting leveling-plan and group-BiS recipes ready to learn.
+- **All 12 Expert & Artisan Trainers (Alliance & Horde)**: Built-in trainer, book (Cooking, First Aid, Fishing), and quest guide with Questie locations and 1-click TomTom waypoints (with built-in fallback coordinates for all 34 NPCs).
+
+### Quality of Life & UI Polish
+- **Automatic Enchanting Essence Conversions**: Seamlessly handles `3x Lesser <-> 1x Greater` essences across plans, bags, mail, trade, and tooltips, with right-click conversion hints.
+- **Native Bag Sorter Categories**: Adds a built-in `ComradeCraft` category for **Baganator** and **BetterBags** so group and reserved items stay grouped together.
+- **Built for Large Guilds (100+ Characters)**: Star favorite players/crafters, collapse Sidebar sections (`Favorites`, `My characters`, `Group members`), quick-filter large rosters, and see a live **Farming for you** banner.
+- **Cleaner Tables & Visual Polish**: Alternating row shading and green self-craft highlights in `Upgrades` (with 1-click `Request`), item rarity borders on icons, clickable Bank Alt stock cards in `Materials`, 1-click **BoE pattern AH search**, 1-click `/g` or `/p` chat sharing, subtle sound alerts, and consistent `X` close buttons on all side panels.
+- **Native Blizzard Options & System Integration**: New `Esc -> Options -> AddOns -> ComradeCraft` settings page (UI scale `75%-125%`, per-panel toggles, minimap/sound toggles, 1-click reset positions), resizable window height, native Keybinding support, Addon Compartment, and TitanPanel/Bazooka/ElvUI DataText badges.
+
+### Key Bug Fixes
+- Fixed tooltips and bags sometimes suggesting to mail materials to yourself on WoW Forever two-part names (`First Last`).
+- Fixed the Mail helper panel staying open after closing **Postbox**.
+- Fixed Expert book vendor faction matching for Horde First Aid (`Balai Lok'Wein`) and Alliance Cooking (`Shandrina`).
+- Fixed 2H weapon and Shield enchant recommendations matching the wrong weapon slots.
+- Fixed **Bagnon** cached-alt bag windows showing highlights for your active character.
+
+### Details & Technical Notes
+- **Performance**: Instant window opens using C-API `C_Item.GetItemStats` before Pawn tooltip scraping, 60-100x faster Bagnon/BagBrother slot highlights via per-frame caching, diffed event scans, debounced search, and combat-deferred refreshes (`PLAYER_REGEN_ENABLED`).
+- **WoW Forever 1.60.1**: Full `"First Last"` name safety across mail/trade/sync, automatic migration of legacy 1-word alt keys via Guild Roster and Friends List, and active live calibration of Forever recipe difficulty bounds.
+- **Addons & Compatibility**: Tested with Postbox, Postal, TSM Mailing, TradeSkillMaster, Auctionator, Bagnon, BagBrother, Combuctor, Baganator, BetterBags, ElvUI, EllesmereUI, ArkInventory, Questie, TomTom, and Pawn. Mail and Trade panels clearly separate bag-ready items from bank-only items (`in bank`).
+- **Architecture**: Split monolithic `UI.lua` into `UI/{Widgets,Plan,Group,Social,Window}.lua` and `Needs.lua` into `Pricing.lua`, `Needs.lua`, and `GroupNeeds.lua`, plus new `Bank.lua`, `Reserve.lua`, `Options.lua`, and `Bindings.xml` (67 Lua files, 7 languages, 19 automated test suites).
+
 ## v0.2.0
 
 - Guild directory (opt-in, per character): list a character in Manage group or with

@@ -54,6 +54,157 @@ function Merchant.PlanItems()
   return out, total
 end
 
+-- Pure: skill-rank books (Expert Cookbook/First Aid/Fishing) and unknown vendor recipes on this
+-- merchant that you or a friend in your group still need (even if buried on Page 3!).
+-- Returns { { index, item, price, canLearn, isRankBook, who = { shortName, ... } }, ... }.
+function Merchant.RecipeItems()
+  local out = {}
+  if not (ComradeCraftDB and ComradeCraftDB.chars and GetMerchantNumItems and GetMerchantItemID
+    and ns.Loot and ns.Loot.RecipeStatus) then return out end
+  local meKey = ns.CharKey()
+  local seen = {}
+  for i = 1, GetMerchantNumItems() do
+    local id = GetMerchantItemID(i)
+    if id and not seen[id] then
+      local st = ns.Loot.RecipeStatus(id)
+      if st and #st.unknown > 0 then
+        local bop = ns.IsBoP and ns.IsBoP(id)
+        local who, canLearn, forMe = {}, false, false
+        for _, u in ipairs(st.unknown) do
+          if not bop or u.key == meKey then
+            if u.rank >= u.req then canLearn = true end
+            if u.key == meKey then forMe = true end
+            who[#who + 1] = u.key:match("^[^-]+") or u.key
+          end
+        end
+        if #who > 0 then
+          local price, avail
+          if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+            local info = C_MerchantFrame.GetItemInfo(i)
+            if info then price, avail = info.price, info.numAvailable end
+          elseif GetMerchantItemInfo then
+            local _, _, p, _, av = GetMerchantItemInfo(i)
+            price, avail = p, av
+          end
+          if avail == nil or avail == -1 or avail > 0 then
+            seen[id] = true
+            out[#out + 1] = { index = i, item = id, price = price or 0, canLearn = canLearn,
+              forMe = forMe, isRankBook = st.isRankBook, who = who }
+          end
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b)
+    if (a.isRankBook and 1 or 0) ~= (b.isRankBook and 1 or 0) then return a.isRankBook end
+    if a.canLearn ~= b.canLearn then return a.canLearn end
+    if a.forMe ~= b.forMe then return a.forMe end
+    return a.item < b.item
+  end)
+  return out
+end
+
+-- Highlights matching items directly on Blizzard's native MerchantItem1..10 slots
+-- (bright emerald for learnable books/recipes, gold for upcoming recipes or plan reagents).
+local slotOverlays = {}
+local function GetSlotOverlay(btn)
+  local ov = slotOverlays[btn]
+  if ov then return ov end
+  local edges = {}
+  local T = 2
+  local top = btn:CreateTexture(nil, "OVERLAY")
+  top:SetHeight(T)
+  top:SetPoint("TOPLEFT", 0, 0)
+  top:SetPoint("TOPRIGHT", 0, 0)
+  local bot = btn:CreateTexture(nil, "OVERLAY")
+  bot:SetHeight(T)
+  bot:SetPoint("BOTTOMLEFT", 0, 0)
+  bot:SetPoint("BOTTOMRIGHT", 0, 0)
+  local lft = btn:CreateTexture(nil, "OVERLAY")
+  lft:SetWidth(T)
+  lft:SetPoint("TOPLEFT", 0, 0)
+  lft:SetPoint("BOTTOMLEFT", 0, 0)
+  local rgt = btn:CreateTexture(nil, "OVERLAY")
+  rgt:SetWidth(T)
+  rgt:SetPoint("TOPRIGHT", 0, 0)
+  rgt:SetPoint("BOTTOMRIGHT", 0, 0)
+  local glow = btn:CreateTexture(nil, "ARTWORK")
+  glow:SetAllPoints()
+  glow:SetBlendMode("ADD")
+  local tag = btn:CreateTexture(nil, "OVERLAY", nil, 2)
+  tag:SetSize(14, 14)
+  tag:SetPoint("TOPRIGHT", 2, 2)
+  tag:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+  edges[1], edges[2], edges[3], edges[4] = top, bot, lft, rgt
+  ov = { edges = edges, glow = glow, tag = tag }
+  slotOverlays[btn] = ov
+  return ov
+end
+
+function Merchant.HighlightSlots()
+  local perPage = MERCHANT_ITEMS_PER_PAGE or 10
+  local onMerchant = isOpen and MerchantFrame and (MerchantFrame.selectedTab == nil or MerchantFrame.selectedTab == 1)
+    and (not ns.PanelEnabled or ns.PanelEnabled("merchant"))
+  local wantedRec, wantedMat = {}, {}
+  if onMerchant then
+    for _, r in ipairs(Merchant.RecipeItems()) do wantedRec[r.item] = r end
+    for _, m in ipairs(Merchant.PlanItems()) do wantedMat[m.item] = true end
+  end
+  local page = (MerchantFrame and MerchantFrame.page) or 1
+  for i = 1, perPage do
+    local btn = _G["MerchantItem" .. i .. "ItemButton"]
+    if btn then
+      local idx = (page - 1) * perPage + i
+      local id = onMerchant and GetMerchantItemID and GetMerchantItemID(idx) or nil
+      local rec = id and wantedRec[id]
+      local mat = id and wantedMat[id]
+      if rec or mat then
+        local ov = GetSlotOverlay(btn)
+        local r, g, b
+        if rec and rec.canLearn then
+          r, g, b = 0.20, 1.00, 0.35 -- bright emerald: learnable right now!
+        elseif rec then
+          r, g, b = 0.40, 0.80, 1.00 -- sky blue: useful recipe/book for group soon
+        else
+          r, g, b = 1.00, 0.82, 0.15 -- warm gold: plan reagent
+        end
+        for _, e in ipairs(ov.edges) do e:SetColorTexture(r, g, b, 0.95) e:Show() end
+        ov.glow:SetColorTexture(r, g, b, rec and rec.canLearn and 0.24 or 0.12)
+        ov.glow:Show()
+        ov.tag:SetShown(rec ~= nil)
+      elseif slotOverlays[btn] then
+        local ov = slotOverlays[btn]
+        for _, e in ipairs(ov.edges) do e:Hide() end
+        ov.glow:Hide()
+        ov.tag:Hide()
+      end
+    end
+  end
+end
+
+-- Buys `need` units of vendor slot `index`, chunking safely by maxStack and bundle stackSize
+-- (passing > maxStack or a non-multiple of bundle size triggers WoW's "Internal Bag Error").
+function Merchant.BuyItem(index, need, stackSize)
+  if not (isOpen and BuyMerchantItem and index) then return 0 end
+  stackSize = math.max(1, tonumber(stackSize) or 1)
+  local maxStack = (GetMerchantItemMaxStack and GetMerchantItemMaxStack(index)) or 20
+  if maxStack < stackSize then maxStack = stackSize end
+  local maxChunk = math.max(stackSize, math.floor(maxStack / stackSize) * stackSize)
+  local left = math.ceil(math.max(1, tonumber(need) or 1) / stackSize) * stackSize
+  local bought = 0
+  while left > 0 do
+    local chunk = math.min(left, maxChunk)
+    if chunk <= stackSize then
+      BuyMerchantItem(index) -- exact 1 vendor stack (matches native Blizzard right-click)
+    else
+      BuyMerchantItem(index, chunk)
+    end
+    left = left - chunk
+    bought = bought + chunk
+  end
+  return bought
+end
+
 function Merchant.BuyAll()
   if not (isOpen and BuyMerchantItem) then return 0 end
   local items, total = Merchant.PlanItems()
@@ -64,15 +215,7 @@ function Merchant.BuyAll()
   end
   local bought = 0
   for _, it in ipairs(items) do
-    local maxStack = (GetMerchantItemMaxStack and GetMerchantItemMaxStack(it.index)) or 20
-    if maxStack < 1 then maxStack = 1 end
-    local left = it.need
-    while left > 0 do
-      local chunk = math.min(left, maxStack)
-      BuyMerchantItem(it.index, chunk)
-      left = left - chunk
-      bought = bought + chunk
-    end
+    bought = bought + Merchant.BuyItem(it.index, it.need, it.stackSize)
   end
   ns.Log(("merchant: bought %d plan reagents (%s)"):format(bought, ns.Money(total)))
   return bought
@@ -80,7 +223,7 @@ end
 
 -- Panel docked to the right of MerchantFrame ----------------------------------------------
 
-local panel, button, rows
+local panel, button, rows, dismissed = nil, nil, nil, false
 
 local function ItemInfo(id)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
@@ -113,6 +256,12 @@ local function CreateRow(parent)
     end
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  b:SetScript("OnClick", function(self)
+    if self.buyIndex and Merchant.BuyItem then
+      Merchant.BuyItem(self.buyIndex, self.buyQty or 1, self.buyStack or 1)
+      if C_Timer then C_Timer.After(0.3, Merchant.UpdatePanel) else Merchant.UpdatePanel() end
+    end
+  end)
   return b
 end
 
@@ -136,6 +285,10 @@ local function CreatePanel()
   panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   panel.title:SetPoint("LEFT", panel.logo, "RIGHT", 6, 0)
   panel.title:SetText(L["Plan reagents"])
+  panel.close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+  panel.close:SetSize(22, 22)
+  panel.close:SetPoint("TOPRIGHT", -2, -2)
+  panel.close:SetScript("OnClick", function() dismissed = true panel:Hide() end)
   button = CreateFrame("Button", "ComradeCraftMerchantButton", panel, "UIPanelButtonTemplate")
   button:SetSize(PANEL_W - 20, 22)
   button:SetScript("OnClick", function()
@@ -146,18 +299,39 @@ local function CreatePanel()
 end
 
 function Merchant.UpdatePanel()
+  Merchant.HighlightSlots()
   if not panel then return end
-  if not isOpen then panel:Hide() return end
+  if dismissed or not isOpen or (ns.PanelEnabled and not ns.PanelEnabled("merchant")) then panel:Hide() return end
   local items, total = Merchant.PlanItems()
-  if #items == 0 then panel:Hide() return end
+  local recipes = Merchant.RecipeItems()
+  if #items == 0 and #recipes == 0 then panel:Hide() return end
   for _, r in ipairs(rows) do r:Hide() end
-  local y = -34
-  for i = 1, math.min(#items, MAX_ROWS) do
+  local y, idx = -34, 0
+  -- Surface needed skill-rank books & vendor recipes first (even if hidden on Page 3!).
+  for i = 1, math.min(#recipes, 4) do
+    local rc = recipes[i]
+    idx = idx + 1
+    local r = rows[idx]
+    if not r then r = CreateRow(panel) rows[idx] = r end
+    local name, icon = ItemInfo(rc.item)
+    r.itemID, r.buyIndex, r.buyQty, r.buyStack = rc.item, rc.index, 1, 1
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", 10, y)
+    r.icon:SetTexture(icon)
+    local tag = rc.canLearn and "|cff40ff40* |r" or "|cff66ccff* |r"
+    local who = table.concat(rc.who, ", ")
+    r.name:SetText(tag .. (name or ("item:" .. rc.item)) .. " |cff9d9d9d(" .. who .. ")|r")
+    r.cost:SetText(rc.price > 0 and ("|cffffd100" .. ns.Money(rc.price) .. "|r") or "")
+    r:Show()
+    y = y - 24
+  end
+  for i = 1, math.min(#items, math.max(1, MAX_ROWS - idx)) do
     local it = items[i]
-    local r = rows[i]
-    if not r then r = CreateRow(panel) rows[i] = r end
+    idx = idx + 1
+    local r = rows[idx]
+    if not r then r = CreateRow(panel) rows[idx] = r end
     local name, icon = ItemInfo(it.item)
-    r.itemID = it.item
+    r.itemID, r.buyIndex, r.buyQty, r.buyStack = it.item, it.index, it.need, it.stackSize or 1
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", 10, y)
     r.icon:SetTexture(icon)
@@ -166,19 +340,33 @@ function Merchant.UpdatePanel()
     r:Show()
     y = y - 24
   end
-  button:ClearAllPoints()
-  button:SetPoint("TOPLEFT", 10, y - 4)
-  button:SetText(L["Buy plan reagents (%s)"]:format(ns.Money(total)))
-  button:Show()
-  panel:SetHeight(-y + 36)
+  if #items > 0 then
+    button:ClearAllPoints()
+    button:SetPoint("TOPLEFT", 10, y - 4)
+    button:SetText(L["Buy plan reagents (%s)"]:format(ns.Money(total)))
+    button:Show()
+    panel:SetHeight(-y + 36)
+  else
+    button:Hide()
+    panel:SetHeight(-y + 12)
+  end
   panel:Show()
 end
 
+local merchantHooked
+local function HookMerchantUI()
+  if merchantHooked or not (hooksecurefunc and MerchantFrame_UpdateMerchantInfo) then return end
+  merchantHooked = true
+  hooksecurefunc("MerchantFrame_UpdateMerchantInfo", Merchant.HighlightSlots)
+end
+
 ns.On("MERCHANT_SHOW", function()
-  isOpen = true
+  isOpen, dismissed = true, false
+  HookMerchantUI()
   CreatePanel()
   Merchant.UpdatePanel()
 end)
+ns.On("MERCHANT_UPDATE", function() if isOpen then Merchant.UpdatePanel() end end)
 ns.On("MERCHANT_CLOSED", function()
   isOpen = false
   if panel then panel:Hide() end

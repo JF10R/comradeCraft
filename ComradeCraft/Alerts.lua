@@ -259,6 +259,10 @@ function Alerts.CheckUpgrades()
     local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     local name, _, _, _, _, _, _, _, _, icon = get(u.item)
     local detail = u.how == "pawn" and L["+%d with Pawn"]:format(math.floor(u.gain + 0.5))
+      or u.how == "stats" and (L["+%d score"]:format(math.floor(u.gain + 0.5)) .. (function()
+        local s = StatSummary(u.item)
+        return s ~= "" and (" (" .. s .. ")") or ""
+      end)())
       or (L["+%d item levels"]:format(math.floor(u.gain + 0.5)) .. (function()
         local s = StatSummary(u.item)
         return s ~= "" and (" (" .. s .. ")") or ""
@@ -296,11 +300,15 @@ local function ItemName(id)
   return get and get(id) or ("item:" .. id)
 end
 
--- Who needs an item: { { name, n } }, most first; merchant-sold items never count.
+-- Who needs an item (plus manual bag reservations): { { name, n } }, most first.
 function Alerts.Wanted(item)
   local out = {}
   if (ns.IsVendorItem and ns.IsVendorItem(item)) or (ns.IsBoP and ns.IsBoP(item)) then return out end
   local me = ns.CharKey()
+  local res = ns.Reserve and ns.Reserve.Get and ns.Reserve.Get(item)
+  if res and res.to then
+    out[#out + 1] = { name = res.to:match("^[^-]+") or res.to, n = res.qty or 1 }
+  end
   for key, c in pairs(ns.AllChars()) do
     local n = ns.NeedOf(c, item)
     if n > 0 then out[#out + 1] = { name = key == me and L["you"] or key:match("^[^-]+"), n = n } end

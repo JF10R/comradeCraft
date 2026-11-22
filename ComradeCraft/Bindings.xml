@@ -1,0 +1,5 @@
+<Bindings>
+  <Binding name="COMRADECRAFT_TOGGLE" header="COMRADECRAFT" category="ADDONS">
+    if ComradeCraft_Toggle then ComradeCraft_Toggle() end
+  </Binding>
+</Bindings>

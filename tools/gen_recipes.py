@@ -98,15 +98,19 @@ def main():
         reag = ",".join(map(str, r["reagents"]))
         lines.append(f"[{spell}]={{{r['line']},{r['yellow']},{r['grey']},{r['ups']},{r['item']},{r['qty']},{{{reag}}}}},")
     lines.append("}")
-    # Enchants (no crafted item): which equipment they apply to, so leveling can keep targets.
+    # Enchants (no crafted item): which equipment they apply to, so leveling can keep targets
+    # and upgrades match exact weapon/armor subclasses (e.g. 2H weapon vs 1H dagger, shield vs armor).
     # invMask bit n = inventory type n (e.g. 512 = 1<<9 = wrist; 1048608 = chest + robe).
-    lines.append("-- [spellID] = { itemClass, invTypeMask } for enchants (SpellEquippedItems)")
+    # subMask bit n = item subclass n (e.g. 1378 = 2H weapons + staves; 64 = shields).
+    lines.append("-- [spellID] = { itemClass, invTypeMask, subClassMask } for enchants (SpellEquippedItems)")
     lines.append("ns.EnchantSlots = {")
     n_slots = 0
     for r in table("SpellEquippedItems", build):
         spell = int(r["SpellID"])
         if spell in recipes and recipes[spell]["item"] == 0:
-            lines.append(f"[{spell}]={{{int(r['EquippedItemClass'])},{int(r['EquippedItemInvTypes'])}}},")
+            lines.append(
+                f"[{spell}]={{{int(r['EquippedItemClass'])},{int(r['EquippedItemInvTypes'])},{int(r['EquippedItemSubclass'])}}},"
+            )
             n_slots += 1
     lines.append("}")
     print(f"{n_slots} enchants with an equipment slot")

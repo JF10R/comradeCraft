@@ -34,8 +34,6 @@ translations.frFR = {
     ["yellow"] = "jaune",
     ["green"] = "vert",
     ["grey"] = "gris",
-    ["  %s: %d crafts, %d points, Classic formula %.1f%s"] =
-      "  %s : %d crafts, %d points, formule Classic %.1f%s",
     [" -> factor %.2f applied"] = " -> facteur %.2f appliqué",
     ["  game color known on %d crafts: our table %d right, LibProfessionDB %d right"] =
       "  couleur du jeu connue sur %d crafts : notre table %d bonnes, LibProfessionDB %d bonnes",
@@ -133,8 +131,6 @@ translations.frFR = {
     ["Armor"] = "Armure",
     ["Reagent"] = "Composant",
     ["Other"] = "Autre",
-    ["Sync: %d players in the group, %d suggested. skill ~N: value taken from Classic, unconfirmed."] =
-      "Sync : %d joueurs dans le groupe, %d suggérés. skill ~N : valeur reprise de Classic, non confirmée.",
     ["via %s"] = "via %s",
     ["Manage group"] = "Gérer le groupe",
     ["Choose what you share, and with whom."] = "Choisis ce que tu partages, et avec qui.",
@@ -210,16 +206,12 @@ translations.frFR = {
       "Afficher le panneau d'étape à côté de la fenêtre de profession.",
     ["Re-dock"] = "Recoller",
     ["Measured skill-up chances"] = "Chances de skill-up mesurées",
-    ["Crafts logged by you and your group correct the Classic formula once a color has enough of them."] =
-      "Les crafts enregistrés par toi et ton groupe corrigent la formule Classic dès qu'une couleur en a assez.",
     ["The window"] =
       "La fenêtre",
     ["Left: the group, then each character. Plan = how to level a profession; Can craft = what that character can make for the group. The chips filter by profession."] =
       "À gauche : le groupe, puis chaque perso. Plan = comment monter une profession; Peut crafter = ce que ce perso peut faire pour le groupe. Les puces filtrent par profession.",
     ["Plans"] =
       "Plans",
-    ["Each step says what to learn at the trainer, what to craft first (bolts, bars...) and how many. Click a line to open the recipe, Shift+click to link it. Colors: orange always gives a point, yellow usually, green rarely, grey never. ~ marks a value taken from Classic."] =
-      "Chaque étape dit quoi apprendre au maître, quoi crafter d'abord (bolts, barres...) et combien. Clic sur une ligne pour ouvrir la recette, Maj+clic pour la lier. Couleurs : orange donne toujours un point, jaune souvent, vert rarement, gris jamais. ~ marque une valeur reprise de Classic.",
     ["Tooltips"] =
       "Infobulles",
     ["On any material: who in the group needs it, how many, and how soon (now, soon, later). Spare stock in the group is shown too."] =
@@ -254,19 +246,13 @@ translations.frFR = {
       "Il répond à une question : que faire avec ce que j'ai, pour le groupe? 30 secondes pour voir l'essentiel.",
     ["Your group"] =
       "Ton groupe",
-    ["Left: the group overview, the group management, then every character you share or receive."] =
-      "À gauche : la vue du groupe, la gestion du groupe, puis chaque perso que tu partages ou reçois.",
     ["Plan and Can craft"] =
       "Plan et Peut crafter",
     ["Pick a character: Plan shows how to level each profession step by step; Can craft shows what it can make for others."] =
       "Choisis un perso : Plan montre comment monter chaque profession étape par étape; Peut crafter montre ce qu'il peut faire pour les autres.",
     ["While you play"] =
       "Pendant que tu joues",
-    ["Item tooltips show who needs a material. A step panel opens next to your profession window."] =
-      "Les infobulles montrent qui a besoin d'un matériau. Un panneau d'étape s'ouvre à côté de ta fenêtre de profession.",
     ["Sharing is off until you check a box"] = "Le partage est désactivé tant que tu ne coches rien",
-    ["Nothing is shared yet. Here, in Manage group, check the box next to each character you want to share under Your characters (on the left of this card). Unchecked characters never leave your computer. Then add your friends below, or accept guildmates who appear there. The ? button explains the rest."] =
-      "Rien n'est partagé pour l'instant. Ici, dans Gérer le groupe, coche la case à côté de chaque perso à partager sous Tes persos (à gauche de cette carte). Un perso non coché ne quitte jamais ton ordinateur. Ajoute ensuite tes amis plus bas, ou accepte les guildmates qui y apparaissent. Le bouton ? explique le reste.",
     ["Do not show again"] =
       "Ne plus afficher",
     ["Skip"] =
@@ -296,8 +282,6 @@ translations.frFR = {
       "Où l'obtenir :",
     ["and %d more"] =
       "et %d autres",
-    ["Sources taken from another game version, unconfirmed on Forever."] =
-      "Sources reprises d'une autre version du jeu, non confirmées sur Forever.",
     ["Install Questie for locations; TomTom for waypoints."] =
       "Installe Questie pour les positions, TomTom pour les points de passage.",
     ["Click: waypoint to the nearest one."] =
@@ -510,8 +494,6 @@ translations.frFR = {
       "ou à l'HV (~%s)",
     ["or at the AH"] =
       "ou à l'HV",
-    ["Learn it from a trainer of this profession (in Classic: skill %d and character level %d; unconfirmed on Forever)."] =
-      "Apprends-le chez un maître de cette profession (en Classic : compétence %d et niveau %d; non confirmé sur Forever).",
     ["At the cap (%d)."] =
       "Au maximum (%d).",
     ["Looking for the quest in Questie..."] =
@@ -538,7 +520,6 @@ translations.frFR = {
       "Panneau d'étape : désactivé",
     ["Step panel: on (shown with the profession window)"] =
       "Panneau d'étape : activé (affiché avec la fenêtre de profession)",
-    ["Click: group needs"] = "Clic : besoins du groupe",
     ["Keep for your group"] =
       "À garder pour ton groupe",
     ["%s: %d for %s"] =
@@ -652,7 +633,6 @@ translations.frFR = {
     ["Add %s"] = "Ajouter %s",
     ["Add target"] = "Ajouter cible",
     ["Cancel"] = "Annuler",
-    ["Characters"] = "Personnages",
     ["Click a member to highlight their items."] = "Clique un membre pour surligner ses objets.",
     ["Click to select recipient and highlight needed items in your bags."] =
       "Clique pour choisir ce destinataire et surligner ses besoins dans tes sacs.",
@@ -736,7 +716,6 @@ translations.frFR = {
     ["%d small bags (min %d slots) -> %s (%d slots)"] = "%d petits sacs (min %d pl.) -> %s (%d pl.)",
     ["%s can craft %dx %s from group's %s for %s"] = "%s peut crafter %dx %s avec %s du groupe pour %s",
     ["Advice"] = "Conseil",
-    ["Ask"] = "Demander",
     ["Back"] = "Dos",
     ["Buy"] = "Acheter",
     ["Buy/Farm"] = "Achat/Farm",
@@ -778,8 +757,139 @@ translations.frFR = {
     ["Wrist"] = "Poignets",
     ["Your gold: %s"] = "Ton or : %s",
     ["by %s"] = "par %s",
+    ["by %s (guild)"] = "par %s (guilde)",
     ["can learn now"] = "apprenable maintenant",
     ["needs skill %d"] = "requiert %d",
+    -- GearScore & Craftable BiS
+    ["+%d score"] = "+%d score",
+    ["Head"] = "Tête",
+    ["Neck"] = "Cou",
+    ["Shoulder"] = "Épaules",
+    ["Waist"] = "Taille",
+    ["Legs"] = "Jambes",
+    ["Finger"] = "Doigt",
+    ["Trinket"] = "Bijou",
+    ["Off-Hand"] = "Main gauche",
+    ["Ranged"] = "À distance",
+    ["Spec: %s"] = "Spé : %s",
+    ["Spec set to %s."] = "Spé réglée sur %s.",
+    ["Unknown spec. Available: %s"] = "Spé inconnue. Disponibles : %s",
+    ["Crafts upgrade for: %s"] = "Craft une amélioration pour : %s",
+    ["Useful enchant for: %s"] = "Enchant utile pour : %s",
+    ["Leveling plan"] = "Plan de leveling",
+    ["Upgrade for %s (%s)"] = "Amélioration pour %s (%s)",
+    ["Good enchant for %s"] = "Bon enchant pour %s",
+    ["Click to train."] = "Clic : apprendre.",
+    ["Recommended recipes"] = "Recettes recommandées",
+    ["mats ready"] = "mats prêts",
+    ["Soon (+1-4 lvl)"] = "Bientôt (+1-4 niv.)",
+    ["Consumables"] = "Consommables",
+    ["Patterns to hunt"] = "Patrons à chasser",
+    ["Waypoint"] = "Repère",
+    ["Group materials:"] = "Composants du groupe :",
+    ["world drop (%d mobs)"] = "drop mondial (%d mobs)",
+    ["%d mobs"] = "%d mobs",
+    ["1 mob"] = "1 mob",
+    ["in bank"] = "en banque",
+    ["In bank (retrieve first)"] = "En banque (à retirer d'abord)",
+    ["Full name (First Last) required for %s: log them in once or type their full name first."] =
+      "Nom complet (Prénom Nom) requis pour %s : reconnecte ce perso une fois ou tape son nom complet d'abord.",
+    ["Withdraw from bank"] = "Retirer de la banque",
+    ["Withdraw needed"] = "Retirer le nécessaire",
+    ["Click an item to withdraw it."] = "Clique un objet pour le retirer.",
+    ["Your bags are full."] = "Tes sacs sont pleins.",
+    ["For your plan"] = "Pour ton plan",
+    ["To send to %s"] = "À envoyer à %s",
+    ["Right-click: %dx %s -> %dx %s"] = "Clic droit : %dx %s -> %dx %s",
+    ["BoE patterns"] = "Patrons LqE",
+    ["Share in chat"] = "Partager (/g)",
+    ["Shared bank alt"] = "Alt banque partagé",
+    ["Shared bank alt: all items on this character (bags, bank, mail) appear as available to your group, and members can request them via the addon."] =
+      "Alt banque partagé : toutes les ressources sur ce perso (sacs, banque, courrier) apparaissent comme disponibles pour ton groupe, et chacun peut les demander via l'addon.",
+    ["Bank"] = "Banque",
+    ["Ask %s for %s"] = "Demander à %s : %s",
+    ["%s asks %s for %dx %s."] = "%s demande à %s : %dx %s.",
+    ["Request"] = "Demander",
+    ["No items stored yet."] = "Aucun objet stocké pour l'instant.",
+    ["Filter items..."] = "Filtrer les objets...",
+    ["Your group's skill levels, synergies, items you can give, and active cooldowns."] = "Niveaux de métiers du groupe, synergies, objets à donner et temps de recharge actifs.",
+    ["All materials your group still needs, sorted by urgency. Type to find who can craft something."] = "Tous les composants dont le groupe a encore besoin, triés par urgence. Tape pour trouver qui peut crafter un objet.",
+    ["Craftable BiS gear, enchants, consumables, small bags, and patterns to hunt for each member."] = "Équipement BiS craftable, enchants, consommables, petits sacs et patrons à chasser pour chaque membre.",
+    ["Green items in your bags: keep for enchants or upgrades, sell on the AH, or disenchant."] = "Objets verts dans tes sacs : garder pour un enchant ou une amélioration, vendre à l'HV ou désenchanter.",
+    ["Left: Group overview, Materials, Craftable BiS Upgrades, Wishlist, Requests, and every character in your group."] = "À gauche : Vue d'ensemble, Matériaux, Améliorations BiS, Wishlist, Demandes et chaque perso de ton groupe.",
+    ["Bags highlight items your group needs; helper panels dock at Mail, Bank, Trade, Merchant, AH, and Trainers."] = "Tes sacs surlignent ce dont le groupe a besoin ; des panneaux d'aide s'ancrent à la Malle, Banque, Échange, Marchand, HV et Maîtres.",
+    ["Nothing is shared yet. Here, in Manage group, check characters to share (or flag a Shared bank alt), then add friends below. Mutually added peers relay updates automatically."] = "Rien n'est encore partagé. Ici, coche les persos à partager (ou un Alt banque partagé), puis ajoute tes amis ci-dessous. Les membres mutuels relaient les mises à jour automatiquement.",
+    ["Reserved %dx %s for %s."] = "Réservé : %dx %s pour %s.",
+    ["Reservation removed for %s."] = "Réservation retirée pour %s.",
+    ["Reserve for..."] = "Réserver pour...",
+    ["Unlock reservation"] = "Déverrouiller la réservation",
+    ["Usage: /comrade reserve [Item] Name [qty]"] = "Usage : /comrade reserve [Objet] Nom [qté]",
+    ["Usage: /comrade unreserve [Item]"] = "Usage : /comrade unreserve [Objet]",
+    ["Reserved for %s"] = "Réservé pour %s",
+    ["Reserved for %s (x%d) - Alt+Right-click to unlock"] = "Réservé pour %s (x%d) - Alt+Clic droit pour libérer",
+    ["Reserved for you by %s (x%d)"] = "Réservé pour toi par %s (x%d)",
+    ["Reserved"] = "Réservé",
+    ["Favorite"] = "Favori",
+    ["Unstar"] = "Retirer",
+    ["Farming for you"] = "En cours de farm pour toi",
+    ["Filter characters..."] = "Filtrer les persos...",
+    ["by %s (you)"] = "par %s (toi)",
+    ["crafting"] = "en cours",
+    ["shipped"] = "envoyé",
+    ["Crafting"] = "En cours",
+    ["Shipped"] = "Envoyé",
+    ["Ready to craft"] = "Prêt à crafter",
+    ["Ready to ship"] = "Prêt à envoyer",
+    ["Missing %s"] = "Manque %s",
+    ["Missing %d"] = "Manque %d",
+    ["Reserved for you"] = "Réservé pour toi",
+    ["Your reserved items"] = "Tes objets réservés",
+    ["Unlock"] = "Libérer",
+    ["reserved"] = "réservé",
+    ["Click: reserve for %s."] = "Clic : réserver pour %s.",
+    ["Click: request from %s [Bank]."] = "Clic : demander à %s [Banque].",
+    ["Favorites"] = "Favoris",
+    ["My characters"] = "Mes persos",
+    ["Group members"] = "Membres du groupe",
+    ["%d farming"] = "%d en farm",
+    ["Auto-marked request %dx %s as shipped."] = "Demande %dx %s marquée automatiquement comme envoyée.",
+    ["Alt+Right-click any bag item to reserve/lock it for a friend before mailing."] = "Alt+Clic droit sur un objet des sacs pour le réserver/verrouiller pour un ami avant l'envoi.",
+    ["Item reservations"] = "Réservations d'objets",
+    ["  %s: %d crafts, %d points (expected %.1f)%s"] = "  %s : %d crafts, %d points (attendu %.1f)%s",
+    ["Add friends"] = "Ajouter des amis",
+    ["All window and tracker positions reset."] = "Toutes les positions de fenêtres et suivis ont été réinitialisées.",
+    ["Auction House panel"] = "Panneau Hôtel des Ventes",
+    ["Bank panel"] = "Panneau Banque",
+    ["Browse Can craft"] = "Voir Peut crafter",
+    ["Browse Upgrades"] = "Voir Améliorations",
+    ["Companion panels"] = "Panneaux latéraux",
+    ["Configure companion panels, UI scale, sounds, and window positions."] = "Configure les panneaux latéraux, l'échelle de l'interface, les sons et la position des fenêtres.",
+    ["Crafts logged by you and your group automatically calibrate skill-up chances for WoW Forever."] = "Les crafts enregistrés par toi et ton groupe calibrent automatiquement les chances de gain pour WoW Forever.",
+    ["Each step says what to learn at the trainer, what to craft first (bolts, bars...) and how many. Click a line to open the recipe, Shift+click to link it. Colors: orange always gives a point, yellow usually, green rarely, grey never."] = "Chaque étape indique quoi apprendre chez le maître, quoi crafter d'abord (rouleaux, barres...) et combien. Clic pour ouvrir la recette, Maj+clic pour la lier. Couleurs : orange donne toujours un point, jaune souvent, vert rarement, gris jamais.",
+    ["Interface"] = "Interface",
+    ["Known recipes. Right-click to pin to Wishlist, or click a friend's recipe to request it."] = "Recettes connues. Clic droit pour épingler dans À crafter, ou clic sur la recette d'un ami pour la demander.",
+    ["Learn from a trainer of this profession (requires skill %d, level %d)."] = "À apprendre chez un maître de ce métier (requiert %d en métier, niveau %d).",
+    ["Left-click: open window  |  Right-click: options"] = "Clic gauche : ouvrir la fenêtre  |  Clic droit : options",
+    ["List my character"] = "Inscrire mon perso",
+    ["Mailbox panel"] = "Panneau Boîte aux lettres",
+    ["Merchant panel"] = "Panneau Marchand",
+    ["No friends in your group yet. Add guildmates or friends to share mats and upgrades."] = "Aucun ami dans ton groupe pour l'instant. Ajoute des amis ou membres de guilde pour partager composants et améliorations.",
+    ["Open ComradeCraft"] = "Ouvrir ComradeCraft",
+    ["Play sound notifications"] = "Jouer les notifications sonores",
+    ["Reset window positions"] = "Réinitialiser les positions",
+    ["Show minimap button"] = "Afficher le bouton de minicarte",
+    ["Step-by-step profession leveling route, cost comparison, and trainer guide."] = "Route de leveling étape par étape, comparaison des coûts et guide des maîtres.",
+    ["Sync: %d players in the group, %d suggested."] = "Sync : %d joueurs dans le groupe, %d suggérés.",
+    ["Toggle ComradeCraft"] = "Afficher / masquer ComradeCraft",
+    ["Trade panel"] = "Panneau Échange",
+    ["Trainer panel"] = "Panneau Maître de métier",
+    ["Window scale"] = "Échelle de la fenêtre",
+    ["AH ~%s"] = "HV ~%s",
+    ["For"] = "Pour",
+    ["Important unlearned patterns to buy or farm for yourself and your group (with drop rate and waypoints)."] = "Patrons importants non appris à acheter ou farmer pour toi et ton groupe (taux de drop et repères).",
+    ["No unlearned upgrade patterns found for this character right now."] = "Aucun patron d'amélioration non appris trouvé pour ce perso pour l'instant.",
+    ["Patterns"] = "Patrons",
+    ["Valuable unlearned patterns for yourself and your group: where to buy or farm them, drop rate when known, and 1-click waypoints."] = "Patrons non appris utiles pour toi et ton groupe : où les acheter ou farmer, taux de drop quand connu et repères en 1 clic.",
 }
 ns.Translations = translations
 

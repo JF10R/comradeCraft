@@ -10,8 +10,8 @@ ns.Requests = Requests
 
 local RESEND = 60          -- seconds between two resends of unacknowledged changes to a peer
 local KEEP_DAYS = 14       -- finished requests are forgotten after this
-local STATUS = { pending = true, accepted = true, declined = true, done = true, cancelled = true }
-local BY_CRAFTER = { accepted = true, declined = true, done = true }
+local STATUS = { pending = true, accepted = true, crafting = true, shipped = true, declined = true, done = true, cancelled = true }
+local BY_CRAFTER = { accepted = true, crafting = true, shipped = true, declined = true, done = true }
 
 local function Now() return (GetServerTime and GetServerTime()) or time() end
 local function DB()
@@ -28,8 +28,8 @@ end
 local function OtherPeer(r) return Requests.Role(r) == "crafter" and r.fromPeer or r.toPeer end
 
 local function Wire(r)
-  return { rid = r.id, from = r.from, to = r.to, spell = r.spell, qty = r.qty, note = r.note,
-    status = r.status, u = r.updated, c = r.created }
+  return { rid = r.id, from = r.from, to = r.to, spell = r.spell, item = r.spell == 0 and r.item or nil,
+    qty = r.qty, note = r.note, status = r.status, u = r.updated, c = r.created }
 end
 
 local lastSend = {} -- [peerID] = time of the last outbox flush
@@ -51,18 +51,30 @@ function Requests.OnPeerSeen(id)
 end
 
 -- Pure: a request received from a peer, validated (nil if malformed).
+-- Supports both craft requests (spell > 0 in ns.Recipes) and shared bank item requests (spell == 0, item > 0).
 function Requests.Clean(q)
   if type(q) ~= "table" then return nil end
   -- No control characters and no "|" (color, texture and link codes) in text shown to the player.
   local function S(v, n) return type(v) == "string" and #v > 0 and #v <= n and not v:find("[%c|]") and v or nil end
   local function N(v, lo, hi) return type(v) == "number" and v >= lo and v <= hi and math.floor(v) or nil end
-  local out = { id = S(q.rid, 48), from = S(q.from, 80), to = S(q.to, 80), spell = N(q.spell, 1, 2 ^ 31),
-    qty = N(q.qty, 1, 1000), note = S(q.note, 120), status = STATUS[q.status] and q.status or nil,
+  local spell = N(q.spell, 0, 2 ^ 31)
+  local item = spell == 0 and N(q.item, 1, 2 ^ 31) or (spell and ns.Recipes[spell] and ns.Recipes[spell][5])
+  local out = { id = S(q.rid, 48), from = S(q.from, 80), to = S(q.to, 80), spell = spell,
+    item = item, qty = N(q.qty, 1, 1000), note = S(q.note, 120), status = STATUS[q.status] and q.status or nil,
     updated = N(q.u, 0, 2 ^ 31), created = N(q.c, 0, 2 ^ 31) }
-  if not (out.id and out.from and out.to and out.spell and ns.Recipes[out.spell] and out.qty and out.status
-    and out.updated) then return nil end
-  out.item = ns.Recipes[out.spell][5]
+  local validTarget = (spell and spell > 0 and ns.Recipes[spell]) or (spell == 0 and item and item > 0)
+  if not (out.id and out.from and out.to and validTarget and out.qty and out.status and out.updated) then
+    return nil
+  end
   return out
+end
+
+-- Display label for a request (item name for shared bank item requests, else spell name).
+function Requests.Label(r)
+  if r and r.spell == 0 and r.item and r.item > 0 then
+    return ns.ItemName and ns.ItemName(r.item) or ("item:" .. r.item)
+  end
+  return r and r.spell and ns.SpellName and ns.SpellName(r.spell) or "?"
 end
 
 -- A request (new or changed) from peer `id`, whispered by `sender`. Acknowledged either way.
@@ -90,9 +102,11 @@ function Requests.OnRemote(id, q, sender)
     clean.fromPeer, clean.acked = id, clean.updated
     db[clean.id] = clean
     if ns.Alerts and ns.Alerts.On("requests") then
+      if ns.PlaySound then ns.PlaySound("request") end
+      local msgFmt = clean.spell == 0 and L["%s asks %s for %dx %s."] or L["%s asks %s to craft %dx %s."]
       ns.Alerts.Notify({ title = L["New craft request"],
-        text = L["%s asks %s to craft %dx %s."]:format(clean.from:match("^[^-]+") or clean.from,
-          clean.to:match("^[^-]+") or clean.to, clean.qty, ns.SpellName(clean.spell)),
+        text = msgFmt:format(clean.from:match("^[^-]+") or clean.from,
+          clean.to:match("^[^-]+") or clean.to, clean.qty, Requests.Label(clean)),
         item = clean.item ~= 0 and clean.item or nil,
         buttons = { { L["Open"], function()
           ComradeCraftDB.ui = ComradeCraftDB.ui or {}
@@ -108,7 +122,7 @@ function Requests.OnRemote(id, q, sender)
     mine.status, mine.updated, mine.note = clean.status, clean.updated, clean.note or mine.note
     mine.acked = mine.updated
     if before ~= mine.status and ns.Alerts and ns.Alerts.On("requests") then
-      ns.Alerts.Notify({ title = L["Request %dx %s: %s."]:format(mine.qty, ns.SpellName(mine.spell), L[mine.status]),
+      ns.Alerts.Notify({ title = L["Request %dx %s: %s."]:format(mine.qty, Requests.Label(mine), L[mine.status]),
         item = mine.item ~= 0 and mine.item or nil })
     end
   end
@@ -138,6 +152,23 @@ function Requests.Create(to, spell, qty, note)
   return r
 end
 
+-- New item request from a group member's Shared bank alt (spell = 0, item = itemID).
+function Requests.CreateItem(to, itemID, qty, note)
+  local target = ns.AllChars()[to]
+  if not (target and target.peer and itemID and itemID > 0) then return nil end
+  local now = Now()
+  local r = { id = ("%s-%d-%d"):format(ComradeCraftDB.accountId or "x", now, math.random(1000, 9999)),
+    from = ns.CharKey(), to = to, toPeer = target.peer, spell = 0, item = itemID,
+    qty = math.max(1, math.min(1000, math.floor(qty or 1))), note = note ~= "" and note or nil,
+    status = "pending", created = now, updated = now }
+  DB()[r.id] = r
+  Send(r)
+  ns.Log(("bank request: %s -> %s item %d x%d"):format(r.from, r.to, itemID, r.qty))
+  ns.Print(L["Request sent to %s. It is delivered as soon as you are both online."]:format(to:match("^[^-]+") or to))
+  if ns.RefreshWindow then ns.RefreshWindow() end
+  return r
+end
+
 -- Status change by this side (crafter: accepted/declined/done; requester: cancelled).
 function Requests.Set(rid, status)
   local r = DB()[rid]
@@ -159,7 +190,7 @@ function Requests.Lists()
   for _, r in pairs(DB()) do
     table.insert(Requests.Role(r) == "crafter" and inc or out, r)
   end
-  local order = { pending = 1, accepted = 2, done = 3, declined = 4, cancelled = 5 }
+  local order = { pending = 1, accepted = 2, crafting = 3, shipped = 4, done = 5, declined = 6, cancelled = 7 }
   local function less(a, b)
     if order[a.status] ~= order[b.status] then return order[a.status] < order[b.status] end
     return (a.updated or 0) > (b.updated or 0)
@@ -169,20 +200,95 @@ function Requests.Lists()
   return inc, out
 end
 
--- Open requests waiting for an answer from us (sidebar badge).
+-- Open requests waiting for action from us (sidebar badge & glow).
 function Requests.OpenCount()
   local n = 0
   for _, r in pairs(DB()) do
-    if Requests.Role(r) == "crafter" and (r.status == "pending" or r.status == "accepted") then n = n + 1 end
+    if Requests.Role(r) == "crafter" and (r.status == "pending" or r.status == "accepted" or r.status == "crafting") then
+      n = n + 1
+    end
   end
   return n
 end
+
+-- Live material / stock progress for a request, visible to BOTH crafter and requester.
+-- Returns { state = "ship"|"craft"|"missing", text = string, color = hex } or nil.
+function Requests.Progress(r)
+  if not r or r.status == "done" or r.status == "shipped" or r.status == "declined" or r.status == "cancelled" then
+    return nil
+  end
+  local c = ns.AllChars and ns.AllChars()[r.to]
+  if not c then return nil end
+  local stock = {}
+  for id, n in pairs(c.bags or {}) do stock[id] = (stock[id] or 0) + n end
+  for id, n in pairs(c.bank or {}) do stock[id] = (stock[id] or 0) + n end
+  local mult = (r.spell and r.spell > 0 and ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1
+  local needOut = (r.qty or 1) * math.max(1, mult)
+  if r.item and r.item > 0 and (stock[r.item] or 0) >= needOut then
+    return { state = "ship", text = L["Ready to ship"], color = "40ff40" }
+  end
+  if r.spell == 0 then
+    local miss = math.max(0, needOut - (stock[r.item] or 0))
+    return { state = "missing", text = L["Missing %d"]:format(miss), color = "ffd100" }
+  end
+  if ns.Audit and ns.Audit.MatsStatus then
+    local ms = ns.Audit.MatsStatus(r.spell, r.qty or 1, stock)
+    if ms then
+      if ms.ready then return { state = "craft", text = L["Ready to craft"], color = "80ff80" } end
+      local parts = {}
+      for _, m in ipairs(ms.mats or {}) do
+        if m.missing > 0 and #parts < 2 then
+          parts[#parts + 1] = ("%dx %s"):format(m.missing, ns.ItemName and ns.ItemName(m.item) or ("item:" .. m.item))
+        end
+      end
+      if #parts > 0 then
+        return { state = "missing", text = L["Missing %s"]:format(table.concat(parts, ", ")), color = "ffd100" }
+      end
+    end
+  end
+  return nil
+end
+
+-- Auto-tracks shipping: when we mail or trade an item matching an open incoming request for `toKey`,
+-- automatically advances the request to "shipped" (syncing the requester without manual clicks).
+function Requests.OnItemSent(toKey, itemID, qty)
+  if not (toKey and itemID and itemID > 0 and (qty or 0) > 0) then return 0 end
+  local changed = 0
+  for _, r in pairs(DB()) do
+    if Requests.Role(r) == "crafter"
+      and (r.status == "pending" or r.status == "accepted" or r.status == "crafting")
+      and r.item == itemID
+      and (r.from == toKey or (ns.IsSameChar and ns.IsSameChar(r.from, toKey))) then
+      r.status, r.updated = "shipped", Now()
+      Send(r)
+      changed = changed + 1
+      if ns.PlaySound then ns.PlaySound("shipped") end
+      ns.Print(L["Auto-marked request %dx %s as shipped."]:format(r.qty, Requests.Label(r)))
+    end
+  end
+  if changed > 0 and ns.RefreshWindow then ns.RefreshWindow() end
+  return changed
+end
+
+ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+  if unit ~= "player" or not spellID or not ComradeCraftDB then return end
+  local me = ns.CharKey()
+  local changed = false
+  for _, r in pairs(DB()) do
+    if Requests.Role(r) == "crafter" and r.to == me and r.status == "accepted" and r.spell == spellID then
+      r.status, r.updated = "crafting", Now()
+      Send(r)
+      changed = true
+    end
+  end
+  if changed and ns.RefreshWindow then ns.RefreshWindow() end
+end)
 
 ns.On("PLAYER_LOGIN", function()
   if not ComradeCraftDB then return end
   local cutoff = Now() - KEEP_DAYS * 86400
   for rid, r in pairs(DB()) do
-    local finished = r.status == "done" or r.status == "declined" or r.status == "cancelled"
+    local finished = r.status == "done" or r.status == "shipped" or r.status == "declined" or r.status == "cancelled"
     if finished and (r.updated or 0) < cutoff then DB()[rid] = nil end
   end
 end)
@@ -280,7 +386,13 @@ local function CreateDialog()
   dialog.send:SetPoint("BOTTOMRIGHT", -12, 12)
   dialog.send:SetText(L["Send request"])
   dialog.send:SetScript("OnClick", function()
-    Requests.Create(dialog.to, dialog.spell, tonumber(dialog.qty:GetText()) or 1, dialog.note:GetText() or "")
+    local qty = tonumber(dialog.qty:GetText()) or 1
+    local note = dialog.note:GetText() or ""
+    if type(dialog.itemID) == "number" and dialog.itemID > 0 then
+      Requests.CreateItem(dialog.to, dialog.itemID, qty, note)
+    else
+      Requests.Create(dialog.to, dialog.spell, qty, note)
+    end
     dialog:Hide()
   end)
   dialog.cancel = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
@@ -293,9 +405,20 @@ end
 
 function Requests.ShowDialog(to, spell)
   if not dialog then CreateDialog() end
-  dialog.to, dialog.spell = to, spell
+  dialog.to, dialog.spell, dialog.itemID = to, spell, nil
   dialog.title:SetText(L["Ask %s to craft %s"]:format(to:match("^[^-]+") or to, ns.SpellName(spell)))
   dialog.qty:SetText("1")
+  dialog.note:SetText("")
+  dialog:Show()
+  dialog.qty:SetFocus()
+end
+
+function Requests.ShowItemDialog(to, itemID, defaultQty)
+  if not dialog then CreateDialog() end
+  dialog.to, dialog.spell, dialog.itemID = to, 0, itemID
+  local name = ns.ItemName and ns.ItemName(itemID) or ("item:" .. tostring(itemID))
+  dialog.title:SetText(L["Ask %s for %s"]:format(to:match("^[^-]+") or to, name))
+  dialog.qty:SetText(tostring(math.max(1, math.floor(defaultQty or 1))))
   dialog.note:SetText("")
   dialog:Show()
   dialog.qty:SetFocus()

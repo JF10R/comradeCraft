@@ -52,6 +52,36 @@ function AH.Items()
   return out, total, complete
 end
 
+-- Pure: unlearned BoE (non-BoP) BiS patterns from Audit.Run() + PatternsForCrafter() worth searching on the AH.
+function AH.BoEPatterns()
+  local out, seen = {}, {}
+  local function AddPat(rid, forWho, crafter)
+    if rid and rid > 0 and not seen[rid] and not (ns.IsBoP and ns.IsBoP(rid)) then
+      seen[rid] = true
+      local unit = ns.PriceSource and ns.PriceSource(rid)
+      out[#out + 1] = {
+        item = rid,
+        n = 1,
+        cost = unit and unit > 0 and unit or nil,
+        forWho = forWho,
+        crafter = crafter,
+      }
+    end
+  end
+  local groups = ns.Audit and ns.Audit.Run and ns.Audit.Run() or {}
+  for _, grp in ipairs(groups) do
+    for _, p in ipairs(grp.patterns or {}) do AddPat(p.recipeItem, grp.targetKey, p.crafter) end
+  end
+  local me = ns.CharKey and ns.CharKey()
+  if me and ns.Audit and ns.Audit.PatternsForCrafter then
+    for _, p in ipairs(ns.Audit.PatternsForCrafter(me)) do
+      AddPat(p.recipeItem, p.forList and p.forList[1] and p.forList[1].key or me, me)
+    end
+  end
+  table.sort(out, function(a, b) return (a.cost or 1e12) < (b.cost or 1e12) end)
+  return out
+end
+
 -- Searches `itemID` directly in the open Blizzard Auction House (modern or classic API).
 function AH.SearchItem(itemID)
   if not (isOpen and itemID) then return false end
@@ -69,7 +99,8 @@ function AH.SearchItem(itemID)
   return false
 end
 
-local panel, rows
+local panel, rows, dismissed = nil, nil, false
+local activeTab = "mats" -- "mats" | "patterns"
 
 local function ItemInfo(id)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
@@ -98,6 +129,10 @@ local function CreateRow(parent)
     if self.itemID then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetItemByID(self.itemID)
+      if self.forWho then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L["For %s"]:format(self.forWho:match("^[^-]+") or self.forWho), 1, 0.82, 0)
+      end
       GameTooltip:AddLine(" ")
       GameTooltip:AddLine(L["Click: search in Auction House."], 0.5, 0.8, 1)
       GameTooltip:Show()
@@ -131,8 +166,22 @@ local function CreatePanel()
   panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   panel.title:SetPoint("LEFT", panel.logo, "RIGHT", 6, 0)
   panel.title:SetText(L["To buy at the AH"])
+  panel.close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+  panel.close:SetSize(22, 22)
+  panel.close:SetPoint("TOPRIGHT", -2, -2)
+  panel.close:SetScript("OnClick", function() dismissed = true panel:Hide() end)
+  panel.matsBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+  panel.matsBtn:SetSize(112, 18)
+  panel.matsBtn:SetPoint("TOPLEFT", 10, -30)
+  panel.matsBtn:SetText(L["Materials"])
+  panel.matsBtn:SetScript("OnClick", function() activeTab = "mats" AH.UpdatePanel() end)
+  panel.patBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+  panel.patBtn:SetSize(118, 18)
+  panel.patBtn:SetPoint("LEFT", panel.matsBtn, "RIGHT", 6, 0)
+  panel.patBtn:SetText(L["BoE patterns"])
+  panel.patBtn:SetScript("OnClick", function() activeTab = "patterns" AH.UpdatePanel() end)
   panel.sub = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  panel.sub:SetPoint("TOPLEFT", 10, -30)
+  panel.sub:SetPoint("TOPLEFT", 10, -52)
   panel.sub:SetWidth(PANEL_W - 20)
   panel.sub:SetJustifyH("LEFT")
   panel.foot = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -143,23 +192,38 @@ end
 
 function AH.UpdatePanel()
   if not panel then return end
-  if not isOpen then panel:Hide() return end
+  if dismissed or not isOpen or (ns.PanelEnabled and not ns.PanelEnabled("ah")) then panel:Hide() return end
   local items, total = AH.Items()
-  if #items == 0 then panel:Hide() return end
+  local patterns = AH.BoEPatterns()
+  if #items == 0 and #patterns == 0 then panel:Hide() return end
+  if activeTab == "patterns" and #patterns == 0 then activeTab = "mats"
+  elseif activeTab == "mats" and #items == 0 and #patterns > 0 then activeTab = "patterns" end
+  local showTabs = #patterns > 0
+  panel.matsBtn:SetShown(showTabs)
+  panel.patBtn:SetShown(showTabs)
+  if showTabs then
+    panel.matsBtn:SetEnabled(activeTab ~= "mats")
+    panel.patBtn:SetEnabled(activeTab ~= "patterns")
+    panel.patBtn:SetText(("%s (%d)"):format(L["BoE patterns"], #patterns))
+  end
+  local list = activeTab == "patterns" and patterns or items
   local gold = (GetMoney and GetMoney()) or 0
+  panel.sub:ClearAllPoints()
+  panel.sub:SetPoint("TOPLEFT", 10, showTabs and -52 or -30)
   panel.sub:SetText(L["Click an item to search it."])
   for _, r in ipairs(rows) do r:Hide() end
-  local y = -46
-  for i = 1, math.min(#items, MAX_ROWS) do
-    local it = items[i]
+  local y = showTabs and -68 or -46
+  for i = 1, math.min(#list, MAX_ROWS) do
+    local it = list[i]
     local r = rows[i]
     if not r then r = CreateRow(panel) rows[i] = r end
     local name, icon = ItemInfo(it.item)
-    r.itemID = it.item
+    r.itemID, r.forWho = it.item, it.forWho
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", 10, y)
     r.icon:SetTexture(icon)
-    r.name:SetText(("%dx %s"):format(it.n, name or ("item:" .. it.item)))
+    local label = name or ("item:" .. it.item)
+    r.name:SetText(activeTab == "patterns" and label or ("%dx %s"):format(it.n, label))
     r.cost:SetText(it.cost and ("|cffffd100" .. ns.Money(math.floor(it.cost)) .. "|r") or "|cff9d9d9d?|r")
     r:Show()
     y = y - 24
@@ -167,7 +231,7 @@ function AH.UpdatePanel()
   local col = total > 0 and (gold >= total and "40ff40" or "ff8040") or "9d9d9d"
   panel.foot:ClearAllPoints()
   panel.foot:SetPoint("TOPLEFT", 10, y - 6)
-  panel.foot:SetText(total > 0
+  panel.foot:SetText((activeTab == "mats" and total > 0)
     and L["Total: %s (you have %s)"]:format("|cff" .. col .. ns.Money(math.floor(total)) .. "|r", ns.Money(gold))
     or L["Gold: %s"]:format(ns.Money(gold)))
   panel:SetHeight(-y + 30)
@@ -175,7 +239,7 @@ function AH.UpdatePanel()
 end
 
 ns.On("AUCTION_HOUSE_SHOW", function()
-  isOpen = true
+  isOpen, dismissed = true, false
   CreatePanel()
   AH.UpdatePanel()
 end)

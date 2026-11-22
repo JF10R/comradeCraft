@@ -87,10 +87,11 @@ local function SkillupTotals()
   return out
 end
 
--- Summary: { u = updated, cl = class, lv = level, p = { [skillLine] = { rank, max, name } } }
+-- Summary: { u = updated, cl = class, lv = level, ba = bankAlt, p = { [skillLine] = { rank, max, name } } }
 function Sync.CleanSummary(s)
   if type(s) ~= "table" then return nil end
-  local out = { u = Num(s.u, 0, 2 ^ 31) or 0, cl = Class(s.cl), lv = Num(s.lv, 1, 200), sp = Str(s.sp, 40), p = {} }
+  local out = { u = Num(s.u, 0, 2 ^ 31) or 0, cl = Class(s.cl), lv = Num(s.lv, 1, 200),
+    sp = Str(s.sp, 40), ba = s.ba and true or nil, p = {} }
   local n = 0
   for line, x in pairs(type(s.p) == "table" and s.p or {}) do
     line = Num(line, 1, 2 ^ 24)
@@ -102,7 +103,7 @@ function Sync.CleanSummary(s)
   return out
 end
 
--- Full record, wire shape: { class, level, updated, professions = { [name] = { rank, max,
+-- Full record, wire shape: { class, level, updated, bankAlt, professions = { [name] = { rank, max,
 -- skillLine, icon } }, known = { [skillLine] = { spellID, ... } }, owned = { [itemID] = n },
 -- farm = { [itemID] = target } }.
 -- Only spells in our recipe table and items in our price table are kept.
@@ -110,6 +111,7 @@ function Sync.CleanRecord(r)
   if type(r) ~= "table" then return nil end
   local out = { class = Class(r.class), level = Num(r.level, 1, 200), updated = Num(r.updated, 0, 2 ^ 31) or 0,
     spec = Str(r.spec, 40), specIcon = Num(r.specIcon, 1, 2 ^ 31) or Str(r.specIcon, 120),
+    specOverride = Str(r.specOverride, 24), bankAlt = r.bankAlt and true or nil,
     route = r.route == "profit" and "profit" or nil,
     professions = {}, known = {}, bags = {}, equipped = {} }
   for slot, item in pairs(type(r.equipped) == "table" and r.equipped or {}) do
@@ -195,6 +197,19 @@ function Sync.CleanRecord(r)
     end
   end
   out.wishlist = #wl > 0 and wl or nil
+  -- Reserved items tagged by this character for a specific group member (max 40).
+  local res, nr = {}, 0
+  for item, rv in pairs(type(r.reserved) == "table" and r.reserved or {}) do
+    item = Num(item, 1, 2 ^ 31)
+    if item and type(rv) == "table" and nr < MAX_FARM then
+      local to, qty = Str(rv.t or rv.to, 80), Num(rv.q or rv.qty, 1, 1000000)
+      if to and qty then
+        res[item] = { to = to, qty = qty }
+        nr = nr + 1
+      end
+    end
+  end
+  out.reserved = nr > 0 and res or nil
   return out
 end
 
@@ -205,7 +220,7 @@ local function Summary(c)
   for name, x in pairs(c.professions or {}) do
     if x.skillLine then p[x.skillLine] = { x.rank, x.max, name } end
   end
-  return { u = c.updated or 0, cl = c.class, lv = c.level, sp = c.spec, p = p }
+  return { u = c.updated or 0, cl = c.class, lv = c.level, sp = c.spec, ba = c.bankAlt or nil, p = p }
 end
 
 local function Record(c, key)
@@ -242,10 +257,45 @@ local function Record(c, key)
       wl[#wl + 1] = { id = e.id, s = e.spell, q = e.qty, w = e.forWho, n = e.note }
     end
   end
-  return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon, route = c.route, updated = c.updated,
+  local res, nr = {}, 0
+  for item, rv in pairs(c.reserved or {}) do
+    if nr < MAX_FARM and rv and rv.to and (rv.qty or 0) > 0 then
+      res[item] = { t = rv.to, q = rv.qty }
+      nr = nr + 1
+    end
+  end
+  return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon,
+    specOverride = c.specOverride, bankAlt = c.bankAlt or nil, route = c.route, updated = c.updated,
     professions = profs, known = known, owned = owned, equipped = c.equipped, enchants = c.enchants,
     bagSizes = c.bagSizes, farm = nf > 0 and farm or nil, cooldowns = nc > 0 and cds or nil,
-    wishlist = #wl > 0 and wl or nil }
+    wishlist = #wl > 0 and wl or nil, reserved = nr > 0 and res or nil }
+end
+
+-- Converts a validated remote record back into wire shape for Mesh Sync relay.
+local function RemoteToWire(rec)
+  local known = {}
+  for line, set in pairs(rec.known or {}) do
+    local list = {}
+    for spell in pairs(set) do list[#list + 1] = spell end
+    known[line] = list
+  end
+  local wl
+  if rec.wishlist and #rec.wishlist > 0 then
+    wl = {}
+    for _, e in ipairs(rec.wishlist) do
+      wl[#wl + 1] = { id = e.id, s = e.spell, q = e.qty, w = e.forWho, n = e.note }
+    end
+  end
+  local res
+  if rec.reserved and next(rec.reserved) then
+    res = {}
+    for item, rv in pairs(rec.reserved) do res[item] = { t = rv.to, q = rv.qty } end
+  end
+  return { class = rec.class, level = rec.level, spec = rec.spec, specIcon = rec.specIcon,
+    specOverride = rec.specOverride, bankAlt = rec.bankAlt or nil, route = rec.route, updated = rec.updated,
+    professions = rec.professions, known = known, owned = rec.bags, equipped = rec.equipped,
+    enchants = rec.enchants, bagSizes = rec.bagSizes, farm = rec.farm, cooldowns = rec.cooldowns,
+    wishlist = wl, reserved = res }
 end
 
 local function DB()
@@ -295,6 +345,31 @@ Sync.QueueSize = function() return #queue end
 
 -- Messages --------------------------------------------------------------------------------
 
+-- Mesh Sync index: { [originPeerId] = { [charKey] = updated } } for mutually included peers.
+-- Carries ONLY timestamps (no character data); receivers fetch newer records on demand.
+local function MeshIndex()
+  local db = DB()
+  local out, n = {}, 0
+  for key, rec in pairs(db.remote or {}) do
+    local pid = rec and rec.peer
+    local peer = pid and db.peers[pid]
+    if peer and peer.included and (rec.updated or 0) > 0 and n < MAX_CHARS then
+      out[pid] = out[pid] or {}
+      out[pid][key] = rec.updated
+      n = n + 1
+    end
+  end
+  return n > 0 and out or nil
+end
+
+local function MaxSharedUpdated()
+  local best = 0
+  for _, c in pairs(ComradeCraftDB.chars or {}) do
+    if c.shared and (c.updated or 0) > best then best = c.updated end
+  end
+  return best
+end
+
 -- Only characters the player marked shared (c.shared) are ever sent.
 function Sync.Hello(reply)
   local chars, n = {}, 0
@@ -304,10 +379,11 @@ function Sync.Hello(reply)
       n = n + 1
     end
   end
-  return { t = "H", v = PROTO, id = DB().accountId, r = reply or nil, c = chars, sk = SkillupTotals() }
+  return { t = "H", v = PROTO, id = DB().accountId, r = reply or nil, c = chars,
+    m = MeshIndex(), sk = SkillupTotals() }
 end
 
-local function RequestChanged(id)
+local function RequestChanged(id, meshTable)
   local db = DB()
   local peer = db.peers[id]
   if not (peer and peer.included and peer.name) then return end
@@ -316,19 +392,49 @@ local function RequestChanged(id)
     local have = db.remote[key]
     if not db.chars[key] and (not have or (have.updated or 0) < (s.u or 0)) then keys[#keys + 1] = key end
   end
-  if #keys > 0 then Sync.Send({ t = "R", v = PROTO, id = db.accountId, k = keys }, "WHISPER", peer.name) end
+  local rkeys = {}
+  if type(meshTable) == "table" then
+    for origId, cmap in pairs(meshTable) do
+      origId = Str(origId, 32)
+      local origPeer = origId and origId ~= db.accountId and origId ~= id and db.peers[origId]
+      if origPeer and origPeer.included and type(cmap) == "table" then
+        for key, ts in pairs(cmap) do
+          key = Str(key, 80)
+          ts = Num(ts, 1, 2 ^ 31)
+          local have = key and db.remote[key]
+          if key and ts and not db.chars[key] and (not have or (have.updated or 0) < ts) and #rkeys < MAX_CHARS then
+            rkeys[#rkeys + 1] = { p = origId, k = key }
+          end
+        end
+      end
+    end
+  end
+  if #keys > 0 or #rkeys > 0 then
+    Sync.Send({ t = "R", v = PROTO, id = db.accountId, k = keys, rk = #rkeys > 0 and rkeys or nil }, "WHISPER", peer.name)
+  end
 end
 
 -- Shared summaries, whispered to the players the player added (never to the guild).
-function Sync.AnnounceToGroup()
+-- Also sends a zero-data guild presence pulse (accountId + timestamp) so guildmates who
+-- switched to another alt sync immediately without needing to know their new alt name.
+function Sync.AnnounceToGroup(skipGuildPulse)
   if not ComradeCraftDB then return end
   local db = DB()
   local hello = Sync.Hello()
+  local anyIncluded = false
   for _, peer in pairs(db.peers) do
-    if peer.included and peer.name then Sync.Send(hello, "WHISPER", peer.name) end
+    if peer.included and peer.name then
+      anyIncluded = true
+      Sync.Send(hello, "WHISPER", peer.name)
+    end
   end
   for _, p in pairs(db.pendingAdd) do
     if p and p.name then Sync.Send(hello, "WHISPER", p.name) end
+  end
+  db.settings = db.settings or {}
+  local maxU = MaxSharedUpdated()
+  if not skipGuildPulse and anyIncluded and maxU > 0 and db.settings.guildPing ~= false and IsInGuild and IsInGuild() then
+    Sync.Send({ t = "P", v = PROTO, id = db.accountId, u = maxU }, "GUILD")
   end
 end
 
@@ -338,17 +444,17 @@ function Sync.Announce()
   local db = DB()
   db.settings = db.settings or {}
   if db.settings.guildPing ~= false and IsInGuild and IsInGuild() then
-    Sync.Send({ t = "P", v = PROTO, id = db.accountId }, "GUILD")
+    Sync.Send({ t = "P", v = PROTO, id = db.accountId, u = MaxSharedUpdated() }, "GUILD")
     if ns.Directory then ns.Directory.NotePing() end
   end
-  Sync.AnnounceToGroup()
+  Sync.AnnounceToGroup(true)
 end
 
 -- "key=updated;..." of the shared characters: announce only when it changes.
 local function Signature()
   local parts = {}
   for key, c in pairs(ComradeCraftDB.chars or {}) do
-    if c.shared then parts[#parts + 1] = key .. "=" .. tostring(c.updated) end
+    if c.shared then parts[#parts + 1] = key .. "=" .. tostring(c.updated) .. (c.bankAlt and ":b" or "") end
   end
   table.sort(parts)
   return table.concat(parts, ";")
@@ -373,6 +479,20 @@ function Sync.SetShared(key, on)
   local c = ComradeCraftDB.chars[key]
   if not c then return end
   c.shared = on or nil
+  if not on then c.bankAlt = nil end
+  Sync.AnnounceToGroup()
+  if ns.RefreshWindow then ns.RefreshWindow() end
+end
+
+-- Marks a local character as a Shared bank alt: all its stock (bags, bank, mail) appears as
+-- available surplus to the group, and group members can request items from it via the addon.
+function Sync.SetBankAlt(key, on)
+  local c = ComradeCraftDB.chars[key]
+  if not c then return end
+  c.bankAlt = on and true or nil
+  if on then c.shared = true end
+  c.updated = time()
+  if ns.UpdateNeeds then ns.UpdateNeeds(c) end
   Sync.AnnounceToGroup()
   if ns.RefreshWindow then ns.RefreshWindow() end
 end
@@ -382,6 +502,7 @@ function Sync.SetAllShared(on)
   local n = 0
   for _, c in pairs(ComradeCraftDB.chars or {}) do
     c.shared = on or nil
+    if not on then c.bankAlt = nil end
     n = n + 1
   end
   Sync.AnnounceToGroup()
@@ -391,7 +512,7 @@ end
 
 -- Receiving -------------------------------------------------------------------------------
 
-local function Self() return UnitName and UnitName("player") end
+local function Self() return ns.UnitFullName and ns.UnitFullName("player") or (UnitName and UnitName("player")) end
 
 function Sync.OnMessage(text, dist, sender)
   if not ComradeCraftDB then return end
@@ -412,10 +533,14 @@ function Sync.OnMessage(text, dist, sender)
   if peer.included and ns.Requests then ns.Requests.OnPeerSeen(id) end
 
   if msg.t == "P" then
-    -- Presence only. An added player who just logged in gets our shared summaries.
-    if peer.included and (time() - (peer.replied or 0)) >= REPLY_COOLDOWN then
+    -- Presence / guild channel pulse. An added player who logged in or updated on any alt
+    -- gets our shared summaries right away (works even after alt-switching in guild).
+    local pulseU = Num(msg.u, 0, 2 ^ 31) or 0
+    local newerPulse = pulseU > (peer.lastPulseU or 0)
+    if newerPulse then peer.lastPulseU = pulseU end
+    if peer.included and (newerPulse or (time() - (peer.replied or 0)) >= REPLY_COOLDOWN) then
       peer.replied = time()
-      Sync.Send(Sync.Hello(true), "WHISPER", sender)
+      Sync.Send(Sync.Hello(not newerPulse), "WHISPER", sender)
     end
     if ns.Directory then ns.Directory.OnPing(sender, dist) end
   elseif msg.t == "G" then
@@ -460,7 +585,7 @@ function Sync.OnMessage(text, dist, sender)
       peer.replied = time()
       Sync.Send(Sync.Hello(true), "WHISPER", sender)
     end
-    RequestChanged(id)
+    RequestChanged(id, msg.m)
     -- Characters they stopped sharing disappear.
     for key, rec in pairs(db.remote) do
       if rec.peer == id and not chars[key] then db.remote[key] = nil end
@@ -473,6 +598,18 @@ function Sync.OnMessage(text, dist, sender)
         local c = Str(key, 80) and db.chars[key]
         if c and c.shared then Sync.Send({ t = "D", v = PROTO, id = db.accountId, key = key, rec = Record(c, key) }, "WHISPER", sender) end
       end
+      -- Mesh Sync relay: forward mutually-trusted peers' latest records when asked.
+      for _, rk in ipairs(type(msg.rk) == "table" and msg.rk or {}) do
+        if type(rk) == "table" then
+          local origId, key = Str(rk.p, 32), Str(rk.k, 80)
+          local origPeer = origId and db.peers[origId]
+          local rec = key and db.remote[key]
+          if origPeer and origPeer.included and rec and rec.peer == origId then
+            Sync.Send({ t = "D", v = PROTO, id = db.accountId, orig = origId, key = key, rec = RemoteToWire(rec) },
+              "WHISPER", sender)
+          end
+        end
+      end
     end
   elseif msg.t == "Q" then
     if peer.included and ns.Requests then ns.Requests.OnRemote(id, msg.q, sender) end
@@ -480,10 +617,15 @@ function Sync.OnMessage(text, dist, sender)
     if peer.included and ns.Requests then ns.Requests.OnAck(id, msg.rid, msg.u) end
   elseif msg.t == "D" then
     local key = Str(msg.key, 80)
-    if peer.included and key and not db.chars[key] then
+    local origId = msg.orig and Str(msg.orig, 32) or nil
+    local ownerId = origId or id
+    local ownerPeer = db.peers[ownerId]
+    if peer.included and ownerPeer and ownerPeer.included and key and not db.chars[key] then
       local rec = Sync.CleanRecord(msg.rec)
-      if rec then
-        rec.peer = id
+      local have = db.remote[key]
+      if rec and (not origId or not have or (have.updated or 0) < (rec.updated or 0)) then
+        rec.peer = ownerId
+        if origId then rec.relayedBy = id end
         db.remote[key] = rec
         ns.UpdateNeeds(rec)
         if ns.Alerts then ns.Alerts.CheckUpgrades() end
@@ -584,7 +726,7 @@ function Sync.TargetPlayerName()
   if not (UnitExists and UnitExists("target") and UnitIsPlayer and UnitIsPlayer("target")) then return nil end
   if UnitIsFriend and not UnitIsFriend("player", "target") then return nil end
   if UnitIsUnit and UnitIsUnit("player", "target") then return nil end
-  local name = UnitName and UnitName("target")
+  local name = ns.UnitFullName and ns.UnitFullName("target") or (UnitName and UnitName("target"))
   if not name or (issecretvalue and issecretvalue(name)) then return nil end
   return name
 end
@@ -620,7 +762,7 @@ function Sync.QuickAddCandidates()
       if UnitExists and UnitExists(unit) and (not UnitIsConnected or UnitIsConnected(unit))
         and (not UnitIsUnit or not UnitIsUnit(unit, "player")) then
         local _, cls = UnitClass and UnitClass(unit)
-        Push(UnitName and UnitName(unit), cls, "party")
+        Push(ns.UnitFullName and ns.UnitFullName(unit) or (UnitName and UnitName(unit)), cls, "party")
       end
     end
   end
@@ -672,7 +814,7 @@ ns.On("PLAYER_LOGIN", function()
         local name = ctx and ctx.name
         if not name and ctx and ctx.unit and UnitIsPlayer and UnitIsPlayer(ctx.unit)
           and (not UnitIsFriend or UnitIsFriend("player", ctx.unit)) then
-          name = UnitName and UnitName(ctx.unit)
+          name = ns.UnitFullName and ns.UnitFullName(ctx.unit) or (UnitName and UnitName(ctx.unit))
         end
         if not name or name == "" or (issecretvalue and issecretvalue(name)) then return end
         local short = name:match("^[^-]+") or name

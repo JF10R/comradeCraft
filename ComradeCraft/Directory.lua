@@ -226,6 +226,19 @@ end
 -- Every directory character: received entries plus this account's listed characters.
 -- Each: { key, cl, lv, p, r, peer, name, seen, own }.
 local index
+function Directory.Invalidate()
+  indexStale = true
+end
+
+local function SortFavKeys(list)
+  table.sort(list, function(a, b)
+    local fa = ns.IsFavorite and ns.IsFavorite(a) or false
+    local fb = ns.IsFavorite and ns.IsFavorite(b) or false
+    if fa ~= fb then return fa end
+    return a < b
+  end)
+end
+
 local function Rebuild()
   local chars, bySpell, byItem = {}, {}, {}
   local g = Guild()
@@ -252,8 +265,8 @@ local function Rebuild()
       end
     end
   end
-  for _, list in pairs(byItem) do table.sort(list) end
-  for _, list in pairs(bySpell) do table.sort(list) end
+  for _, list in pairs(byItem) do SortFavKeys(list) end
+  for _, list in pairs(bySpell) do SortFavKeys(list) end
   index = { chars = chars, bySpell = bySpell, byItem = byItem }
   indexStale = false
 end

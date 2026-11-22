@@ -59,6 +59,15 @@ function Wishlist.List(charKey, includeRemote)
   return out
 end
 
+function Wishlist.Find(spell, forWho, crafterKey)
+  local wantChar = crafterKey or ns.CharKey()
+  local wantWho = type(forWho) == "string" and forWho:match("^%s*(.-)%s*$") or nil
+  if wantWho == "" then wantWho = nil end
+  for _, e in ipairs(DB()) do
+    if e.spell == spell and e.char == wantChar and e.forWho == wantWho then return e end
+  end
+end
+
 function Wishlist.Add(spell, qty, forWho, note, pinned, crafterKey)
   local r = ns.Recipes and ns.Recipes[spell]
   if not r then return nil end
@@ -80,7 +89,10 @@ function Wishlist.Add(spell, qty, forWho, note, pinned, crafterKey)
   list[#list + 1] = entry
   ns.Log(("wishlist: added %dx spell %d for %s"):format(qty, spell, entry.forWho or "-"))
   local ch = ComradeCraftDB.chars and ComradeCraftDB.chars[entry.char]
-  if ch then ch.updated = time() end
+  if ch then
+    ch.updated = time()
+    if entry.char ~= ns.CharKey() and ns.UpdateNeeds then ns.UpdateNeeds(ch) end
+  end
   ns.RequestRefresh()
   Wishlist.RefreshTracker()
   return entry
@@ -91,8 +103,11 @@ function Wishlist.Remove(id)
   for i, e in ipairs(list) do
     if e.id == id then
       local ch = ComradeCraftDB.chars and ComradeCraftDB.chars[e.char]
-      if ch then ch.updated = time() end
       table.remove(list, i)
+      if ch then
+        ch.updated = time()
+        if e.char ~= ns.CharKey() and ns.UpdateNeeds then ns.UpdateNeeds(ch) end
+      end
       ns.RequestRefresh()
       Wishlist.RefreshTracker()
       return true
@@ -153,20 +168,37 @@ function Wishlist.Progress(entry, charData)
   end
   Accum(entry.spell, entry.qty, 0)
   local mats, ready, bagReady, missingCount = {}, true, true, 0
-  for item, need in pairs(gross) do
-    local have = owned[item] or 0
-    local inBags = bagOwned[item] or 0
+  local handled = {}
+  local function PushMat(item, need, have, inBags)
     local miss = math.max(0, need - have)
     if miss > 0 then ready = false missingCount = missingCount + miss end
     if inBags < need then bagReady = false end
     mats[#mats + 1] = { item = item, need = need, have = math.min(have, need), missing = miss,
       vendor = ns.IsVendorItem and ns.IsVendorItem(item) or false }
   end
+  for item, need in pairs(gross) do
+    if not handled[item] then
+      local t = ns.ITEM_TRANSFORMS and ns.ITEM_TRANSFORMS[item]
+      if t and ns.PairBalance then
+        local small = t.isSmall and item or t.other
+        local big = t.isSmall and t.other or item
+        handled[small], handled[big] = true, true
+        local nS, nB = gross[small] or 0, gross[big] or 0
+        local hS, _, _, hB = ns.PairBalance(owned[small] or 0, owned[big] or 0, nS, nB, t.ratio)
+        local bS, _, _, bB = ns.PairBalance(bagOwned[small] or 0, bagOwned[big] or 0, nS, nB, t.ratio)
+        if nS > 0 then PushMat(small, nS, hS, bS) end
+        if nB > 0 then PushMat(big, nB, hB, bB) end
+      else
+        PushMat(item, need, owned[item] or 0, bagOwned[item] or 0)
+      end
+    end
+  end
   table.sort(mats, function(a, b)
     if (a.missing > 0) ~= (b.missing > 0) then return a.missing > 0 end
     return a.need > b.need
   end)
-  return { mats = mats, ready = ready, bagReady = bagReady, missingCount = missingCount }
+  local convHints = ns.ConversionHints and ns.ConversionHints(entry.spell, entry.qty, bagOwned) or {}
+  return { mats = mats, ready = ready, bagReady = bagReady, missingCount = missingCount, convHints = convHints }
 end
 
 -- Injects missing wishlist materials into `c.needs[0]` so tooltips, bags, mail, trade,
@@ -208,6 +240,7 @@ function Wishlist.CheckReady()
     if prog.bagReady then
       if not e.readyAlerted then
         e.readyAlerted = true
+        if ns.PlaySound then ns.PlaySound("ready") end
         local name = e.item ~= 0 and ItemName(e.item) or ns.SpellName(e.spell)
         local sub = e.forWho and L["For %s"]:format(e.forWho) or L["All materials are in your bags."]
         ns.Alerts.Notify({
@@ -398,6 +431,8 @@ local function CreateTrackerRow()
       local c = m.missing == 0 and { 0.3, 1, 0.4 } or { 1, 0.82, 0.4 }
       GameTooltip:AddDoubleLine(ItemName(m.item), ("%d / %d"):format(m.have, m.need), 1, 1, 1, c[1], c[2], c[3])
     end
+    local convTip = ns.FormatConversionHints and ns.FormatConversionHints(prog.convHints)
+    if convTip then GameTooltip:AddLine(convTip, 0.4, 0.8, 1, true) end
     GameTooltip:Show()
   end)
   f:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -431,7 +466,8 @@ function Wishlist.RefreshTracker()
     local who = e.forWho and (" |cff80ccff(" .. e.forWho .. ")|r") or ""
     r.name:SetText(("%dx %s%s"):format(e.qty, label, who))
     if prog.bagReady then
-      r.sub:SetText("|cff40ff40" .. L["Ready to craft!"] .. "|r")
+      local convTxt = ns.FormatConversionHints and ns.FormatConversionHints(prog.convHints)
+      r.sub:SetText(convTxt and ("|cff66ccff" .. convTxt .. "|r") or ("|cff40ff40" .. L["Ready to craft!"] .. "|r"))
     elseif prog.ready then
       r.sub:SetText("|cffffd100" .. L["Ready (some mats in bank/mail)"] .. "|r")
     else

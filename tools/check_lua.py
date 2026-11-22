@@ -97,14 +97,18 @@ def main():
         used.update((a, b))
     used.update(["orange", "yellow", "green", "grey", "trainer", "vendor", "quest", "drop", "container",
                  "Enchant", "Consumable", "Bag", "Weapon", "Armor", "Reagent", "Other", "now", "soon", "later",
-                 "pending", "accepted", "declined", "done", "cancelled",
+                 "pending", "accepted", "crafting", "shipped", "declined", "done", "cancelled",
                  "Journeyman", "Expert", "Artisan", "Master"])
     # A lone backslash before a letter ("Interface\DialogFrame" typed with one) is not a
-    # path separator in Lua: the texture silently fails to load.
+    # path separator in Lua: the texture silently fails to load. Also catch bare L[...] without local L.
     for n in files:
-        if n.startswith("Libs/"):
+        if n.startswith("Libs/") or n.startswith("Locales/") or n == "Locale.lua":
             continue
-        for i, line in enumerate(open(os.path.join(ADDON, n), encoding="utf-8"), 1):
+        full_src = open(os.path.join(ADDON, n), encoding="utf-8").read()
+        if re.search(r'(?<![\w.])L\[', full_src) and not re.search(r'local\s+L\s*=\s*ns\.L', full_src):
+            print(f"GLOBAL_L {n}: uses L[...] without 'local L = ns.L'")
+            return 1
+        for i, line in enumerate(full_src.splitlines(), 1):
             if re.search(r'(?<!\\)\\(?![\\nrt"\'0-9])[A-Za-z]', line):
                 print(f"BACKSLASH {n}:{i}: {line.strip()[:80]}")
                 return 1
@@ -438,7 +442,8 @@ def main():
       assert(ra and ra.entries[1] and ra.entries[1].item == 16072 and ra.entries[1].detail:find("125", 1, true),
         "rank: expert cookbook " .. tostring(ra and ra.entries[1] and ra.entries[1].detail))
       local rb = ns.RankAdvice({ skillLine = 197, rank = 150, max = 150 })
-      assert(rb and #rb.entries == 0 and rb.notes[1]:find("trainer", 1, true), "rank: primary from a trainer")
+      assert(rb and rb.entries[1] and rb.entries[1].kind == "trainer" and rb.entries[1].label == "Georgio Bolero"
+        and rb.notes[1]:find("trainer", 1, true), "rank: primary from a trainer")
       assert(ns.RankAdvice({ skillLine = 185, rank = 225, max = 225 }).notes[1]:find("Questie", 1, true), "rank: artisan needs Questie")
       -- With QuestieDB: the quest needing Cooking 225, for our faction, nearest giver; waypoint on click.
       LibQuestieDB = { Enum = { factionRaceMasks = { Alliance = 1, Horde = 2 } },
@@ -851,7 +856,7 @@ def main():
       local saved3 = ComradeCraftDB.chars
       ComradeCraftDB.chars = {
         ["Test-Realm"] = { bags = { [2589] = 20 } },
-        ["Vez-Realm"] = { needs = { [197] = { name = "T", items = { [2589] = 15 }, when = { [2589] = 1 } } } },
+        ["Vez Stone-Realm"] = { needs = { [197] = { name = "T", items = { [2589] = 15 }, when = { [2589] = 1 } } } },
       }
       local slots = { [1] = { itemID = 2589, stackCount = 10 }, [2] = { itemID = 2589, stackCount = 10 } }
       local attached, cursor, ops = {}, nil, {}
@@ -876,13 +881,13 @@ def main():
       SendMailNameEditBox, SendMailSubjectEditBox = MockWidget(), MockWidget()
       SendMailNameEditBox.text, SendMailSubjectEditBox.text = "", ""
       f.onEvent(f, "MAIL_SHOW")
-      assert(ns.Mail.KeyForName("vez") == "Vez-Realm", "mail: name match")
-      ns.Mail.Prepare("Vez-Realm")
+      assert(ns.Mail.KeyForName("vez stone") == "Vez Stone-Realm", "mail: name match")
+      ns.Mail.Prepare("Vez Stone-Realm")
       assert(ops[1] == "pick1" and ops[2] == "split2:5", "mail: whole stack then split, got " .. table.concat(ops, ","))
       assert(attached[1][2] == 10 and attached[2][2] == 5 and cursor == nil, "mail: 10 + 5 attached, cursor clear")
-      assert(SendMailNameEditBox.text == "Vez" and SendMailSubjectEditBox.text == "ComradeCraft", "mail: form filled")
+      assert(SendMailNameEditBox.text == "Vez Stone" and SendMailSubjectEditBox.text == "ComradeCraft", "mail: form filled")
       f.onEvent(f, "MAIL_CLOSED")
-      ns.Mail.Prepare("Vez-Realm") -- closed: only a message
+      ns.Mail.Prepare("Vez Stone-Realm") -- closed: only a message
       C_Container, C_Timer = oldC, oldTimer
       ComradeCraftDB.chars = saved3
 
@@ -1573,6 +1578,703 @@ def main():
         ComradeCraftDB.chars["Acuponctus-Realm"] = nil
         me.bags, me.bound, me.professions = savedB, savedBound, savedP
         GetItemInfo, ns.PriceSource = savedGet, savedPS
+      end)()
+
+      -- GearScore & Craftable BiS: 2H vs 1H enchant subclass fix, spec weights (Frost Mage, etc.),
+      -- 2H vs 1H+OH comparison, self-crafts, guild directory crafters, and top-5 per-slot BiS.
+      ;(function()
+        local GS = ns.GearScore
+        assert(GS, "gearscore: module loaded")
+        -- 1. Enchant subclass bug fix: 2H enchant (7793 / 13695) must NOT match a 1H dagger (class=2, sub=15).
+        assert(not GS.EnchantMatchesItem(7793, 2, GS.INVTYPE.INVTYPE_WEAPON, 15), "enchant: 2H Lesser Int must not match dagger")
+        assert(not GS.EnchantMatchesItem(13695, 2, GS.INVTYPE.INVTYPE_WEAPON, 15), "enchant: 2H Impact must not match dagger")
+        assert(GS.EnchantMatchesItem(7793, 2, GS.INVTYPE.INVTYPE_2HWEAPON, 10), "enchant: 2H Lesser Int matches staff")
+        assert(GS.EnchantMatchesItem(22749, 2, GS.INVTYPE.INVTYPE_WEAPON, 15), "enchant: Weapon Spell Power matches dagger")
+        assert(GS.EnchantMatchesItem(21931, 2, GS.INVTYPE.INVTYPE_WEAPON, 15), "enchant: Winter's Might matches dagger")
+        -- Shield enchant (13631, sub=64) must match shield (sub=6) and NOT cloth chest (sub=1) or off-hand (sub=0).
+        assert(GS.EnchantMatchesItem(13631, 4, GS.INVTYPE.INVTYPE_SHIELD, 6), "enchant: Shield Stamina matches shield")
+        assert(not GS.EnchantMatchesItem(13631, 4, GS.INVTYPE.INVTYPE_CHEST, 1), "enchant: Shield Stamina must not match chest")
+        assert(not GS.EnchantMatchesItem(13631, 4, GS.INVTYPE.INVTYPE_HOLDABLE, 0), "enchant: Shield Stamina must not match holdable")
+        assert(GS.EnchantMatchesItem(1219577, 4, GS.INVTYPE.INVTYPE_HOLDABLE, 0), "enchant: Off-Hand Superior Int matches holdable")
+
+        -- 2. Spec enchant scoring: Frost Mage prefers Frost/Spell Power & rejects Striking/Fire/Mining.
+        local frostMage = { class = "MAGE", spec = "Givre", level = 40 }
+        local fireMage = { class = "MAGE", spec = "Fire", level = 40 }
+        local armsWar = { class = "WARRIOR", spec = "Arms", level = 40 }
+        local holyPri = { class = "PRIEST", spec = "Holy", level = 40 }
+        assert(GS.GetSpec(frostMage) == "frost", "spec: French Givre -> frost")
+        assert(GS.ScoreEnchant(21931, frostMage) > 0 and GS.ScoreEnchant(21931, fireMage) == 0, "enchant: Winter's Might for Frost only")
+        assert(GS.ScoreEnchant(13693, frostMage) == 0 and GS.ScoreEnchant(13693, armsWar) > 0, "enchant: Striking for Warrior, not Mage")
+        assert(GS.ScoreEnchant(25074, frostMage) > 0 and GS.ScoreEnchant(25078, frostMage) == 0, "enchant: Frost Gloves > Fire Gloves for Frost")
+        assert(GS.ScoreEnchant(13612, frostMage) == 0, "enchant: Mining utility enchant skipped")
+        assert(GS.ScoreEnchant(22750, holyPri) > GS.ScoreEnchant(22749, holyPri), "enchant: Healing Power > Spell Power for Holy Priest")
+
+        -- 3. Standalone stat weights: Frost Spell Damage >> Intellect; Fire SP = 0 for Frost; 2H vs 1H+OH.
+        local savedGet, savedStats = GetItemInfo, GetItemStats
+        local items = {
+          -- [id] = { name, ilvl, req, eqLoc, classID, subID, bind, stats }
+          [99101] = { "Frost Gloves",   30, 28, "INVTYPE_HAND",     4, 1, 2, { ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 10 } },
+          [99102] = { "Int Gloves",     30, 28, "INVTYPE_HAND",     4, 1, 2, { ITEM_MOD_INTELLECT_SHORT = 10 } },
+          [99103] = { "Fire Gloves",    30, 28, "INVTYPE_HAND",     4, 1, 2, { ITEM_MOD_FIRE_DAMAGE_DONE_SHORT = 15 } },
+          [99104] = { "Worn Dagger",    25, 22, "INVTYPE_WEAPON",   2, 15, 1, { ITEM_MOD_INTELLECT_SHORT = 6, ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 6, ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 15 } },
+          [99105] = { "Worn Offhand",   25, 22, "INVTYPE_HOLDABLE", 4, 0, 1, { ITEM_MOD_INTELLECT_SHORT = 5, ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 7 } },
+          [99106] = { "Weak Staff",     30, 28, "INVTYPE_2HWEAPON", 2, 10, 2, { ITEM_MOD_INTELLECT_SHORT = 10, ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 8, ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 30 } },
+          [99107] = { "Strong Staff",   38, 35, "INVTYPE_2HWEAPON", 2, 10, 2, { ITEM_MOD_INTELLECT_SHORT = 15, ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 20, ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 32 } },
+          [99108] = { "Magic Wand",     25, 20, "INVTYPE_RANGEDRIGHT", 2, 19, 2, { ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 20 } },
+          [99109] = { "Melee Sword",    35, 30, "INVTYPE_WEAPON",   2, 7, 2, { ITEM_MOD_STRENGTH_SHORT = 10, ITEM_MOD_DAMAGE_PER_SECOND_SHORT = 40 } },
+          [99110] = { "BoP Frost Robe", 38, 35, "INVTYPE_CHEST",    4, 1, 1, { ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 22, ITEM_MOD_INTELLECT_SHORT = 10 } },
+        }
+        GetItemInfo = function(id)
+          local nid = type(id) == "string" and tonumber(id:match("item:(%d+)")) or id
+          local it = items[nid]
+          if it then return it[1], "|Hitem:" .. nid .. "|h[" .. it[1] .. "]|h", 2, it[2], it[3], "", "", 1, it[4], 1, 0, it[5], it[6], it[7] end
+          return savedGet(id)
+        end
+        GetItemStats = function(link)
+          local nid = type(link) == "string" and tonumber(link:match("item:(%d+)")) or link
+          return items[nid] and items[nid][8] or nil
+        end
+        local sFrost = GS.ScoreItem(99101, frostMage)
+        local sInt = GS.ScoreItem(99102, frostMage)
+        local sFire = GS.ScoreItem(99103, frostMage)
+        assert(sFrost > sInt, "frost mage: +10 Frost SP (" .. tostring(sFrost) .. ") must beat +10 Int (" .. tostring(sInt) .. ")")
+        assert(sFire == 0, "frost mage: Fire SP must score 0, got " .. tostring(sFire))
+        assert(GS.ScoreItem(99103, fireMage) > GS.ScoreItem(99102, fireMage), "fire mage: Fire SP beats Int")
+        assert(GS.ScoreItem(99109, frostMage) == 0, "frost mage: melee sword scores 0")
+        assert(GS.ScoreItem(99109, armsWar) > 500, "arms warrior: melee sword scores high")
+
+        -- 2H Staff vs Dagger + Off-Hand combined: Weak Staff loses, Strong Staff wins; Wand upgrades empty ranged.
+        frostMage.equipped = { [10] = 99102, [16] = 99104, [17] = 99105 }
+        assert(not ns.UpgradeFor(99106, frostMage), "2H vs 1H+OH: weak staff must NOT beat dagger + off-hand")
+        assert(ns.UpgradeFor(99107, frostMage), "2H vs 1H+OH: strong staff beats dagger + off-hand")
+        assert(ns.UpgradeFor(99101, frostMage), "frost gloves beat int gloves")
+        assert(ns.UpgradeFor(99108, frostMage), "wand upgrades empty ranged slot")
+        assert(not ns.UpgradeFor(99109, frostMage), "melee sword is not an upgrade for frost mage")
+
+        -- 4. Audit end-to-end: Frost Mage with unenchanted dagger + off-hand never gets 2H enchant,
+        -- gets Spell Power on dagger, gets self BoP robe & guild directory upgrade!
+        local me = ns.CharData()
+        local savedState = { c = me.class, l = me.level, s = me.spec, so = me.specOverride,
+          eq = me.equipped, eql = me.equippedLinks, en = me.enchants, kn = me.known, b = me.bags, p = me.professions }
+        local savedDir = ComradeCraftDB.directory
+        ns.Recipes[999101] = { 197, 150, 200, 1, 99101, 1, { 2589, 1 } }
+        ns.Recipes[999110] = { 197, 150, 200, 1, 99110, 1, { 2589, 1 } }
+        me.class, me.level, me.spec, me.specOverride = "MAGE", 40, "Frost", nil
+        me.equipped = { [10] = 99102, [16] = 99104, [17] = 99105 }
+        me.equippedLinks = nil
+        me.enchants = { [16] = 0, [17] = 0 }
+        -- Me knows 2H Lesser Intellect (7793), Weapon Striking (13693), Weapon Spell Power (22749),
+        -- Off-Hand Superior Int (1219577), and BoP Frost Robe (999110).
+        me.known = { [333] = { [7793] = true, [13693] = true, [22749] = true, [1219577] = true }, [197] = { [999110] = true } }
+        ComradeCraftDB.directory = {
+          ["GuildTailor-Realm"] = { cl = "MAGE", lv = 45, p = { [197] = { 225, 225, "Tailoring" } },
+            r = { [999101] = true }, seen = time() },
+        }
+        if ns.Directory then ns.Directory.OnEntry = ns.Directory.OnEntry end
+        -- Force directory index rebuild by toggling guild update handler.
+        f.onEvent(f, "PLAYER_GUILD_UPDATE")
+        local aud = ns.Audit.Run()
+        local myGrp
+        for _, g in ipairs(aud) do if g.isMe then myGrp = g break end end
+        assert(myGrp, "audit bis: found current char upgrades")
+        local saw2H, sawSP, sawOH, sawSelfBoP, sawGuildGloves = false, false, false, false, false
+        for _, u in ipairs(myGrp.items) do
+          if u.spell == 7793 then saw2H = true end
+          if u.kind == "enchant" and u.spell == 22749 then sawSP = true end
+          if u.kind == "enchant" and u.spell == 1219577 then sawOH = true end
+          if u.kind == "gear" and u.item == 99110 and u.ownCrafter then sawSelfBoP = true end
+          if u.kind == "gear" and u.item == 99101 and u.guildCrafter then sawGuildGloves = true end
+        end
+        assert(not saw2H, "audit bis: must NEVER suggest 2H enchant on dagger!")
+        assert(sawSP, "audit bis: must suggest Spell Power on dagger")
+        assert(sawOH, "audit bis: must suggest Off-Hand enchant on holdable")
+        assert(sawSelfBoP, "audit bis: self BoP craft included")
+        assert(sawGuildGloves, "audit bis: guild directory Frost Gloves included")
+        -- 5. Features #1-#7: Mats status, Request->Mail reagents, Talent-spell auto-spec & sync,
+        --    Soon (+1..4 lvl) BiS, Spec consumables, Loot recipe tooltip BiS, Trainer panel highlights.
+        -- #1 MatsStatus: me has 10 linen -> recipe 999110 (needs 1 linen) is ready!
+        me.bags = { [2589] = 10 }
+        local ms = ns.Audit.MatsStatus(999110, 1)
+        assert(ms and ms.ready, "mats status: 10 linen covers 1 linen craft")
+        -- #2 Outgoing request reagents appear in Mail.ItemsFor(crafter) automatically.
+        ComradeCraftDB.peers = ComradeCraftDB.peers or {}
+        ComradeCraftDB.peers["peerCr"] = { included = true, name = "Crafter" }
+        ComradeCraftDB.remote = ComradeCraftDB.remote or {}
+        ComradeCraftDB.remote["Crafter-Realm"] = { class = "MAGE", level = 40, peer = "peerCr", bags = {} }
+        ComradeCraftDB.requests = ComradeCraftDB.requests or {}
+        ComradeCraftDB.requests["req-mats-1"] = { id = "req-mats-1", from = ns.CharKey(), to = "Crafter-Realm",
+          toPeer = "peerCr", spell = 2963, item = 2996, qty = 2, status = "pending", updated = time() }
+        local mItems = ns.Mail.ItemsFor("Crafter-Realm")
+        local foundLinen = false
+        for _, it in ipairs(mItems) do if it.item == 2589 and it.n == 4 and it.request then foundLinen = true end end
+        assert(foundLinen, "request->mail: 4 linen for outgoing 2x Bolt request attached for crafter")
+        ComradeCraftDB.requests["req-mats-1"] = nil
+        ComradeCraftDB.remote["Crafter-Realm"], ComradeCraftDB.peers["peerCr"] = nil, nil
+        -- #3 Talent-spell spec auto-detection (Frost Mage via Ice Barrier 11426 + Cold Snap 12472) & Sync specOverride.
+        IsPlayerSpell = function(id) return id == 11426 or id == 12472 end
+        assert(GS.DetectSpecFromSpells("MAGE") == "frost", "spec detect: Frost talents -> frost")
+        IsPlayerSpell = nil
+        assert(ns.Sync.CleanRecord({ class = "MAGE", specOverride = "frost" }).specOverride == "frost", "sync: specOverride preserved")
+        -- #6 Upcoming (+1..4 lvl) BiS: level 40 Frost Mage sees lvl 43 Frost Mantle in grp.soon.
+        items[99111] = { "Frost Mantle", 45, 43, "INVTYPE_SHOULDER", 4, 1, 2, { ITEM_MOD_FROST_DAMAGE_DONE_SHORT = 18 } }
+        ns.Recipes[999111] = { 197, 200, 230, 1, 99111, 1, { 2589, 2 } }
+        me.known[197][999111] = true
+        -- #7 Spec-matched consumables: Frost Mage knows Elixir of Frost Power (21923) + Lesser Wizard Oil (25126).
+        me.known[171] = { [21923] = true }
+        me.known[333][25126] = true
+        local aud2 = ns.Audit.Run()
+        local myGrp2
+        for _, g in ipairs(aud2) do if g.isMe then myGrp2 = g break end end
+        assert(myGrp2 and myGrp2.soon and #myGrp2.soon >= 1 and myGrp2.soon[1].item == 99111, "audit soon: lvl 43 Frost Mantle shown")
+        local sawFrostElixir, sawWizOil = false, false
+        for _, cn in ipairs(myGrp2.consumables or {}) do
+          if cn.spell == 21923 then sawFrostElixir = true end
+          if cn.spell == 25126 then sawWizOil = true end
+        end
+        assert(sawFrostElixir and sawWizOil, "audit consumables: Frost Elixir + Wizard Oil suggested")
+        -- #5 Trainer highlights: available trainer recipe crafting Frost Gloves (999101) flagged as upgrade!
+        local oldSN = ns.SpellName
+        ns.SpellName = function(sp) return sp == 999101 and "Frost Gloves" or oldSN(sp) end
+        GetNumTrainerServices = function() return 1 end
+        GetTrainerServiceInfo = function() return "Frost Gloves", nil, "available" end
+        GetTrainerServiceSkillReq = function() return "Tailoring", 150, true end
+        GetTrainerServiceCost = function() return 500 end
+        me.professions = { Tailoring = { skillLine = 197, rank = 200, max = 225 } }
+        local th = ns.Trainer.Highlights()
+        assert(#th == 1 and th[1].spell == 999101 and th[1].prio == 2, "trainer: BiS upgrade recipe highlighted")
+        ns.SpellName = oldSN
+        GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceSkillReq, GetTrainerServiceCost = nil, nil, nil, nil
+        ns.Recipes[999111] = nil
+
+        -- #8 Postbox mailbox compatibility: anchors to PostboxFrame (UIParent child), switches to
+        --    Postbox Send tab, fills ToBox/SubjectBox/BodyBox, and reads CurrentRecipient from ToBox.
+        local pbSend = MockWidget()
+        pbSend.shown = false
+        pbSend.ToBox = MockWidget()
+        pbSend.SubjectBox = MockWidget()
+        pbSend.BodyBox = MockWidget()
+        local pbSendBtn = MockWidget()
+        pbSendBtn.Click = function() pbSend.shown = true end
+        PostboxFrame = MockWidget()
+        PostboxFrame.shown = true
+        PostboxFrame.Tabs = { send = pbSend }
+        PostboxFrame.TabButtons = { send = pbSendBtn }
+        ComradeCraftDB.chars["Vez Stone-Realm"] = { class = "DRUID", level = 20 }
+        f.onEvent(f, "MAIL_SHOW")
+        assert(ComradeCraftMailPanel and ComradeCraftMailPanel:IsShown(), "postbox: mail panel visible")
+        assert(ns.Mail.CurrentRecipient() == nil, "postbox: nil while on Collect tab")
+        ns.Mail.SelectRecipient("Vez Stone-Realm")
+        assert(pbSend:IsShown() and pbSend.ToBox:GetText() == "Vez Stone" and pbSend.SubjectBox:GetText() == "ComradeCraft",
+          "postbox: SelectRecipient switched to send tab and filled full First Last + Subject")
+        assert(ns.Mail.CurrentRecipient() == "Vez Stone-Realm", "postbox: CurrentRecipient reads Postbox ToBox")
+        ns.Mail.PrepareRequest({ id = "pb-1", to = "Vez Stone-Realm", spell = 2963, qty = 2, note = "merci!" })
+        assert(pbSend.SubjectBox:GetText():find("[CC:2963:2:pb-1]", 1, true) and pbSend.BodyBox:GetText() == "merci!",
+          "postbox: PrepareRequest fills Postbox SubjectBox and BodyBox")
+        -- Forever mail safety: legacy half-name ("LegacyOnly-Realm") must NEVER overwrite ToBox with a half-name,
+        -- but MUST preserve an existing matching full name ("LegacyOnly Jenkins") already in ToBox!
+        ComradeCraftDB.chars["LegacyOnly-Realm"] = { class = "HUNTER", level = 20 }
+        pbSend.ToBox:SetText("")
+        ns.Mail.SelectRecipient("LegacyOnly-Realm")
+        assert(pbSend.ToBox:GetText() == "", "forever mail safety: refuses to fill half-name into ToBox")
+        pbSend.ToBox:SetText("LegacyOnly Jenkins")
+        ns.Mail.SelectRecipient("LegacyOnly-Realm")
+        assert(pbSend.ToBox:GetText() == "LegacyOnly Jenkins", "forever mail safety: keeps full name already in ToBox")
+        ComradeCraftDB.chars["LegacyOnly-Realm"], ComradeCraftDB.chars["Vez Stone-Realm"] = nil, nil
+        -- Forever UnitFullName: joins 2 return values (first, surname) without dropping surname.
+        local oldUN = UnitName
+        UnitName = function() return "Jhf", "Mage" end
+        assert(ns.UnitFullName("player") == "Jhf Mage", "forever fullname: joins First + Surname")
+        UnitName = oldUN
+        f.onEvent(f, "MAIL_CLOSED")
+        assert(not ComradeCraftMailPanel:IsShown(), "postbox: mail panel hidden on MAIL_CLOSED")
+        PostboxFrame = nil
+
+        -- #9 Bagnon / BagBrother bag highlighting: real frames only (skips descriptors & cached alts),
+        --    draws crisp border + mailbox badge in normal & focus modes!
+        local bbBtn = MockWidget()
+        bbBtn.info = { itemID = 2589 }
+        bbBtn.bag = 0
+        local bbFrame = MockWidget()
+        bbFrame[0] = true
+        bbFrame.shown = true
+        bbFrame.IsCached = function() return false end
+        bbFrame.ItemGroup = { buttons = { bbBtn } }
+        Bagnon = { Frames = { Iterate = function() return ipairs({ { id = "bank" }, bbFrame }) end } }
+        ComradeCraftDB.chars["Vez-Realm"] = { class = "DRUID", level = 20,
+          needs = { [197] = { name = "Tailoring", items = { [2589] = 5 }, when = { [2589] = 1 } } } }
+        me.bags = { [2589] = 10 }
+        me.needs = {}
+        ns.Bags.Refresh()
+        assert(ns.Bags.ItemState(2589) and ns.Bags.ItemState(2589).urgency == 1, "bags: Bagnon item highlighted with urgency 1")
+        -- #10 Forever two-part names ("Mirandaa Jenkins") + unknown recipe scroll in bags highlighted & mailable!
+        ComradeCraftDB.chars["Mirandaa Jenkins-Realm"] = { class = "HUNTER", level = 25,
+          professions = { Leatherworking = { skillLine = 165, rank = 95, max = 150 } }, known = { [165] = {} } }
+        assert(ns.Mail.KeyForName("Mirandaa Jenkins") == "Mirandaa Jenkins-Realm", "mail: Forever 2-part name matched")
+        assert(ns.Mail.KeyForName("Mirandaa") == "Mirandaa Jenkins-Realm", "mail: first-name fallback matched")
+        -- Find any Leatherworking (165) recipe item from LibProfessionDB to test unknown pattern in bags.
+        local lpdb = LibStub("LibProfessionDB-1.0")
+        local lwPatternItem
+        for sp, e in pairs(lpdb:GetRecipes(165) or {}) do
+          if type(e) == "table" and e.itemId and e.itemId > 0 then lwPatternItem = e.itemId break end
+        end
+        assert(lwPatternItem, "test setup: found LW pattern item")
+        me.bags[lwPatternItem] = 1
+        local mirItems = ns.Mail.ItemsFor("Mirandaa Jenkins-Realm")
+        local foundPat = false
+        for _, it in ipairs(mirItems) do if it.item == lwPatternItem and it.recipe then foundPat = true end end
+        assert(foundPat, "mail: unknown LW pattern included in Mail.ItemsFor(Mirandaa)")
+        assert(ns.Bags.ItemState(lwPatternItem) ~= nil, "bags: unknown LW pattern highlighted in normal mode")
+        assert(ns.Bags.ItemState(lwPatternItem, "Mirandaa Jenkins-Realm") ~= nil, "bags: unknown LW pattern highlighted in focus mode")
+        me.bags[lwPatternItem] = nil
+        -- #11 Bank-only items: flagged as inBank (inBags=0), not highlighted in bags, button disabled.
+        local savedBank = me.bank
+        me.bags = {}
+        me.bank = { [2589] = 25 }
+        local bItems = ns.Mail.ItemsFor("Vez-Realm")
+        assert(#bItems == 1 and bItems[1].inBags == 0 and bItems[1].inBank == 5, "mail bank-only: 0 inBags, 5 inBank")
+        assert(ns.Bags.ItemState(2589) == nil and ns.Bags.ItemState(2589, "Vez-Realm") == nil, "bags: bank-only not highlighted")
+        me.bank = savedBank
+        -- #12 Guild roster auto-migration of legacy 1-word alt keys + Expert/Artisan trainers!
+        ComradeCraftDB.chars["AltOne-Realm"] = { class = "ROGUE", level = 22, shared = true }
+        IsInGuild = function() return true end
+        GetNumGuildMembers = function() return 1 end
+        GetGuildRosterInfo = function() return "AltOne Shadow-Realm" end
+        f.onEvent(f, "GUILD_ROSTER_UPDATE")
+        assert(ComradeCraftDB.chars["AltOne Shadow-Realm"] and not ComradeCraftDB.chars["AltOne-Realm"],
+          "migration: legacy alt key auto-upgraded from guild roster without logging in")
+        ComradeCraftDB.chars["AltOne Shadow-Realm"] = nil
+        IsInGuild, GetNumGuildMembers, GetGuildRosterInfo = nil, nil, nil
+        -- Expert & Artisan trainers for Alliance (incl. gathering professions like Herbalism/Mining/Skinning).
+        UnitFactionGroup = function() return "Alliance" end
+        local raTail = ns.RankAdvice({ skillLine = 197, rank = 150, max = 150 })
+        assert(raTail and raTail.entries[1] and raTail.entries[1].label == "Georgio Bolero", "expert trainer: Alliance Tailoring = Georgio Bolero")
+        local raEnch = ns.RankAdvice({ skillLine = 333, rank = 150, max = 150 })
+        assert(raEnch and raEnch.entries[1] and raEnch.entries[1].label == "Kitta Firewind", "expert trainer: Alliance Enchanting = Kitta Firewind")
+        local raHerb = ns.DescribeNeed({ skillLine = 182, rank = 140, max = 150 }, {})
+        assert(raHerb and raHerb.rank and raHerb.rank.entries[1].label == "Firodren Mooncaller", "expert trainer: gathering Herbalism = Firodren Mooncaller")
+        local raArtLW = ns.RankAdvice({ skillLine = 165, rank = 225, max = 225 })
+        assert(raArtLW and raArtLW.entries[1] and raArtLW.entries[1].label == "Drakk Stonehand", "artisan trainer: Alliance LW = Drakk Stonehand")
+        -- Horde Expert & Artisan trainers + Expert rank books (Cooking 16072, First Aid 16084, Fishing 16083).
+        UnitFactionGroup = function() return "Horde" end
+        assert(ns.RankAdvice({ skillLine = 165, rank = 150, max = 150 }).entries[1].label == "Una", "horde expert LW = Una")
+        assert(ns.RankAdvice({ skillLine = 171, rank = 150, max = 150 }).entries[1].label == "Doctor Herbert Halsey", "horde expert Alch")
+        assert(ns.RankAdvice({ skillLine = 197, rank = 150, max = 150 }).entries[1].label == "Josef Gregorian", "horde expert Tailor")
+        assert(ns.RankAdvice({ skillLine = 333, rank = 150, max = 150 }).entries[1].label == "Hgarth", "horde expert Ench")
+        assert(ns.RankAdvice({ skillLine = 165, rank = 225, max = 225 }).entries[1].label == "Hahrana Ironhide", "horde artisan LW")
+        assert(ns.RankAdvice({ skillLine = 171, rank = 225, max = 225 }).entries[1].label == "Rogvar", "horde artisan Alch")
+        assert(ns.RankAdvice({ skillLine = 197, rank = 225, max = 225 }).entries[1].label == "Daryl Stack", "horde artisan Tailor")
+        local raHordeCook = ns.RankAdvice({ skillLine = 185, rank = 150, max = 150 })
+        assert(raHordeCook.entries[1].item == 16072 and raHordeCook.entries[1].detail:find("Wulan", 1, true),
+          "horde expert cooking book 16072 from Wulan")
+        local raHordeFA = ns.RankAdvice({ skillLine = 129, rank = 150, max = 150 })
+        assert(raHordeFA.entries[1].item == 16084 and raHordeFA.entries[1].detail:find("Balai Lok'Wein", 1, true),
+          "horde expert first aid book 16084 from Balai Lok'Wein")
+        local raFish = ns.RankAdvice({ skillLine = 356, rank = 150, max = 150 })
+        assert(raFish.entries[1].item == 16083 and raFish.entries[1].detail:find("Old Man Heming", 1, true),
+          "expert fishing book 16083 from Old Man Heming")
+        UnitFactionGroup = nil
+        -- #13 Transformable items (3x Lesser Magic Essence 10938 <-> 1x Greater Magic Essence 10939).
+        do
+          local LESSER, GREATER = 10938, 10939
+          -- PairBalance exactness (no double counting, reserves partial Lesser when Greater is missing).
+          local hS, mS, spS, hB, mB, spB = ns.PairBalance(6, 0, 0, 2, 3)
+          assert(hB == 2 and mB == 0 and spS == 0 and spB == 0, "transform: 6 Lesser covers 2 Greater")
+          hS, mS, spS, hB, mB, spB = ns.PairBalance(2, 0, 0, 1, 3)
+          assert(hB == 0 and mB == 1 and spS == 0, "transform: 2 Lesser reserved toward 1 Greater (not surplus)")
+          hS, mS, spS, hB, mB, spB = ns.PairBalance(7, 0, 0, 2, 3)
+          assert(hB == 2 and mB == 0 and spS == 1, "transform: 7 Lesser vs 2 Greater -> 1 Lesser spare")
+          hS, mS, spS, hB, mB, spB = ns.PairBalance(0, 2, 5, 0, 3)
+          assert(hS == 5 and mS == 0 and spB == 0, "transform: 2 Greater covers 5 Lesser")
+          hS, mS, spS, hB, mB, spB = ns.PairBalance(3, 1, 3, 2, 3)
+          assert(hS == 3 and mS == 0 and hB == 1 and mB == 1, "transform: mixed plan no double-count")
+          -- UpdateNeeds: 6 Lesser satisfies a recipe needing 2 Greater (and 1 Greater satisfies 3 Lesser).
+          ns.Recipes[999201] = { 999, 55, 100, 1, 0, 1, { GREATER, 2 } }
+          ns.Recipes[999202] = { 999, 55, 100, 1, 0, 1, { LESSER, 3 } }
+          local tc = { professions = { Enchanting = { skillLine = 999, rank = 50, max = 51 } },
+            known = { [999] = { [999201] = true } }, bags = { [LESSER] = 6 }, bank = {}, mail = {} }
+          ns.UpdateNeeds(tc)
+          assert((tc.needs[999].items[GREATER] or 0) == 0 and tc.needs[999].have[GREATER] == 2,
+            "transform UpdateNeeds: 6 Lesser covers 2 Greater")
+          assert(ns.Surplus(tc, LESSER) == 0, "transform Surplus: 6 Lesser reserved for own 2 Greater need")
+          tc.bags = { [LESSER] = 7 }
+          ns.UpdateNeeds(tc)
+          assert(ns.Surplus(tc, LESSER) == 1, "transform Surplus: 7 Lesser -> 1 spare")
+          local tc2 = { professions = { Enchanting = { skillLine = 999, rank = 50, max = 51 } },
+            known = { [999] = { [999202] = true } }, bags = { [GREATER] = 1 }, bank = {}, mail = {} }
+          ns.UpdateNeeds(tc2)
+          assert((tc2.needs[999].items[LESSER] or 0) == 0 and tc2.needs[999].have[LESSER] == 3,
+            "transform UpdateNeeds: 1 Greater covers 3 Lesser")
+          -- CraftableNow & Audit.MatsStatus across Lesser <-> Greater.
+          assert(ns.CraftableNow(999201, { [LESSER] = 6 }) == 1, "transform CraftableNow: 6 Lesser -> 1x (2 Greater)")
+          assert(ns.CraftableNow(999201, { [LESSER] = 5 }) == 0, "transform CraftableNow: 5 Lesser -> 0x (2 Greater)")
+          assert(ns.CraftableNow(999202, { [GREATER] = 2 }) == 2, "transform CraftableNow: 2 Greater -> 2x (3 Lesser)")
+          local ms = ns.Audit.MatsStatus(999201, 1, { [LESSER] = 6 })
+          assert(ms and ms.ready, "transform Audit.MatsStatus: 6 Lesser marks 2 Greater recipe ready")
+          -- GiveList / Mail / Bags / NeedRows / GroupSupply:
+          -- Vez needs 2 Greater; we hold 1 Greater + 6 Lesser -> send 1 Greater + 3 Lesser (exact, no over-send!).
+          ComradeCraftDB.chars["Vez-Realm"].needs = { [333] = { name = "Enchanting",
+            items = { [GREATER] = 2 }, gross = { [GREATER] = 2 }, have = { [GREATER] = 0 },
+            when = { [GREATER] = 1 }, plan = { { spell = 999201 } } } }
+          ComradeCraftDB.chars["Vez-Realm"].bags = {}
+          me.bags = { [GREATER] = 1, [LESSER] = 6 }
+          me.bank = {}
+          me.needs = {}
+          local nr = ns.NeedRows(ComradeCraftDB.chars["Vez-Realm"], LESSER)
+          assert(#nr == 1 and nr[1].n == 6 and nr[1].convertsTo == GREATER, "transform NeedRows: Lesser shows 6 -> Greater")
+          assert(ns.NeedOf(ComradeCraftDB.chars["Vez-Realm"], LESSER) == 6, "transform NeedOf: 6 Lesser")
+          local sup = ns.GroupSupply(GREATER, "Vez-Realm")
+          assert(sup == 3, "transform GroupSupply: 1 Greater + 6 Lesser = 3 Greater supply")
+          local gl = ns.GiveList(ns.CharKey())
+          local byItem = {}
+          for _, g in ipairs(gl) do if g.to == "Vez-Realm" then byItem[g.item] = g end end
+          assert(byItem[GREATER] and byItem[GREATER].n == 1 and not byItem[GREATER].convertsTo,
+            "transform GiveList: direct 1 Greater first")
+          assert(byItem[LESSER] and byItem[LESSER].n == 3 and byItem[LESSER].convertsTo == GREATER,
+            "transform GiveList: then 3 Lesser (not 6!) -> Greater")
+          assert(ns.Bags.ItemState(LESSER, "Vez-Realm") ~= nil, "transform Bags: Lesser highlighted for Greater need")
+          -- Reverse direction: Vez needs 5 Lesser; we hold 2 Lesser + 3 Greater -> send 2 Lesser + 1 Greater!
+          ComradeCraftDB.chars["Vez-Realm"].needs = { [333] = { name = "Enchanting",
+            items = { [LESSER] = 5 }, gross = { [LESSER] = 5 }, have = { [LESSER] = 0 },
+            when = { [LESSER] = 1 }, plan = { { spell = 999202 } } } }
+          me.bags = { [LESSER] = 2, [GREATER] = 3 }
+          local gl2 = ns.GiveList(ns.CharKey())
+          local byItem2 = {}
+          for _, g in ipairs(gl2) do if g.to == "Vez-Realm" then byItem2[g.item] = g end end
+          assert(byItem2[LESSER] and byItem2[LESSER].n == 2, "transform GiveList rev: direct 2 Lesser first")
+          assert(byItem2[GREATER] and byItem2[GREATER].n == 1 and byItem2[GREATER].convertsTo == LESSER,
+            "transform GiveList rev: then 1 Greater -> 3 Lesser")
+          assert(ns.Bags.ItemState(GREATER, "Vez-Realm") ~= nil, "transform Bags rev: Greater highlighted for Lesser need")
+          -- Clean up temp recipes.
+          ns.Recipes[999201], ns.Recipes[999202] = nil, nil
+        end
+        -- #14 Mail panel closes cleanly when Postbox hides (even if Send tab OnHide fires after).
+        do
+          local pbShown, sendShown, pbHideFn, sendHideFn = true, true, nil, nil
+          local pbSend = {
+            IsShown = function() return sendShown end,
+            ToBox = { GetText = function() return "" end, SetText = function() end },
+            HookScript = function(_, ev, fn) if ev == "OnHide" then sendHideFn = fn end end,
+          }
+          PostboxFrame = {
+            IsShown = function() return pbShown end,
+            Tabs = { send = pbSend },
+            HookScript = function(_, ev, fn) if ev == "OnHide" then pbHideFn = fn end end,
+          }
+          f.onEvent(f, "MAIL_SHOW")
+          assert(ComradeCraftMailPanel and ComradeCraftMailPanel:IsShown(), "mail panel: opens on MAIL_SHOW with Postbox")
+          pbShown, sendShown = false, false
+          if pbHideFn then pbHideFn() end
+          if sendHideFn then sendHideFn() end
+          assert(not ComradeCraftMailPanel:IsShown(), "mail panel: stays hidden when Postbox + Send tab hide")
+          PostboxFrame = nil
+          f.onEvent(f, "MAIL_CLOSED")
+        end
+        -- #15 Never suggest mailing items to yourself (Forever surname-as-realm repair, remote shadow, used intermediates).
+        do
+          -- 1. Corrupted "Jhf Mage-Mage" key merges into "Jhf Mage-Realm" EVEN when GetRealmName() returns ""!
+          local savedRealmFn = GetRealmName
+          local savedUnitFn = UnitName
+          GetRealmName = function() return "" end
+          UnitName = function() return "Jhf", "Mage" end
+          ComradeCraftDB.chars["Jhf Mage-Mage"] = { class = "MAGE", bags = { [2589] = 21 }, updated = 200 }
+          ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"] = { class = "MAGE", bank = { [2589] = 36 },
+            known = { [197] = { [2963] = true } }, updated = 100 }
+          f.onEvent(f, "PLAYER_ENTERING_WORLD")
+          assert(ns.CharKey() == "Jhf Mage-CAMWOW US1 Realm 3 PvE",
+            "self-mail fix: RealmName skips bogus surname 'Mage', got " .. tostring(ns.CharKey()))
+          assert(ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"] and not ComradeCraftDB.chars["Jhf Mage-Mage"],
+            "self-mail fix: corrupted surname-as-realm key merged cleanly")
+          assert(ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].known
+            and ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].known[197]
+            and ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].bank
+            and ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].bank[2589] == 36,
+            "self-mail fix: known recipes & bank preserved on merge")
+          GetRealmName, UnitName = savedRealmFn, savedUnitFn
+          -- 2. Remote peer entry for same character under normalized realm is shadowed by local char.
+          ComradeCraftDB.peers = ComradeCraftDB.peers or {}
+          ComradeCraftDB.peers["p-dup"] = { included = true, name = "Friend" }
+          ComradeCraftDB.remote = ComradeCraftDB.remote or {}
+          ComradeCraftDB.remote["Jhf Mage-CAMWOWUS1Realm3PvE"] = { peer = "p-dup", class = "MAGE",
+            needs = { [197] = { name = "Tailoring", items = { [2589] = 215 }, gross = { [2589] = 215 }, when = { [2589] = 2 } } } }
+          local allC = ns.AllChars()
+          assert(allC["Jhf Mage-CAMWOW US1 Realm 3 PvE"] and not allC["Jhf Mage-CAMWOWUS1Realm3PvE"],
+            "self-mail fix: remote duplicate shadowed")
+          local glSelf = ns.GiveList("Jhf Mage-CAMWOW US1 Realm 3 PvE")
+          for _, g in ipairs(glSelf) do
+            assert(not ns.IsSameChar(g.to, "Jhf Mage-CAMWOW US1 Realm 3 PvE"), "self-mail fix: never give to self")
+          end
+          -- 3. Owned intermediates in need.used are reserved by Surplus (never marked spare).
+          local ic = { bags = { [2996] = 21 }, needs = { [197] = { gross = { [2589] = 215 }, used = { [2996] = 21 } } } }
+          assert(ns.Surplus(ic, 2996) == 0, "self-mail fix: owned intermediate in need.used has 0 surplus")
+          ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"], ComradeCraftDB.remote["Jhf Mage-CAMWOWUS1Realm3PvE"], ComradeCraftDB.peers["p-dup"] = nil, nil, nil
+        end
+        -- #16 Bank companion panel, essence conversion hints, BoE pattern AH search, 1-click chat share.
+        do
+          -- Bank.Items lists both step-1/Wishlist bank items and bank-only group sends.
+          local savedBank, savedBags, savedNeeds = me.bank, me.bags, me.needs
+          me.bags = {}
+          me.bank = { [2589] = 15, [2318] = 8 }
+          me.needs = { [197] = { name = "Tailoring", gross = { [2589] = 10 }, items = { [2589] = 10 }, when = { [2589] = 1 } } }
+          ComradeCraftDB.chars["Vez-Realm"] = { class = "ROGUE", needs = { [165] = { name = "Leatherworking",
+            items = { [2318] = 5 }, gross = { [2318] = 5 }, when = { [2318] = 1 } } } }
+          local bi = ns.Bank.Items()
+          local bMap = {}
+          for _, it in ipairs(bi) do bMap[it.item] = it end
+          assert(bMap[2589] and bMap[2589].n == 10, "bank: withdraws 10 Linen for own step-1 plan")
+          assert(bMap[2318] and bMap[2318].n == 5, "bank: withdraws 5 Light Leather to send to Vez")
+          me.bank, me.bags, me.needs = savedBank, savedBags, savedNeeds
+          -- ConversionHints: 3x Lesser -> 1x Greater and 1x Greater -> 3x Lesser.
+          ns.Recipes[999301] = { 333, 50, 100, 1, 0, 1, { 10939, 1 } }
+          ns.Recipes[999302] = { 333, 50, 100, 1, 0, 1, { 10938, 2 } }
+          local h1 = ns.ConversionHints(999301, 1, { [10938] = 3 })
+          assert(#h1 == 1 and h1[1].fromItem == 10938 and h1[1].fromQty == 3 and h1[1].toItem == 10939 and h1[1].toQty == 1,
+            "conv hint: 3x Lesser -> 1x Greater")
+          assert(ns.FormatConversionHints(h1):find("3x", 1, true), "conv hint: formatted")
+          local h2 = ns.ConversionHints(999302, 1, { [10939] = 1 })
+          assert(#h2 == 1 and h2[1].fromItem == 10939 and h2[1].fromQty == 1 and h2[1].toItem == 10938 and h2[1].toQty == 3,
+            "conv hint: 1x Greater -> 3x Lesser")
+          assert(#ns.ConversionHints(999301, 1, { [10939] = 1 }) == 0, "conv hint: none when direct essence owned")
+          ns.Recipes[999301], ns.Recipes[999302] = nil, nil
+          -- AuctionPanel.BoEPatterns: surfaces non-BoP recipeItem from Audit.Run().
+          local savedAuditRun = ns.Audit.Run
+          ns.Audit.Run = function()
+            return { { targetKey = "Test-Realm", patterns = { { recipeItem = 7361, crafter = "Test-Realm" } } } }
+          end
+          local bp = ns.AuctionPanel.BoEPatterns()
+          local found7361 = false
+          for _, e in ipairs(bp) do if e.item == 7361 then found7361 = true end end
+          assert(found7361, "AH BoE patterns: includes non-BoP recipe scroll")
+          ns.Audit.Run = savedAuditRun
+          -- ShareChat: posts to GUILD when in guild, strips color codes, caps <=240 chars.
+          local sentMsg, sentChan
+          IsInGuild = function() return true end
+          SendChatMessage = function(m, c) sentMsg, sentChan = m, c end
+          local ch = ns.ShareChat("|cff40ff40[ComradeCraft]|r test")
+          assert(ch == "GUILD" and sentChan == "GUILD" and sentMsg == "[ComradeCraft] test", "share chat: sends clean guild msg")
+          IsInGuild, SendChatMessage = nil, nil
+        end
+        -- #17 Mesh Sync relay, Guild channel pulse sync, Shared bank alt & bank item requests.
+        do
+          local Sync, Req = ns.Sync, ns.Requests
+          local sent = {}
+          local savedTransport = Sync.transport
+          Sync.transport = function(txt, dist, target)
+            sent[#sent + 1] = { msg = Sync.Decode(txt), dist = dist, target = target }
+          end
+          -- 1. Shared bank alt: 100% surplus, 0 leveling needs, auto-shared, synced in Record/Summary.
+          ComradeCraftDB.chars["Banky-Realm"] = { class = "WARRIOR", level = 1, bags = { [2589] = 40 }, bank = { [4306] = 60 },
+            professions = { Tailoring = { skillLine = 197, rank = 1, max = 75 } }, known = { [197] = { [2963] = true } } }
+          Sync.SetBankAlt("Banky-Realm", true)
+          local bc = ComradeCraftDB.chars["Banky-Realm"]
+          assert(bc.bankAlt and bc.shared, "bankAlt: auto-shares and flags character")
+          assert(not next(bc.needs or {}), "bankAlt: zero leveling needs")
+          assert(ns.Surplus(bc, 2589) == 40 and ns.Surplus(bc, 4306) == 60, "bankAlt: 100% stock is surplus")
+          -- Render Shared bank alt sheet without errors.
+          ComradeCraftDB.ui.sel = "Banky-Realm"
+          ns.RefreshWindow()
+          -- 2. Mesh Sync: peer A relays peer B's newer bank alt snapshot to us (mutually included only!).
+          ComradeCraftDB.peers["peerA"] = { included = true, name = "Alice", chars = {} }
+          ComradeCraftDB.peers["peerB"] = { included = true, name = "Bob", chars = {} }
+          ComradeCraftDB.peers["stranger"] = { included = false, name = "Mallory", chars = {} }
+          sent = {}
+          -- Peer A sends HELLO advertising Mesh index for peerB (newer ts=500) and stranger (must be ignored!).
+          local hFromA = Sync.Encode({ t = "H", v = Sync.PROTO, id = "peerA", r = true, c = {},
+            m = { peerB = { ["BobBank-Realm"] = 500 }, stranger = { ["Evil-Realm"] = 999 } } })
+          Sync.OnMessage(hFromA, "WHISPER", "Alice")
+          local reqMsg
+          for _, s in ipairs(sent) do if s.msg and s.msg.t == "R" then reqMsg = s.msg end end
+          assert(reqMsg and reqMsg.rk and #reqMsg.rk == 1 and reqMsg.rk[1].p == "peerB" and reqMsg.rk[1].k == "BobBank-Realm",
+            "mesh sync: requests newer record for mutually trusted peerB, ignores untrusted stranger")
+          -- Peer A sends relayed DATA (orig = peerB, bankAlt = true, 80 Silk Cloth).
+          local dRelayed = Sync.Encode({ t = "D", v = Sync.PROTO, id = "peerA", orig = "peerB", key = "BobBank-Realm",
+            rec = { class = "MAGE", level = 1, bankAlt = true, updated = 500, owned = { [4306] = 80 }, professions = {}, known = {} } })
+          Sync.OnMessage(dRelayed, "WHISPER", "Alice")
+          local rb = ComradeCraftDB.remote["BobBank-Realm"]
+          assert(rb and rb.peer == "peerB" and rb.relayedBy == "peerA" and rb.bankAlt and rb.bags[4306] == 80,
+            "mesh sync: stores relayed bankAlt under origin peerB")
+          -- Relay security: peer A trying to spoof untrusted stranger is rejected.
+          local dBad = Sync.Encode({ t = "D", v = Sync.PROTO, id = "peerA", orig = "stranger", key = "Evil-Realm",
+            rec = { class = "MAGE", level = 1, updated = 999, owned = { [4306] = 99 }, professions = {}, known = {} } })
+          Sync.OnMessage(dBad, "WHISPER", "Alice")
+          assert(not ComradeCraftDB.remote["Evil-Realm"], "mesh sync security: rejects relay for non-included origin")
+          -- 3. Guild channel pulse: peerA switches to a new alt "AliceAlt" -> sends guild P -> we reply to AliceAlt!
+          sent = {}
+          local gPulse = Sync.Encode({ t = "P", v = Sync.PROTO, id = "peerA", u = 900 })
+          Sync.OnMessage(gPulse, "GUILD", "AliceAlt")
+          assert(ComradeCraftDB.peers["peerA"].name == "AliceAlt", "guild sync: updates peer name on alt switch")
+          local repliedToNewAlt = false
+          for _, s in ipairs(sent) do if s.msg and s.msg.t == "H" and s.target == "AliceAlt" then repliedToNewAlt = true end end
+          assert(repliedToNewAlt, "guild sync: whispers HELLO to peer's new alt immediately")
+          -- 4. Bank item request (spell = 0, item = 4306) to remote Shared bank alt -> wire Clean + accept!
+          local itemReq = Req.CreateItem("BobBank-Realm", 4306, 20, "need silk")
+          assert(itemReq and itemReq.spell == 0 and itemReq.item == 4306 and itemReq.qty == 20, "bank request: created")
+          local cleaned = Req.Clean({ rid = itemReq.id, from = itemReq.from, to = "Banky-Realm", spell = 0, item = 4306,
+            qty = 20, status = "pending", u = 100, c = 100 })
+          assert(cleaned and cleaned.spell == 0 and cleaned.item == 4306, "bank request: Clean accepts spell=0 + item")
+          -- Cleanup.
+          ComradeCraftDB.requests[itemReq.id] = nil
+          ComradeCraftDB.chars["Banky-Realm"] = nil
+          ComradeCraftDB.remote["BobBank-Realm"] = nil
+          ComradeCraftDB.peers["peerA"], ComradeCraftDB.peers["peerB"], ComradeCraftDB.peers["stranger"] = nil, nil, nil
+          Sync.transport = savedTransport
+        end
+        -- #18 Item Reserve ("for Mirandaa"), Baganator/BetterBags native categories, Favorites & Preferred Crafters.
+        do
+          local savedBags, savedBank, savedRes = me.bags, me.bank, me.reserved
+          me.bags = { [4306] = 15 }
+          me.bank = { [4306] = 10 }
+          me.reserved = nil
+          ComradeCraftDB.chars["Mirandaa Jenkins-Realm"] = { class = "DRUID", level = 20, shared = true, needs = {} }
+          -- Reserve 12 Silk Cloth for Mirandaa -> violet lock badge, protected from vendor/AH, excluded from other surplus, queued in Mail.
+          assert(ns.Reserve.Set(4306, "Mirandaa Jenkins-Realm", 12), "reserve: set 12 Silk for Mirandaa")
+          assert(ns.Reserve.Get(4306).qty == 12, "reserve: stored on char")
+          assert(ns.Surplus(me, 4306) == 13, "reserve: 25 owned - 12 reserved = 13 spare for others")
+          local st = ns.Bags.ItemState(4306)
+          assert(st and st.mode == "reserved" and st.reserved, "reserve: bag highlight uses reserved lock mode")
+          local mItems = ns.Mail.ItemsFor("Mirandaa Jenkins-Realm")
+          local foundRes
+          for _, it in ipairs(mItems) do if it.item == 4306 and it.reserved then foundRes = it end end
+          assert(foundRes and foundRes.inBags == 12, "reserve: auto-queued in Mail for Mirandaa")
+          -- Recipient sees IncomingFor before mail is sent!
+          local inc = ns.Reserve.IncomingFor("Mirandaa Jenkins-Realm", 4306)
+          assert(#inc == 1 and inc[1].from == ns.CharKey() and inc[1].qty == 12, "reserve: recipient sees incoming reservation")
+          -- Keep alert protects reserved items even when nobody has a leveling need for them.
+          local wanted = ns.Alerts.Wanted(4306)
+          assert(#wanted >= 1 and wanted[1].n == 12, "reserve: Keep alert protects reserved item from vendor/AH")
+          -- Auto-prune clears reservation once item leaves bags+bank.
+          me.bags, me.bank = {}, {}
+          ns.Reserve.Prune()
+          assert(ns.Reserve.Get(4306) == nil, "reserve: auto-pruned once sent")
+          -- Favorites & Preferred Crafters.
+          assert(ns.ToggleFavorite("Mirandaa Jenkins-Realm") == true and ns.IsFavorite("Mirandaa Jenkins-Realm"), "favorites: star on")
+          assert(ns.ToggleFavorite("Mirandaa Jenkins-Realm") == false and not ns.IsFavorite("Mirandaa Jenkins-Realm"), "favorites: star off")
+          -- Request full lifecycle: Progress (missing -> craft -> ship) + auto-crafting + auto-shipped on Mail/Trade!
+          me.bags = {}
+          me.bank = {}
+          local rq = { id = "req-auto-1", from = "Mirandaa Jenkins-Realm", to = ns.CharKey(), fromPeer = "p-m",
+            spell = 2963, item = 2996, qty = 2, status = "accepted", created = 100, updated = 100 }
+          ComradeCraftDB.requests["req-auto-1"] = rq
+          local pMiss = ns.Requests.Progress(rq)
+          assert(pMiss and pMiss.state == "missing", "req progress: missing mats")
+          me.bags = { [2589] = 10 }
+          local pCraft = ns.Requests.Progress(rq)
+          assert(pCraft and pCraft.state == "craft", "req progress: ready to craft")
+          -- Casting the spell auto-advances accepted -> crafting!
+          f.onEvent(f, "UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", 2963)
+          assert(rq.status == "crafting", "req auto: spellcast advances accepted -> crafting")
+          me.bags = { [2996] = 2 }
+          local pShip = ns.Requests.Progress(rq)
+          assert(pShip and pShip.state == "ship", "req progress: ready to ship")
+          -- Mailing/trading the item auto-marks request as shipped!
+          assert(ns.Requests.OnItemSent("Mirandaa Jenkins-Realm", 2996, 2) == 1 and rq.status == "shipped",
+            "req auto: OnItemSent auto-marks request as shipped")
+          -- Render Overview (Reserved banner), Materials, Upgrades (zebra + ownCrafter), Requests without errors.
+          ComradeCraftDB.ui.sel, ComradeCraftDB.ui.groupTab = "group", "overview"
+          ns.RefreshWindow()
+          ComradeCraftDB.ui.sel = "requests"
+          ns.RefreshWindow()
+          -- #19 Blizzard Options, per-panel toggles, UI scale, ResetPositions, LDB, keybinding, active Forever recipe bounds.
+          assert(ns.PanelEnabled("mail") and ns.PanelEnabled("bank"), "options: companion panels enabled by default")
+          ns.SetPanelEnabled("merchant", false)
+          assert(not ns.PanelEnabled("merchant"), "options: merchant panel disabled")
+          ns.SetPanelEnabled("merchant", true)
+          assert(ns.SetUIScale(1.15) == 1.15 and ns.UIScale() == 1.15, "options: UI scale stored and clamped")
+          assert(ns.SetUIScale(2.0) == 1.25 and ns.SetUIScale(0.5) == 0.75, "options: UI scale bounds enforced")
+          ns.SetUIScale(1.0)
+          ns.ResetPositions()
+          ns.PlaySound("lock")
+          ComradeCraft_OnAddonCompartmentClick(nil, "LeftButton")
+          if ns.UpdateLDB then ns.UpdateLDB() end
+          -- Active Forever recipe difficulty bound calibration (ScanKnownRecipes -> ObserveRecipeBound).
+          local savedRec2963 = { ns.Recipes[2963][2], ns.Recipes[2963][3] }
+          C_TradeSkillUI = {
+            GetChildProfessionInfo = function() return { parentProfessionID = 197, skillLevel = 80 } end,
+            GetAllRecipeIDs = function() return { 2963 } end,
+            GetRecipeInfo = function() return { learned = true, relativeDifficulty = 0 } end,
+          }
+          f.onEvent(f, "TRADE_SKILL_LIST_UPDATE")
+          assert(ns.Recipes[2963][2] >= 81 and ComradeCraftDB.recipeBounds and ComradeCraftDB.recipeBounds[2963],
+            "forever calibration: orange at rank 80 raises yellow bound >= 81")
+          ns.Recipes[2963][2], ns.Recipes[2963][3] = savedRec2963[1], savedRec2963[2]
+          ComradeCraftDB.recipeBounds, C_TradeSkillUI = nil, nil
+          -- ResolveFullName: resolves 1-word legacy peer keys via PostboxDB history, peer names, and RememberFullName.
+          PostboxDB = { config = { recipientHistory = { "Mirandaa Jenkins", "Naine Tincelle" } } }
+          assert(ns.ResolveFullName("Mirandaa") == "Mirandaa Jenkins", "resolve full name: via PostboxDB recipientHistory")
+          PostboxDB = nil
+          assert(ns.ResolveFullName("Mirandaa") == "Mirandaa Jenkins", "resolve full name: cached in ComradeCraftDB.fullNames")
+          ComradeCraftDB.fullNames = nil
+          -- Expert Cookbook TomTom waypoint for Alliance (Shandrina, Ashenvale uiMap 1440) even without Questie!
+          local wpMap, wpTitle
+          local savedTT, savedFac = TomTom, UnitFactionGroup
+          UnitFactionGroup = function() return "Alliance" end
+          TomTom = { AddWaypoint = function(_, m, x, y, opts) wpMap, wpTitle = m, opts and opts.title end }
+          local raCookA = ns.RankAdvice({ skillLine = 185, rank = 150, max = 150 })
+          local eCook = raCookA and raCookA.entries[1]
+          assert(eCook and eCook.npc == 3955 and eCook.fallbackPlace and eCook.fallbackPlace.uiMap == 1440,
+            "shandrina: Expert Cookbook entry carries Shandrina npc + fallback coords")
+          assert(ns.WaypointNpc(eCook.npc, eCook.npcName, eCook.zone, eCook.fallbackPlace) and wpMap == 1440,
+            "shandrina: TomTom waypoint set to Ashenvale (1440)")
+          -- Every Expert (150) & Artisan (225) trainer/vendor entry has fallback TomTom coords!
+          for cap, byLine in pairs(ns.RANK_TRAINERS) do
+            for ln, tlist in pairs(byLine) do
+              for _, t in ipairs(tlist) do
+                assert(t[5] and t[5].uiMap and t[5].x and t[5].y, "rank trainer coords missing: " .. tostring(t[2]))
+              end
+            end
+          end
+          -- PatternsForCrafter + Patterns tab render (self + group benefits, drop rates, waypoints).
+          local savedEnchRank = me.professions.Enchanting
+          me.professions.Enchanting = { skillLine = 333, rank = 270, max = 300 }
+          me.known[333] = {}
+          local pList = ns.Audit.PatternsForCrafter(ns.CharKey())
+          assert(type(pList) == "table" and #pList >= 1, "patterns tab: surfaces unlearned valuable enchants/patterns")
+          ComradeCraftDB.ui.sel, ComradeCraftDB.ui.tab = ns.CharKey(), "patterns"
+          ns.RefreshWindow()
+          me.professions.Enchanting = savedEnchRank
+          -- Expert Cookbook (16072) rank-book status: known once max >= 225, unknown when max == 150!
+          local savedCook = me.professions.Cooking
+          me.professions.Cooking = { skillLine = 185, rank = 150, max = 225 }
+          ComradeCraftDB.chars["Naine-Realm"] = { class = "HUNTER", professions = { Cooking = { skillLine = 185, rank = 144, max = 150 } } }
+          local stBook = ns.Loot.RecipeStatus(16072)
+          assert(stBook and stBook.isRankBook and #stBook.known == 1 and stBook.known[1].key == ns.CharKey()
+            and #stBook.unknown == 1 and stBook.unknown[1].key == "Naine-Realm",
+            "rank book status: max 225 = known, max 150 = unknown")
+          -- Embedded Classic drop rates (358 recipes) + optional live connector (ForeverDrops/Lootified).
+          local drCount = 0
+          for _ in pairs(ns.DropRates or {}) do drCount = drCount + 1 end
+          assert(drCount >= 300, "droprates: embedded table has >= 300 recipe drop rates")
+          ForeverDrops = { GetDropRate = function(id) return id == 99999 and 12.5 or nil end }
+          assert(ns.DropRateText(99999) == "12.5%", "droprates: optional ForeverDrops connector")
+          ForeverDrops = nil
+          -- Cross-language profession names: localized via C_TradeSkillUI / spell API regardless of peer language.
+          C_TradeSkillUI = { GetTradeSkillDisplayName = function(ln) return ln == 185 and "Cooking" or nil end }
+          assert(ns.ProfName(185, "Cuisine") == "Cooking", "profname: translates peer French 'Cuisine' -> local 'Cooking'")
+          C_TradeSkillUI = nil
+          me.professions.Cooking = savedCook
+          ComradeCraftDB.chars["Naine-Realm"] = nil
+          TomTom, UnitFactionGroup = savedTT, savedFac
+          ComradeCraftDB.requests["req-auto-1"] = nil
+          me.bags, me.bank, me.reserved = savedBags, savedBank, savedRes
+          ComradeCraftDB.chars["Mirandaa Jenkins-Realm"] = nil
+        end
+        Bagnon, ComradeCraftDB.chars["Vez-Realm"], ComradeCraftDB.chars["Mirandaa Jenkins-Realm"] = nil, nil, nil
+
+        -- Spec switcher command & UI render.
+        SlashCmdList.COMRADECRAFT("spec fire")
+        assert(GS.GetSpec(me) == "fire", "spec cmd: switched to fire")
+        GS.CycleSpec(ns.CharKey())
+        assert(GS.GetSpec(me) == "frost", "spec cycle: fire -> frost")
+        ComradeCraftDB.ui.sel, ComradeCraftDB.ui.groupTab = "group", "upgrades"
+        ns.RefreshWindow()
+        -- Restore state.
+        ns.Recipes[999101], ns.Recipes[999110] = nil, nil
+        me.class, me.level, me.spec, me.specOverride = savedState.c, savedState.l, savedState.s, savedState.so
+        me.equipped, me.equippedLinks, me.enchants, me.known = savedState.eq, savedState.eql, savedState.en, savedState.kn
+        me.bags = savedState.b
+        me.professions = savedState.p
+        ComradeCraftDB.directory = savedDir
+        f.onEvent(f, "PLAYER_GUILD_UPDATE")
+        GetItemInfo, GetItemStats = savedGet, savedStats
       end)()
 
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
