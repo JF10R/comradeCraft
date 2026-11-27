@@ -56,8 +56,8 @@ function Bags.BuildIndex(recipient)
   local bags = meData.bags or {}
   local bound = meData.bound or {}
   for _, r in pairs(ComradeCraftDB.requests or {}) do
-    -- Finished craft to deliver to requester.
-    if r.status == "accepted" and ns.Requests and ns.Requests.Role(r) == "crafter"
+    -- Finished craft to deliver to requester (or next crafter in chain).
+    if (r.status == "accepted" or r.status == "crafting") and ns.Requests and ns.Requests.Role(r) == "crafter"
       and r.item and r.item ~= 0 and (bags[r.item] or 0) > 0 then
       idx[r.item] = { mode = "give", urgency = 1, entry = r }
     -- Reagents in our bags for our own pending/accepted outgoing craft request.

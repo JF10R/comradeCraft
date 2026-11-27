@@ -1,5 +1,32 @@
 # ComradeCraft
 
+## v0.4.0
+
+### Highlights
+- **1-Hour Mail In-Transit Tracking & 1-Click Mailbox Tour**: When you mail materials to a friend on another account, ComradeCraft now tracks the 1-hour mail delivery window across your group — showing an **In transit** banner in `Group -> Overview`, live countdowns in tooltips and `Group plan`, and subtracting mailed items right away so nobody double-farms or sends duplicates. A new **Next recipient** button in the Mailbox panel lets you step through every friend you have items for in 1 click per mail.
+- **Unified Profession Craft Queue (`Plan` | `Orders`)**: Your docked profession step panel now has an **Orders** view showing accepted group craft requests and pinned Wishlist crafts for that profession, automatically queuing missing intermediates first and letting you click **Craft next** (with a clear `in bank` hint if mats are stored in your bank).
+- **Reusable Craft Kits & Auto-Completing Wishlist**: Save your current Wishlist as a reusable kit (e.g., *Raid Kit*, *Dungeon Kit*, *Reroll Kit*) and apply it **x1** or **x5** in 1 click from the Wishlist tab. Crafting a wishlisted item now automatically counts down and completes it for you.
+- **Smarter Multi-Profession Craft Chains & Trade Enchants**: Craft chains now link steps together (`Step 1/3`, `Waiting previous step`), prioritize crafters whose cooldown is ready, route intermediates directly to the next crafter in the chain (`Deliver to X`), and track partial shipments accurately (`Sent 4/10`). When trading a friend who requested an **Enchant**, the Trade panel lets you open the enchant in 1 click and automatically marks the request done once traded.
+- **Unified Group Search**: The search bar in `Group` now searches **everything at once** — items in bags/bank/mail/Shared Bank Alts/in-transit (with 1-click **Request**), who can craft it in your group (1-click **Request** or **Pin**), and matches from the **Guild directory** (1-click **Whisper**).
+- **Zone Radar, AH Bargain Radar & Shared WoW Forever Knowledge**:
+  - **Zone Radar**: See local Expert/Artisan trainers, recipe vendors, rare drops, and farmable mats useful to your group right in your current zone, with 1-click TomTom waypoints.
+  - **AH Bargain Radar**: Automatically spots group-needed materials and BoE patterns listed at 20%+ below market while browsing the Auction House, with improved Blizzard & Auctionator search support.
+  - **Shared WoW Forever P2P Database**: Automatically shares newly discovered custom WoW Forever recipes, real orange/yellow/green/grey skill thresholds, measured disenchant yields, vendor locations, and mob drop rates with your friends and guild (with a live status counter in `Manage group`).
+- **Faster Sync & Complete Shared Bank Alts**: Bag, bank, mail, reservation, and in-transit updates now sync as lightweight updates every **15 seconds** instead of resending full recipe lists, and **Shared Bank Alts** now share all tradable items (including custom Forever items, recipes, bags, and consumables).
+
+### Quality of Life & Bug Fixes
+- **No More Duplicate Character Entries**: Fixed an issue where your active character could appear twice (for example, an older 1-level-behind copy on WoW Forever two-part names or when multiple alts share the same first name). Existing duplicates are cleaned up automatically on login.
+- **No More `item:XXXX` Placeholders**: Uncached reagent and item names now load automatically and refresh open windows/panels within a fraction of a second, with a per-language name cache so they appear instantly on future logins.
+- **Clearer Enchanting Essence Alerts**: Wishlist and profession "ready" notifications now clearly tell you when you need to right-click convert essences first (e.g. `Right-click: 3x Lesser Astral Essence -> 1x Greater Astral Essence`), and duplicate Wishlist notifications no longer spam chat.
+- **Fixed Dungeon/Combat Loot Error**: Guarded loot and NPC checks against WoW Forever's protected combat/instance values so looting in dungeons never throws Lua errors.
+- **More Accurate Bags, Bank & Multi-Profession Planning**:
+  - **Reagent Bags** are now included when attaching items in Mail and Trade.
+  - The **Bank panel** now withdraws missing crafting reagents for accepted incoming craft requests (not just finished items).
+  - Items being crafted (`crafting` status) keep their bag highlights and tooltips until shipped.
+  - Characters with two professions sharing the same material (e.g., Tailoring + First Aid cloth) no longer double-count the same stack.
+  - Group Cooldowns now show who claimed a cooldown (`Reserved by X`) and offer a 1-click **Craft** button on your own ready cooldowns.
+  - `Patterns` tab now lets you group by **Character** or **Slot** and shows world-drop zone hints.
+
 ## v0.3.0
 
 ### Highlights

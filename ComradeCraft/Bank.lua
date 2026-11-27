@@ -86,16 +86,49 @@ function Bank.Items()
     end
   end
 
-  -- 3. Accepted/crafting incoming requests (craft output or shared bank alt items) stored in bank.
+  -- 3. Accepted/crafting incoming requests: finished output OR crafting reagents stored in bank.
   for _, r in pairs(ComradeCraftDB.requests or {}) do
-    if (r.status == "accepted" or r.status == "crafting") and r.to == me and ns.Requests and ns.Requests.Role(r) == "crafter"
-      and r.item and r.item ~= 0 and (bank[r.item] or 0) > 0 then
-      local mult = (r.spell and r.spell > 0 and ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1
-      local need = r.qty * math.max(1, mult)
-      local miss = math.max(0, need - (bags[r.item] or 0))
-      if miss > 0 then
-        local who = r.from:match("^[^-]+") or r.from
-        Add(r.item, miss, L["To send to %s"]:format(who), 1, r.from)
+    if (r.status == "accepted" or r.status == "crafting") and r.to == me and ns.Requests and ns.Requests.Role(r) == "crafter" then
+      local dest = ns.Requests.Recipient and ns.Requests.Recipient(r) or r.from
+      local who = dest:match("^[^-]+") or dest
+      if r.item and r.item ~= 0 and (bank[r.item] or 0) > 0 then
+        local mult = (r.spell and r.spell > 0 and ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1
+        local need = r.qty * math.max(1, mult)
+        local miss = math.max(0, need - (bags[r.item] or 0))
+        if miss > 0 then
+          Add(r.item, miss, L["To send to %s"]:format(who), 1, dest)
+        end
+      end
+      -- Also withdraw missing crafting reagents for this request if stored in our bank.
+      if r.spell and r.spell > 0 and ns.Recipes and ns.Recipes[r.spell] then
+        local mult = math.max(1, ns.Recipes[r.spell][6] or 1)
+        local alreadyCrafted = r.item and r.item ~= 0 and ((bags[r.item] or 0) + (bank[r.item] or 0)) or 0
+        local remCrafts = math.max(0, (r.qty or 1) - math.floor(alreadyCrafted / mult))
+        if remCrafts > 0 then
+          local reag = ns.Recipes[r.spell][7] or {}
+          local reason = L["Craft request (%s)"]:format(who)
+          for i = 1, #reag, 2 do
+            local item, req = reag[i], reag[i + 1] * remCrafts
+            local inBags = bags[item] or 0
+            local t = ns.ITEM_TRANSFORMS and ns.ITEM_TRANSFORMS[item]
+            if t then
+              local pBags = bags[t.other] or 0
+              inBags = inBags + (t.isSmall and (pBags * t.ratio) or math.floor(pBags / t.ratio))
+            end
+            local miss = req - inBags
+            if miss > 0 then
+              if (bank[item] or 0) > 0 then
+                local take = math.min(bank[item], miss)
+                Add(item, take, reason, 1, dest)
+                miss = miss - take
+              end
+              if miss > 0 and t and (bank[t.other] or 0) > 0 then
+                local wantP = t.isSmall and math.ceil(miss / t.ratio) or (miss * t.ratio)
+                Add(t.other, wantP, reason, 1, dest)
+              end
+            end
+          end
+        end
       end
     end
   end
@@ -214,8 +247,11 @@ local function BankAnchor()
 end
 
 local function ItemInfo(id)
-  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local name = get and get(id)
+  local name = ns.ItemName and ns.ItemName(id)
+  if not name then
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    name = get and get(id)
+  end
   local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id))
     or (GetItemIcon and GetItemIcon(id)) or 134400
   return name, icon

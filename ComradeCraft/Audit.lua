@@ -224,8 +224,9 @@ local KNOWN_DROP_RATES = {
 
 -- Returns formatted drop chance ("~4%", "~0.5%", etc.) for a recipe scroll itemID / spellID:
 -- 1. Optional runtime connector if a Forever drop-rate addon exposes a public GetDropRate API.
--- 2. Embedded Classic 1.12 reference table (ns.DropRates, 358 dropable recipes from CMaNGOS).
--- 3. Fallback curated table for iconic spells when itemID is omitted.
+-- 2. Peer-verified live ForeverDB observations (>= 10 kills, >= 1 drop).
+-- 3. Embedded Classic 1.12 reference table (ns.DropRates, 358 dropable recipes from CMaNGOS).
+-- 4. Fallback curated table for iconic spells when itemID is omitted.
 function ns.DropRateText(recipeItem, spell)
   if recipeItem and recipeItem > 0 then
     for _, gname in ipairs({ "ForeverDrops", "Lootified" }) do
@@ -237,12 +238,30 @@ function ns.DropRateText(recipeItem, spell)
         end
       end
     end
+    if ns.ForeverDB and ns.ForeverDB.DropRate then
+      local pct = ns.ForeverDB.DropRate(recipeItem)
+      if pct and pct > 0 then
+        return ("%.2f"):format(pct):gsub("%.?0+$", "") .. "%"
+      end
+    end
     local r = ns.DropRates and ns.DropRates[recipeItem]
     if r and r > 0 then
       return ("%.2f"):format(r):gsub("%.?0+$", "") .. "%"
     end
   end
   return spell and KNOWN_DROP_RATES[spell] or nil
+end
+
+local function PlaceZoneName(place)
+  if not place then return nil end
+  if place.areaId and C_Map and C_Map.GetAreaInfo then
+    local z = C_Map.GetAreaInfo(place.areaId)
+    if type(z) == "string" and z ~= "" then return z end
+  end
+  if place.uiMap and C_Map and C_Map.GetMapInfo then
+    local info = C_Map.GetMapInfo(place.uiMap)
+    if info and info.name and info.name ~= "" then return info.name end
+  end
 end
 
 -- Compact source summary for an unlearned pattern (trainer / vendor / quest / drop + drop rate / AH).
@@ -254,6 +273,7 @@ local function PatternSourceText(spell, recipeItem)
     local p = ns.PriceSource(recipeItem)
     if p and p > 0 then ahTxt = " | " .. L["AH ~%s"]:format(ns.Money(math.floor(p))) end
   end
+  local myMap = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
   for _, kind in ipairs({ "trainer", "vendor", "quest", "drop" }) do
     local s = src[kind]
     if s and s.list and s.list[1] then
@@ -262,11 +282,19 @@ local function PatternSourceText(spell, recipeItem)
       if kind == "drop" then
         local rate = ns.DropRateText(recipeItem, spell)
         local base
-        if rate and (s.total or 0) <= 50 then
+        if (s.total or 0) > 50 then
+          local z = PlaceZoneName(first.place)
+          local where
+          if z and myMap and first.place and first.place.uiMap == myMap then
+            where = L["world drop - here (%s)"]:format(z)
+          elseif z then
+            where = L["world drop - near %s"]:format(z)
+          else
+            where = L["world drop"]
+          end
+          base = rate and ("%s (~%s)"):format(where, rate) or where
+        elseif rate then
           base = ("%s: %s (~%s)"):format(L["drop"], who, rate)
-        elseif (s.total or 0) > 50 then
-          base = rate and ("%s (~%s)"):format(L["world drop (%d mobs)"]:format(s.total), rate)
-            or L["world drop (%d mobs)"]:format(s.total)
         elseif (s.total or 1) == 1 then
           base = ("%s: %s (%s)"):format(L["drop"], who, L["1 mob"])
         else
@@ -513,8 +541,16 @@ function Audit.Run()
       if a.gain ~= b.gain then return a.gain > b.gain end
       return a.item < b.item
     end)
-    for i = 1, math.min(MAX_GEAR_UPGRADES, #gearUps) do
-      local g = gearUps[i]
+    local topGear = {}
+    for i = 1, math.min(MAX_GEAR_UPGRADES, #gearUps) do topGear[#topGear + 1] = gearUps[i] end
+    local SLOT_ORDER = { [1] = 1, [2] = 2, [3] = 3, [15] = 4, [5] = 5, [9] = 6, [10] = 7, [6] = 8,
+      [7] = 9, [8] = 10, [11] = 11, [12] = 12, [13] = 13, [14] = 14, [16] = 15, [17] = 16, [18] = 17 }
+    table.sort(topGear, function(a, b)
+      local oa, ob = SLOT_ORDER[a.slot or 0] or 99, SLOT_ORDER[b.slot or 0] or 99
+      if oa ~= ob then return oa < ob end
+      return a.gain > b.gain
+    end)
+    for _, g in ipairs(topGear) do
       local gname = ItemInfo(g.item) or ns.SpellName(g.spell)
       local slotTag = g.slot and g.slot > 0 and ("[" .. SlotLabel(g.slot, g.isShield) .. "] ") or ""
       list[#list + 1] = {
@@ -634,64 +670,69 @@ function Audit.PatternsForCrafter(crafterKey)
           if kinds and (kinds.trainer or kinds.vendor or kinds.quest or kinds.drop) then
             local item = r[5] or 0
             local recipeItem = type(e) == "table" and e.itemId or nil
-            local forList, helpsSelf, bestScore, cat = {}, false, 0, nil
+            local forList, helpsSelf, bestScore, cat, slotGroup = {}, false, 0, nil, "Other"
             local bagSz = item ~= 0 and BAG_SLOTS[item]
             if bagSz and bagSz >= 12 then
               for tkey, tc in pairs(chars) do
                 local mb = minBagOf[tkey]
                 if mb and mb < bagSz then
-                  forList[#forList + 1] = { key = tkey, class = tc.class, gain = bagSz - mb, isSelf = (tkey == meKey or tkey == crafterKey) }
+                  forList[#forList + 1] = { key = tkey, class = tc.class, level = tc.level or 1, gain = bagSz - mb, isSelf = (tkey == meKey or tkey == crafterKey) }
                   if tkey == meKey or tkey == crafterKey then helpsSelf = true end
                   bestScore = math.max(bestScore, (bagSz - mb) * 8)
                 end
               end
-              cat = "bag"
+              cat, slotGroup = "bag", "Bags"
             elseif line == ns.ENCHANTING and GS and GS.ScoreEnchant and ns.EnchantSlots and ns.EnchantSlots[spell] then
               for tkey, tc in pairs(chars) do
                 local sc = GS.ScoreEnchant(spell, tc)
                 if sc and sc >= 8 then
-                  forList[#forList + 1] = { key = tkey, class = tc.class, gain = sc, isSelf = (tkey == meKey or tkey == crafterKey) }
+                  forList[#forList + 1] = { key = tkey, class = tc.class, level = tc.level or 1, gain = sc, isSelf = (tkey == meKey or tkey == crafterKey) }
                   if tkey == meKey or tkey == crafterKey then helpsSelf = true end
                   bestScore = math.max(bestScore, sc)
                 end
               end
-              cat = "enchant"
+              cat, slotGroup = "enchant", "Enchants"
             elseif item ~= 0 and GS and GS.CONSUMABLES and GS.CONSUMABLES[spell] and GS.ScoreConsumable then
               for tkey, tc in pairs(chars) do
                 local sc = GS.ScoreConsumable(spell, tc)
                 if sc and sc >= 6 then
-                  forList[#forList + 1] = { key = tkey, class = tc.class, gain = sc, isSelf = (tkey == meKey or tkey == crafterKey) }
+                  forList[#forList + 1] = { key = tkey, class = tc.class, level = tc.level or 1, gain = sc, isSelf = (tkey == meKey or tkey == crafterKey) }
                   if tkey == meKey or tkey == crafterKey then helpsSelf = true end
                   bestScore = math.max(bestScore, sc)
                 end
               end
-              cat = "consumable"
+              cat, slotGroup = "consumable", "Consumables"
             elseif item ~= 0 and IsEquipInstant(item) and ns.UpgradeFor then
-              local name = ItemInfo(item, false)
+              local name, _, eqLoc = ItemInfo(item, false)
               if name then
                 local bop = ns.IsBoP and ns.IsBoP(item)
                 for tkey, tc in pairs(chars) do
                   if (not bop or tkey == crafterKey) and tc.equipped then
                     local up, gain, how = ns.UpgradeFor(item, tc)
                     if up and gain and gain > 0 then
-                      forList[#forList + 1] = { key = tkey, class = tc.class, gain = gain, how = how, isSelf = (tkey == meKey or tkey == crafterKey) }
+                      forList[#forList + 1] = { key = tkey, class = tc.class, level = tc.level or 1, gain = gain, how = how, isSelf = (tkey == meKey or tkey == crafterKey) }
                       if tkey == meKey or tkey == crafterKey then helpsSelf = true end
                       bestScore = math.max(bestScore, gain)
                     end
                   end
                 end
                 cat = "gear"
+                local isWep = eqLoc == "INVTYPE_WEAPON" or eqLoc == "INVTYPE_2HWEAPON"
+                  or eqLoc == "INVTYPE_WEAPONMAINHAND" or eqLoc == "INVTYPE_WEAPONOFFHAND"
+                  or eqLoc == "INVTYPE_RANGED" or eqLoc == "INVTYPE_RANGEDRIGHT" or eqLoc == "INVTYPE_THROWN"
+                slotGroup = isWep and "Weapon" or "Armor"
               end
             end
             if #forList > 0 then
               table.sort(forList, function(a, b)
                 if a.isSelf ~= b.isSelf then return a.isSelf end
+                if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
                 return (a.gain or 0) > (b.gain or 0)
               end)
               candidates[#candidates + 1] = {
                 spell = spell, item = item, recipeItem = recipeItem, line = line,
                 prof = ns.ProfName and ns.ProfName(line, pname) or pname,
-                req = req, rank = rank, canLearn = rank >= req, category = cat,
+                req = req, rank = rank, canLearn = rank >= req, category = cat, slotGroup = slotGroup,
                 forList = forList, helpsSelf = helpsSelf,
                 score = bestScore + #forList * 4 + (helpsSelf and 12 or 0) + (rank >= req and 6 or 0),
               }

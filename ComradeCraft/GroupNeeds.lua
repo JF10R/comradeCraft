@@ -406,7 +406,8 @@ function ns.NeedRows(c, itemID, directOnly)
     if n and n > 0 then
       local step = need.when and need.when[itemID]
       local planStep = step and need.plan and need.plan[step]
-      rows[#rows + 1] = { prof = need.name, n = n, step = step, spell = planStep and planStep.spell or nil }
+      local sp = (need.whenSpell and need.whenSpell[itemID]) or (planStep and planStep.spell) or nil
+      rows[#rows + 1] = { prof = need.name, n = n, step = step, spell = sp }
     end
     if t then
       local pn = need.items and need.items[t.other]
@@ -414,8 +415,9 @@ function ns.NeedRows(c, itemID, directOnly)
         local convN = t.isSmall and (pn * t.ratio) or math.ceil(pn / t.ratio)
         local step = need.when and need.when[t.other]
         local planStep = step and need.plan and need.plan[step]
+        local sp = (need.whenSpell and need.whenSpell[t.other]) or (planStep and planStep.spell) or nil
         rows[#rows + 1] = { prof = need.name, n = convN, step = step,
-          spell = planStep and planStep.spell or nil, convertsTo = t.other }
+          spell = sp, convertsTo = t.other }
       end
     end
   end
@@ -436,4 +438,76 @@ function ns.NeedOf(c, itemID, directOnly)
     end
   end
   return n
+end
+
+-- Mail In-Transit tracking (1h Classic/Forever inter-account mail delay):
+-- Prevents friends from double-farming or double-mailing items already on their way.
+local MAIL_TRANSIT_SECONDS = 3600
+local function NowServer() return (GetServerTime and GetServerTime()) or time() end
+
+function ns.PruneInTransit()
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local now = NowServer()
+  for _, c in pairs(ComradeCraftDB.chars) do
+    if type(c.inTransit) == "table" then
+      local kept = {}
+      for _, e in ipairs(c.inTransit) do
+        if type(e) == "table" and (e.arrives or 0) > now and (e.qty or 0) > 0 then
+          kept[#kept + 1] = e
+        end
+      end
+      c.inTransit = #kept > 0 and kept or nil
+    end
+  end
+end
+
+-- Records mailed items sent from the active character to a peer character (1h transit window).
+-- Same-account mails arrive instantly in WoW, so only cross-account peer mails are tracked.
+function ns.RecordInTransit(toKey, items)
+  if not (ComradeCraftDB and ComradeCraftDB.chars and toKey and type(items) == "table") then return 0 end
+  local target = ns.AllChars and ns.AllChars()[toKey]
+  if not (target and target.peer) then return 0 end
+  ns.PruneInTransit()
+  local c = ns.CharData()
+  c.inTransit = c.inTransit or {}
+  local now = NowServer()
+  local added = 0
+  for itemID, qty in pairs(items) do
+    if type(itemID) == "number" and itemID > 0 and (qty or 0) > 0 then
+      c.inTransit[#c.inTransit + 1] = { to = toKey, item = itemID, qty = math.floor(qty),
+        sent = now, arrives = now + MAIL_TRANSIT_SECONDS }
+      added = added + 1
+    end
+  end
+  while #c.inTransit > 30 do table.remove(c.inTransit, 1) end
+  if added > 0 then
+    c.updated = time()
+    if ns.UpdateNeeds then ns.UpdateNeeds(target) end
+    if ns.ClearGiveCache then ns.ClearGiveCache() end
+    if ns.Sync then ns.Sync.MarkDirty() end
+  end
+  return added
+end
+
+-- All active in-transit shipments across the group (optionally filtered by recipient and/or itemID).
+function ns.InTransitFor(targetKey, itemID)
+  local now = NowServer()
+  local total, list = 0, {}
+  local chars = ns.AllChars and ns.AllChars() or {}
+  for fromKey, c in pairs(chars) do
+    for _, e in ipairs(c.inTransit or {}) do
+      if type(e) == "table" and (e.arrives or 0) > now and (e.qty or 0) > 0 then
+        local okTo = (not targetKey) or e.to == targetKey or (ns.IsSameChar and ns.IsSameChar(e.to, targetKey))
+        local okItem = (not itemID) or e.item == itemID
+        if okTo and okItem then
+          total = total + e.qty
+          list[#list + 1] = { from = fromKey, fromClass = c.class, to = e.to,
+            toClass = chars[e.to] and chars[e.to].class, item = e.item, qty = e.qty,
+            sent = e.sent, arrives = e.arrives, left = math.max(0, e.arrives - now) }
+        end
+      end
+    end
+  end
+  table.sort(list, function(a, b) return a.left < b.left end)
+  return total, list
 end

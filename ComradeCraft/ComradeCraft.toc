@@ -75,9 +75,11 @@ Directory.lua
 Alerts.lua
 Shopping.lua
 Sources.lua
+ForeverDB.lua
 Loot.lua
 Synergies.lua
 Audit.lua
+ZoneRadar.lua
 FarmAdvice.lua
 Tracker.lua
 Farm.lua

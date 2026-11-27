@@ -12,9 +12,10 @@ local L = ns.L
 
 local PREFIX = "ComradeCraft"
 local PROTO = 1
-local HELLO_DEBOUNCE = 60   -- seconds between a local change and the next HELLO
+local HELLO_DEBOUNCE = 60   -- seconds between a local meta change and the next HELLO
+local STOCK_DEBOUNCE = 15   -- seconds between a stock-only change and a lightweight Stock Delta ("S")
 local REPLY_COOLDOWN = 30   -- seconds between two HELLO replies to the same peer
-local MAX_CHARS, MAX_PROFS, MAX_RECIPES, MAX_ITEMS, MAX_FARM = 50, 20, 3000, 2000, 40
+local MAX_CHARS, MAX_PROFS, MAX_RECIPES, MAX_ITEMS, MAX_FARM, MAX_TRANSIT = 50, 20, 3000, 2000, 40, 30
 
 local Sync = {}
 ns.Sync = Sync
@@ -146,11 +147,27 @@ function Sync.CleanRecord(r)
   local items = 0
   for item, count in pairs(type(r.owned) == "table" and r.owned or {}) do
     item, count = Num(item, 1, 2 ^ 31), Num(count, 1, 1000000)
-    if item and count and ns.ItemPrices[item] and items < MAX_ITEMS then
+    if item and count and (out.bankAlt or ns.ItemPrices[item] or (r.reserved and r.reserved[item])) and items < MAX_ITEMS then
       out.bags[item] = count
       items = items + 1
     end
   end
+  -- Active outgoing mail in transit (1h Classic/Forever delay).
+  local tr = {}
+  local nowS = (GetServerTime and GetServerTime()) or time()
+  for _, e in ipairs(type(r.inTransit) == "table" and r.inTransit or {}) do
+    if type(e) == "table" and #tr < MAX_TRANSIT then
+      local to = Str(e.t or e.to, 80)
+      local it = Num(e.i or e.item, 1, 2 ^ 31)
+      local q = Num(e.q or e.qty, 1, 1000000)
+      local arr = Num(e.a or e.arrives, 1, 2 ^ 31)
+      local snt = Num(e.s or e.sent, 0, 2 ^ 31) or math.max(0, (arr or 0) - 3600)
+      if to and it and q and arr and arr > nowS and arr <= nowS + 7200 then
+        tr[#tr + 1] = { to = to, item = it, qty = q, sent = snt, arrives = arr }
+      end
+    end
+  end
+  out.inTransit = #tr > 0 and tr or nil
   -- Farming assignments (group plan): positive counts, MAX_FARM at most.
   local farm, nf = {}, 0
   for item, target in pairs(type(r.farm) == "table" and r.farm or {}) do
@@ -231,9 +248,14 @@ local function Record(c, key)
     known[line] = list
   end
   local owned = {}
+  local isBank = c.bankAlt and true or false
+  local bound = c.bound or {}
   for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
     for item, n in pairs(src) do
-      if ns.ItemPrices[item] then owned[item] = (owned[item] or 0) + n end
+      local keep = ns.ItemPrices[item]
+        or (c.reserved and c.reserved[item])
+        or (isBank and not bound[item] and not (ns.IsBoP and ns.IsBoP(item)))
+      if keep then owned[item] = (owned[item] or 0) + n end
     end
   end
   local profs = {}
@@ -264,11 +286,61 @@ local function Record(c, key)
       nr = nr + 1
     end
   end
+  local tr = {}
+  local nowS = (GetServerTime and GetServerTime()) or time()
+  for _, e in ipairs(c.inTransit or {}) do
+    if #tr < MAX_TRANSIT and type(e) == "table" and (e.arrives or 0) > nowS and (e.qty or 0) > 0 then
+      tr[#tr + 1] = { t = e.to, i = e.item, q = e.qty, s = e.sent, a = e.arrives }
+    end
+  end
   return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon,
     specOverride = c.specOverride, bankAlt = c.bankAlt or nil, route = c.route, updated = c.updated,
     professions = profs, known = known, owned = owned, equipped = c.equipped, enchants = c.enchants,
     bagSizes = c.bagSizes, farm = nf > 0 and farm or nil, cooldowns = nc > 0 and cds or nil,
-    wishlist = #wl > 0 and wl or nil, reserved = nr > 0 and res or nil }
+    wishlist = #wl > 0 and wl or nil, reserved = nr > 0 and res or nil,
+    inTransit = #tr > 0 and tr or nil }
+end
+
+-- Compact stock-only payload ("S") for fast incremental sync without re-sending recipes/professions.
+local function StockPayload(c, key)
+  local owned = {}
+  local isBank = c.bankAlt and true or false
+  local bound = c.bound or {}
+  for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
+    for item, n in pairs(src) do
+      local keep = ns.ItemPrices[item]
+        or (c.reserved and c.reserved[item])
+        or (isBank and not bound[item] and not (ns.IsBoP and ns.IsBoP(item)))
+      if keep then owned[item] = (owned[item] or 0) + n end
+    end
+  end
+  local farm, nf = {}, 0
+  for item, a in pairs(ComradeCraftDB.farm or {}) do
+    if a.char == key and nf < MAX_FARM then farm[item] = a.target nf = nf + 1 end
+  end
+  local wl = {}
+  for _, e in ipairs(ComradeCraftDB.wishlist or {}) do
+    if e.char == key and #wl < 15 then
+      wl[#wl + 1] = { id = e.id, s = e.spell, q = e.qty, w = e.forWho, n = e.note }
+    end
+  end
+  local res, nr = {}, 0
+  for item, rv in pairs(c.reserved or {}) do
+    if nr < MAX_FARM and rv and rv.to and (rv.qty or 0) > 0 then
+      res[item] = { t = rv.to, q = rv.qty }
+      nr = nr + 1
+    end
+  end
+  local tr = {}
+  local nowS = (GetServerTime and GetServerTime()) or time()
+  for _, e in ipairs(c.inTransit or {}) do
+    if #tr < MAX_TRANSIT and type(e) == "table" and (e.arrives or 0) > nowS and (e.qty or 0) > 0 then
+      tr[#tr + 1] = { t = e.to, i = e.item, q = e.qty, s = e.sent, a = e.arrives }
+    end
+  end
+  return { u = c.updated or time(), owned = owned, farm = nf > 0 and farm or nil,
+    wishlist = #wl > 0 and wl or nil, reserved = nr > 0 and res or nil,
+    inTransit = #tr > 0 and tr or nil }
 end
 
 -- Converts a validated remote record back into wire shape for Mesh Sync relay.
@@ -291,11 +363,22 @@ local function RemoteToWire(rec)
     res = {}
     for item, rv in pairs(rec.reserved) do res[item] = { t = rv.to, q = rv.qty } end
   end
+  local tr
+  if rec.inTransit and #rec.inTransit > 0 then
+    tr = {}
+    local nowS = (GetServerTime and GetServerTime()) or time()
+    for _, e in ipairs(rec.inTransit) do
+      if (e.arrives or 0) > nowS and (e.qty or 0) > 0 then
+        tr[#tr + 1] = { t = e.to, i = e.item, q = e.qty, s = e.sent, a = e.arrives }
+      end
+    end
+    if #tr == 0 then tr = nil end
+  end
   return { class = rec.class, level = rec.level, spec = rec.spec, specIcon = rec.specIcon,
     specOverride = rec.specOverride, bankAlt = rec.bankAlt or nil, route = rec.route, updated = rec.updated,
     professions = rec.professions, known = known, owned = rec.bags, equipped = rec.equipped,
     enchants = rec.enchants, bagSizes = rec.bagSizes, farm = rec.farm, cooldowns = rec.cooldowns,
-    wishlist = wl, reserved = res }
+    wishlist = wl, reserved = res, inTransit = tr }
 end
 
 local function DB()
@@ -383,6 +466,23 @@ function Sync.Hello(reply)
     m = MeshIndex(), sk = SkillupTotals() }
 end
 
+-- True when `key` (and optional record/summary) already belongs to one of this account's characters.
+local function IsLocalChar(db, key, rec)
+  if not (db and db.chars and key) then return false end
+  if db.chars[key] then return true end
+  local cls = rec and (rec.class or rec.cl) or nil
+  local probe = cls and { class = cls } or rec
+  for lKey, lRec in pairs(db.chars) do
+    if ns.IsSameChar and ns.IsSameChar(key, lKey, probe, lRec) then return true end
+  end
+  local meKey = ns.CharKey and ns.CharKey()
+  if meKey and meKey ~= "" then
+    local _, pCls = UnitClass and UnitClass("player")
+    if ns.IsSameChar and ns.IsSameChar(key, meKey, probe, pCls and { class = pCls } or nil) then return true end
+  end
+  return false
+end
+
 local function RequestChanged(id, meshTable)
   local db = DB()
   local peer = db.peers[id]
@@ -390,7 +490,7 @@ local function RequestChanged(id, meshTable)
   local keys = {}
   for key, s in pairs(peer.chars or {}) do
     local have = db.remote[key]
-    if not db.chars[key] and (not have or (have.updated or 0) < (s.u or 0)) then keys[#keys + 1] = key end
+    if not IsLocalChar(db, key, s) and (not have or (have.updated or 0) < (s.u or 0)) then keys[#keys + 1] = key end
   end
   local rkeys = {}
   if type(meshTable) == "table" then
@@ -402,7 +502,7 @@ local function RequestChanged(id, meshTable)
           key = Str(key, 80)
           ts = Num(ts, 1, 2 ^ 31)
           local have = key and db.remote[key]
-          if key and ts and not db.chars[key] and (not have or (have.updated or 0) < ts) and #rkeys < MAX_CHARS then
+          if key and ts and not IsLocalChar(db, key) and (not have or (have.updated or 0) < ts) and #rkeys < MAX_CHARS then
             rkeys[#rkeys + 1] = { p = origId, k = key }
           end
         end
@@ -450,7 +550,31 @@ function Sync.Announce()
   Sync.AnnounceToGroup(true)
 end
 
--- "key=updated;..." of the shared characters: announce only when it changes.
+-- Splits meta (professions/known/spec/route/bankAlt/cooldowns) from frequent stock changes
+-- so bag/mail/reservation updates travel as compact Stock Delta ("S") packets every 15s
+-- instead of re-sending full recipe lists every 60s.
+local function MetaSignature()
+  local parts = {}
+  for key, c in pairs(ComradeCraftDB.chars or {}) do
+    if c.shared then
+      local kn, ks = 0, 0
+      for _, set in pairs(c.known or {}) do
+        for sp in pairs(set) do kn, ks = kn + 1, ks + sp end
+      end
+      local pr = {}
+      for _, p in pairs(c.professions or {}) do
+        if p.skillLine then pr[#pr + 1] = p.skillLine .. ":" .. (p.rank or 0) .. "/" .. (p.max or 0) end
+      end
+      table.sort(pr)
+      parts[#parts + 1] = ("%s=%s:%s:%s:%d:%d:%s"):format(key, tostring(c.level or 0),
+        tostring(c.spec or ""), tostring(c.route or ""), kn, ks, table.concat(pr, ","))
+        .. (c.bankAlt and ":b" or "")
+    end
+  end
+  table.sort(parts)
+  return table.concat(parts, ";")
+end
+
 local function Signature()
   local parts = {}
   for key, c in pairs(ComradeCraftDB.chars or {}) do
@@ -460,18 +584,53 @@ local function Signature()
   return table.concat(parts, ";")
 end
 
-local dirtyPending, lastSignature = false, nil
-function Sync.MarkDirty()
-  if dirtyPending or not C_Timer then return end
-  dirtyPending = true
-  C_Timer.After(HELLO_DEBOUNCE, function()
-    dirtyPending = false
-    local sig = Signature()
-    if sig ~= lastSignature then
-      lastSignature = sig
-      Sync.AnnounceToGroup()
+-- Sends a compact stock-only delta ("S") for the active shared character to included peers.
+function Sync.SendStockDelta(key)
+  if not ComradeCraftDB then return false end
+  key = key or (ns.CharKey and ns.CharKey())
+  local c = key and ComradeCraftDB.chars and ComradeCraftDB.chars[key]
+  if not (c and c.shared) then return false end
+  local db = DB()
+  local msg = { t = "S", v = PROTO, id = db.accountId, key = key, s = StockPayload(c, key) }
+  local sent = false
+  for _, peer in pairs(db.peers) do
+    if peer.included and peer.name then
+      Sync.Send(msg, "WHISPER", peer.name)
+      sent = true
     end
-  end)
+  end
+  return sent
+end
+
+local dirtyPending, metaPending, lastSignature, lastMetaSignature = false, false, nil, nil
+function Sync.MarkDirty()
+  if not C_Timer then return end
+  if not dirtyPending then
+    dirtyPending = true
+    C_Timer.After(STOCK_DEBOUNCE, function()
+      dirtyPending = false
+      local sig = Signature()
+      if sig == lastSignature then return end
+      local msig = MetaSignature()
+      if lastMetaSignature and msig == lastMetaSignature then
+        -- Only stock/reserved/inTransit/wishlist changed: push lightweight delta immediately.
+        lastSignature = sig
+        Sync.SendStockDelta()
+      else
+        if not metaPending then
+          metaPending = true
+          C_Timer.After(math.max(1, HELLO_DEBOUNCE - STOCK_DEBOUNCE), function()
+            metaPending = false
+            local s2, m2 = Signature(), MetaSignature()
+            if s2 ~= lastSignature or m2 ~= lastMetaSignature then
+              lastSignature, lastMetaSignature = s2, m2
+              Sync.AnnounceToGroup()
+            end
+          end)
+        end
+      end
+    end)
+  end
 end
 
 -- Marks a local character shared or not; unsharing tells the group right away.
@@ -585,10 +744,17 @@ function Sync.OnMessage(text, dist, sender)
       peer.replied = time()
       Sync.Send(Sync.Hello(true), "WHISPER", sender)
     end
+    if peer.included and ns.ForeverDB and ns.ForeverDB.SendToPeer then
+      ns.ForeverDB.SendToPeer(id, sender)
+    end
     RequestChanged(id, msg.m)
     -- Characters they stopped sharing disappear.
     for key, rec in pairs(db.remote) do
       if rec.peer == id and not chars[key] then db.remote[key] = nil end
+    end
+  elseif msg.t == "F" then
+    if (peer.included or dist == "GUILD") and ns.ForeverDB and ns.ForeverDB.OnRemote then
+      ns.ForeverDB.OnRemote(id, msg)
     end
   elseif msg.t == "R" then
     if not peer.included then
@@ -615,21 +781,58 @@ function Sync.OnMessage(text, dist, sender)
     if peer.included and ns.Requests then ns.Requests.OnRemote(id, msg.q, sender) end
   elseif msg.t == "A" then
     if peer.included and ns.Requests then ns.Requests.OnAck(id, msg.rid, msg.u) end
+  elseif msg.t == "S" then
+    -- Compact Stock Delta: updates bags/farm/wishlist/reserved/inTransit in-place without re-sending recipes.
+    local key = Str(msg.key, 80)
+    local s = type(msg.s) == "table" and msg.s or nil
+    local have = key and db.remote[key]
+    if peer.included and key and s and not IsLocalChar(db, key, have) then
+      if have and have.peer == id then
+        local clean = Sync.CleanRecord({
+          class = have.class, level = have.level, bankAlt = have.bankAlt,
+          updated = s.u, owned = s.owned, farm = s.farm,
+          wishlist = s.wishlist, reserved = s.reserved, inTransit = s.inTransit,
+        })
+        if clean and (clean.updated or 0) >= (have.updated or 0) then
+          have.updated = clean.updated
+          have.bags = clean.bags
+          have.farm = clean.farm
+          have.wishlist = clean.wishlist
+          have.reserved = clean.reserved
+          have.inTransit = clean.inTransit
+          ns.UpdateNeeds(have)
+          if clean.inTransit then
+            for _, tr in ipairs(clean.inTransit) do
+              local tc = db.chars[tr.to] or db.remote[tr.to]
+              if tc then ns.UpdateNeeds(tc) end
+            end
+          end
+          if ns.ClearGiveCache then ns.ClearGiveCache() end
+          if ns.Bags and ns.Bags.Refresh then ns.Bags.Refresh() end
+          if ns.RefreshFarm then ns.RefreshFarm() end
+        end
+      elseif peer.name then
+        -- We don't have the base record yet: request the full record once.
+        Sync.Send({ t = "R", v = PROTO, id = db.accountId, k = { key } }, "WHISPER", peer.name)
+      end
+    end
   elseif msg.t == "D" then
     local key = Str(msg.key, 80)
     local origId = msg.orig and Str(msg.orig, 32) or nil
     local ownerId = origId or id
     local ownerPeer = db.peers[ownerId]
-    if peer.included and ownerPeer and ownerPeer.included and key and not db.chars[key] then
+    if peer.included and ownerPeer and ownerPeer.included and key then
       local rec = Sync.CleanRecord(msg.rec)
-      local have = db.remote[key]
-      if rec and (not origId or not have or (have.updated or 0) < (rec.updated or 0)) then
-        rec.peer = ownerId
-        if origId then rec.relayedBy = id end
-        db.remote[key] = rec
-        ns.UpdateNeeds(rec)
-        if ns.Alerts then ns.Alerts.CheckUpgrades() end
-        if ns.Bags and ns.Bags.Refresh then ns.Bags.Refresh() end
+      if rec and not IsLocalChar(db, key, rec) then
+        local have = db.remote[key]
+        if not origId or not have or (have.updated or 0) < (rec.updated or 0) then
+          rec.peer = ownerId
+          if origId then rec.relayedBy = id end
+          db.remote[key] = rec
+          ns.UpdateNeeds(rec)
+          if ns.Alerts then ns.Alerts.CheckUpgrades() end
+          if ns.Bags and ns.Bags.Refresh then ns.Bags.Refresh() end
+        end
       end
     end
   end

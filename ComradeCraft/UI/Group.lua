@@ -18,29 +18,132 @@ function U.RenderGroup(filter)
   local keys = SortedKeys(chars)
   local y = 0
   if filter ~= "" then
-    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Who can craft \"%s\""]:format(filter) .. "|r") - 6
-    local found, any = {}, false
+    -- 1. In group stock & active in-transit shipments matching `filter`.
+    local stockHits = {}
+    local seenStock = {}
+    for _, key in ipairs(keys) do
+      local c = chars[key]
+      local totals = {}
+      for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
+        for id, n in pairs(src) do
+          if n > 0 then totals[id] = (totals[id] or 0) + n end
+        end
+      end
+      for id, n in pairs(totals) do
+        local name = ItemInfo(id)
+        if name and name:lower():find(filter, 1, true) then
+          local h = stockHits[id]
+          if not h then
+            h = { item = id, name = name, total = 0, holders = {} }
+            stockHits[id] = h
+            seenStock[#seenStock + 1] = h
+          end
+          h.total = h.total + n
+          h.holders[#h.holders + 1] = { key = key, class = c.class, n = n, bankAlt = c.bankAlt, peer = c.peer }
+        end
+      end
+    end
+    local _, allTr = ns.InTransitFor and ns.InTransitFor() or 0, {}
+    for _, tr in ipairs(allTr) do
+      local name = ItemInfo(tr.item)
+      if name and name:lower():find(filter, 1, true) then
+        local h = stockHits[tr.item]
+        if not h then
+          h = { item = tr.item, name = name, total = 0, holders = {}, transit = {} }
+          stockHits[tr.item] = h
+          seenStock[#seenStock + 1] = h
+        end
+        h.transit = h.transit or {}
+        h.transit[#h.transit + 1] = tr
+      end
+    end
+    table.sort(seenStock, function(a, b) return a.name < b.name end)
+    local any = false
+    if #seenStock > 0 then
+      any = true
+      y = y - SectionBar(0, y, LIST_W, "|cff80ccff" .. L["In group stock: \"%s\""]:format(filter) .. "|r") - 6
+      local width = math.floor((LIST_W - 8) / 2)
+      local shown = math.min(#seenStock, 16)
+      for i = 1, shown do
+        local h = seenStock[i]
+        table.sort(h.holders, function(a, b) return a.n > b.n end)
+        local parts, bankKey, bankN = {}, nil, nil
+        for _, hl in ipairs(h.holders) do
+          local tag = hl.bankAlt and (" [" .. L["Bank"] .. "]") or ""
+          parts[#parts + 1] = ("%s %d%s"):format(ShortName(hl.key), hl.n, tag)
+          if hl.peer and hl.bankAlt and not bankKey then bankKey, bankN = hl.key, hl.n end
+        end
+        for _, tr in ipairs(h.transit or {}) do
+          local mins = math.max(1, math.ceil((tr.left or 0) / 60))
+          parts[#parts + 1] = ("|cff80ccff%dx -> %s (~%dm)|r"):format(tr.qty, ShortName(tr.to), mins)
+        end
+        local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
+        local card = PlaceMat(col * (width + 4), y - line * (MAT_H + 4), h.item, h.total, table.concat(parts, ", "), width)
+        if bankKey then card.bankReq = { key = bankKey, want = bankN } end
+      end
+      y = y - math.ceil(shown / 2) * (MAT_H + 4) - 8
+    end
+
+    -- 2. Who can craft in your group.
+    local found = {}
     for _, key in ipairs(keys) do
       for _, e in ipairs(ns.CraftCatalog(key)) do
         if Matches(e, filter) and LineVisible(e.line) then
           local f = found[e.spell]
           if not f then
-            f = { e = e, who = {} }
+            f = { e = e, who = {}, keys = {} }
             found[e.spell] = f
           end
           f.who[#f.who + 1] = ("|cff%s%s|r"):format(COLOR[e.color] or "ffffff", ShortName(key))
+          f.keys[#f.keys + 1] = key
         end
       end
     end
     local list = {}
     for _, f in pairs(found) do list[#list + 1] = f end
     table.sort(list, function(a, b) return a.e.name < b.e.name end)
-    for idx, f in ipairs(list) do
+    if #list > 0 then
       any = true
-      local e = { spell = f.e.spell, item = f.e.item, color = "yellow", name = f.e.name }
-      PlaceRecipe(8, y, e, table.concat(f.who, ", "), nil, false, idx % 2 == 0).name:SetText(f.e.name)
-      y = y - RECIPE_H
+      y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Who can craft \"%s\""]:format(filter) .. "|r") - 6
+      for idx, f in ipairs(list) do
+        local e = { spell = f.e.spell, item = f.e.item, color = "yellow", name = f.e.name }
+        local row = PlaceRecipe(8, y, e, table.concat(f.who, ", "), nil, false, idx % 2 == 0)
+        row.name:SetText(f.e.name)
+        -- Pick best peer crafter (or own char) for 1-click Request / Pin right from search!
+        local peerKey, ownKey
+        for _, ck in ipairs(f.keys) do
+          if chars[ck] and chars[ck].peer then peerKey = peerKey or ck else ownKey = ownKey or ck end
+        end
+        if peerKey and ns.Requests and ns.Requests.ShowDialog then
+          local pk, sp = peerKey, f.e.spell
+          Action(LIST_W - 88, y - 4, L["Request"], function() ns.Requests.ShowDialog(pk, sp) end):SetWidth(84)
+        elseif ownKey and ns.Wishlist and ns.Wishlist.ShowDialog then
+          local ok_, sp = ownKey, f.e.spell
+          Action(LIST_W - 88, y - 4, L["Pin"], function() ns.Wishlist.ShowDialog(sp, ok_) end):SetWidth(84)
+        end
+        y = y - RECIPE_H
+      end
+      y = y - 6
     end
+
+    -- 3. Guild directory matches (crafters outside your personal sync group).
+    local dirFound = ns.Directory and ns.Directory.Search and ns.Directory.Search(filter) or {}
+    if #dirFound > 0 then
+      any = true
+      y = y - SectionBar(0, y, LIST_W, "|cff66ccff" .. L["Guild directory"] .. "|r") - 6
+      for i = 1, math.min(#dirFound, 12) do
+        local d = dirFound[i]
+        local c0 = d.crafters and d.crafters[1]
+        local txt = ("|cffffd100%s|r  |cff9d9d9d- %s|r"):format(d.name, ns.Directory.Names(d.crafters, 4))
+        local _, dh = Label(8, y - 4, txt, "GameFontHighlightSmall", LIST_W - 102)
+        if c0 and ns.Directory.WhisperTarget(c0) then
+          local ck = c0
+          Action(LIST_W - 88, y, L["Whisper"], function() ns.Directory.Whisper(ck) end):SetWidth(84)
+        end
+        y = y - math.max(24, dh + 6)
+      end
+    end
+
     if not any then
       local _, h2 = Label(0, y, "|cff9d9d9d" .. L["No recipe matches."] .. "|r")
       y = y - h2
@@ -128,7 +231,9 @@ function U.RenderGroup(filter)
         table.sort(parts, function(p, q) return p.n > q.n end)
         local list = {}
         for _, p in ipairs(parts) do list[#list + 1] = p.text end
+        local _, calibrated, deN = ns.DisenchantYield and ns.DisenchantYield(a.item)
         text = L["Disenchant: %s"]:format(table.concat(list, ", "))
+        if calibrated then text = text .. (" |cff40ff40(%s %d)|r"):format(L["measured"], deN or 0) end
         if a.useful then text = text .. "  |cff80ff80" .. L["the group needs these"] .. "|r" end
         if a.enchanter then text = text .. "  |cff66ccff" .. L["give to %s"]:format(ShortName(a.enchanter)) .. "|r" end
       end
@@ -364,6 +469,23 @@ end
     y = y - 6
   end
 
+  -- Sky-blue banner: active peer mail shipments currently in the 1h Classic/Forever transit window.
+  local _, allTransit = ns.InTransitFor and ns.InTransitFor() or 0, {}
+  if #allTransit > 0 then
+    y = y - SectionBar(0, y, LIST_W, "|cff80ccff" .. L["In transit (1h mail)"] .. "|r",
+      L["Already mailed between group accounts — counted as on the way so nobody double-sends."]) - 6
+    for i = 1, math.min(#allTransit, 6) do
+      local tr = allTransit[i]
+      local mins = math.max(1, math.ceil((tr.left or 0) / 60))
+      local line = ("%s  |cff80ccff->|r  %s : |cffffffff%dx %s|r  |cff9d9d9d(~%dm)|r"):format(
+        ns.ClassColored(tr.from, tr.fromClass), ns.ClassColored(tr.to, tr.toClass),
+        tr.qty, (ItemInfo(tr.item)) or ("item:" .. tr.item), mins)
+      local _, th = Label(8, y - 2, line, "GameFontHighlightSmall", LIST_W - 16)
+      y = y - th - 5
+    end
+    y = y - 6
+  end
+
   -- Violet banner: items other group members reserved/locked for you before mailing.
   local resForMe = {}
   local meKey = ns.CharKey()
@@ -414,6 +536,29 @@ end
       y = y - math.max(24, rh + 6)
     end
     y = y - 6
+  end
+
+  -- Zone & Dungeon Radar: rare drops, vendors, BiS patterns & mats useful to your group right here.
+  if ns.ZoneRadar and ns.ZoneRadar.Scan then
+    local zHits, zName = ns.ZoneRadar.Scan()
+    if #zHits > 0 then
+      y = y - SectionBar(0, y, LIST_W, "|cff66e89a" .. L["In your zone: %s"]:format(zName or "?") .. "|r",
+        L["Rare drops, vendors, patterns and materials useful to your group right here."]) - 6
+      for i = 1, math.min(#zHits, 6) do
+        local h = zHits[i]
+        local badge = h.rare and "|cffff80ff[Rare]|r " or (h.kind == "vendor" and "|cffffd100[Vendor]|r " or "")
+        local rate = h.rate and (" |cff9d9d9d(~" .. h.rate .. ")|r") or ""
+        local coords = (h.x and h.y) and (" |cff9d9d9d(" .. h.x .. ", " .. h.y .. ")|r") or ""
+        local txt = ("%s|cffffffff%s|r  |cff80ccff%s|r%s%s  |cff9d9d9d-> %s|r"):format(
+          badge, h.label or "", h.npcName or "", coords, rate, h.who or "")
+        local _, zh = Label(8, y - 4, txt, "GameFontHighlightSmall", LIST_W - 102)
+        local entry = h
+        local bw = Action(LIST_W - 88, y, L["Waypoint"], function() ns.ZoneRadar.Waypoint(entry) end)
+        bw:SetWidth(84)
+        y = y - math.max(24, zh + 6)
+      end
+      y = y - 6
+    end
   end
 
   local syns = ns.Synergies and ns.Synergies.Find() or {}
@@ -510,25 +655,67 @@ end
     end
   end
 
-  -- Group profession cooldowns (when any character has recorded long cooldowns).
+  -- Group cooldowns + Cooldown Market (net profit estimate + 1-click Claim CD request).
   local now = (GetServerTime and GetServerTime()) or time()
   local cds = {}
   for _, key in ipairs(keys) do
     local c = chars[key]
     for spell, readyAt in pairs(c.cooldowns or {}) do
-      cds[#cds + 1] = { key = key, class = c.class, spell = spell, left = readyAt - now }
+      local profit
+      local r = ns.Recipes and ns.Recipes[spell]
+      if r and r[5] and r[5] ~= 0 and ns.PriceSource then
+        local outP = ns.PriceSource(r[5])
+        if outP and outP > 0 then
+          local matCost, complete = 0, true
+          local reag = r[7] or {}
+          for i = 1, #reag, 2 do
+            local mp = ns.BuyCost and ns.BuyCost(reag[i], reag[i + 1])
+            if mp then matCost = matCost + mp else complete = false end
+          end
+          if complete then profit = outP * math.max(1, r[6] or 1) - matCost end
+        end
+      end
+      cds[#cds + 1] = { key = key, class = c.class, peer = c.peer and true or false,
+        spell = spell, left = readyAt - now, profit = profit }
     end
   end
   if #cds > 0 then
     table.sort(cds, function(a, b) return a.left < b.left end)
+    local claimed = {}
+    for _, req in pairs(ComradeCraftDB and ComradeCraftDB.requests or {}) do
+      if req.status == "pending" or req.status == "accepted" or req.status == "crafting" then
+        claimed[req.to .. "|" .. tostring(req.spell)] = req.from
+      end
+    end
+    local meKeyCd = ns.CharKey()
     y = y - 10
-    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Group cooldowns"] .. "|r") - 6
+    y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. L["Group cooldowns"] .. "|r",
+      L["Estimated net profit and 1-click Claim CD for your group's long cooldowns."]) - 6
     for _, cd in ipairs(cds) do
-      Label(6, y - 2, ns.ClassColored(cd.key, cd.class), "GameFontHighlightSmall", 140)
-      Label(150, y - 2, ns.SpellName(cd.spell), "GameFontHighlightSmall", LIST_W - 260)
-      local st = Label(LIST_W - 100, y - 2, FormatDuration(cd.left), "GameFontHighlightSmall", 94)
+      Label(6, y - 4, ns.ClassColored(cd.key, cd.class), "GameFontHighlightSmall", 132)
+      local profTag = ""
+      if cd.profit and cd.profit > 0 then
+        profTag = "  |cff40ff40(+" .. ns.Money(math.floor(cd.profit)) .. ")|r"
+      end
+      local claimer = claimed[cd.key .. "|" .. tostring(cd.spell)]
+      local claimTag = claimer and ("  |cffc080ff[" .. L["Reserved by %s"]:format(ShortName(claimer)) .. "]|r") or ""
+      local hasAction = (cd.peer and ns.Requests and ns.Requests.ShowDialog) or (cd.key == meKeyCd and cd.left <= 0)
+      Label(142, y - 4, ns.SpellName(cd.spell) .. profTag .. claimTag, "GameFontHighlightSmall",
+        LIST_W - (hasAction and 326 or 244))
+      local st = Label(LIST_W - (hasAction and 180 or 98), y - 4, FormatDuration(cd.left), "GameFontHighlightSmall", 90)
       st:SetJustifyH("RIGHT")
-      y = y - 18
+      if cd.peer and ns.Requests and ns.Requests.ShowDialog then
+        local cKey, cSpell = cd.key, cd.spell
+        local bc = Action(LIST_W - 84, y, L["Claim CD"], function()
+          ns.Requests.ShowDialog(cKey, cSpell, "[CD]")
+        end)
+        bc:SetWidth(80)
+      elseif cd.key == meKeyCd and cd.left <= 0 and ns.OpenRecipe then
+        local cSpell = cd.spell
+        local bc = Action(LIST_W - 84, y, L["Craft"], function() ns.OpenRecipe(cSpell) end)
+        bc:SetWidth(80)
+      end
+      y = y - 24
     end
   end
   return -y

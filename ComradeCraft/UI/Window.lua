@@ -77,7 +77,10 @@ local function RenderSide(sel)
     end
     y = y - h - (foldSec and 2 or 4)
   end
-  Add("group", L["Group"], ns.Plural(#SortedKeys(chars), "%d member", "%d members"))
+  local inToMe = ns.InTransitFor and select(2, ns.InTransitFor(ns.CharKey())) or {}
+  local grpSub = ns.Plural(#SortedKeys(chars), "%d member", "%d members")
+    .. (#inToMe > 0 and ("  |cff80ccff" .. L["%d in transit"]:format(#inToMe) .. "|r") or "")
+  Add("group", L["Group"], grpSub)
   local farmCount = 0
   for _, c in pairs(chars) do
     for _ in pairs(c.farming or {}) do farmCount = farmCount + 1 end
@@ -377,7 +380,7 @@ function ns.RefreshWindow()
     frame.groupDeTab:SetActive(gTab == "de")
     frame.search:ClearAllPoints()
     frame.search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -112)
-    SetSearchPlaceholder(L["Find who can craft..."])
+    SetSearchPlaceholder(L["Search stock or crafters..."])
     frame.search:Show()
     if (gTab == "de" or gTab == "upgrades") and filter == "" then
       ReleaseAll(chips)
@@ -778,10 +781,24 @@ local pending = false
 ns.On("GET_ITEM_INFO_RECEIVED", function(itemID, success)
   if not (success and itemID and missingItems[itemID]) then return end
   missingItems[itemID] = nil
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  local resolved = get and get(itemID)
+  if resolved and ns.RememberItemName then ns.RememberItemName(itemID, resolved) end
   if ns.Audit and ns.Audit.Invalidate then ns.Audit.Invalidate() end
-  if pending or not (frame and frame:IsShown()) then return end
+  if pending then return end
   pending = true
-  C_Timer.After(1.0, function() pending = false ns.RefreshWindow() end)
+  local function Redraw()
+    pending = false
+    if frame and frame:IsShown() then ns.RefreshWindow() end
+    if ns.RefreshTracker then ns.RefreshTracker() end
+    if ns.Wishlist and ns.Wishlist.RefreshTracker then ns.Wishlist.RefreshTracker() end
+    if ns.RefreshFarm then ns.RefreshFarm() end
+    if ns.Mail and ns.Mail.UpdatePanel then ns.Mail.UpdatePanel() end
+    if ns.Bank and ns.Bank.UpdatePanel then ns.Bank.UpdatePanel() end
+    if ns.Trade and ns.Trade.UpdatePanel then ns.Trade.UpdatePanel() end
+    if ns.Merchant and ns.Merchant.UpdatePanel then ns.Merchant.UpdatePanel() end
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(0.25, Redraw) else Redraw() end
 end)
 
 ns.commands.show = ns.ToggleWindow

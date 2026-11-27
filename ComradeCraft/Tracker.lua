@@ -140,6 +140,88 @@ function ns.CraftQueue(c, p, extent)
   return out, stop
 end
 
+-- Unified orders queue for the open profession: accepted/crafting incoming requests +
+-- local Wishlist entries for `line`, expanding missing same-profession intermediates first.
+function ns.OrdersQueue(c, line)
+  local out, bySpell = {}, {}
+  if not (c and line and ComradeCraftDB) then return out end
+  local me = ns.CharKey and ns.CharKey() or nil
+  local bags = c.bags or {}
+  local bank = c.bank or {}
+  local combined = {}
+  for id, n in pairs(bags) do combined[id] = n end
+  for id, n in pairs(bank) do combined[id] = (combined[id] or 0) + n end
+  local producers = {}
+  for sp in pairs((c.known or {})[line] or {}) do
+    local sr = ns.Recipes and ns.Recipes[sp]
+    if sr and sr[5] and sr[5] ~= 0 and not producers[sr[5]] then producers[sr[5]] = sp end
+  end
+  local function Push(spell, qty, tag)
+    local r = ns.Recipes and ns.Recipes[spell]
+    if not r or r[1] ~= line or qty <= 0 then return end
+    -- Queue missing same-profession intermediates first (depth 1).
+    local reag = r[7] or {}
+    for i = 1, #reag, 2 do
+      local item, need = reag[i], reag[i + 1] * qty
+      local have = bags[item] or 0
+      local sub = producers[item]
+      if sub and sub ~= spell and have < need then
+        local subYield = math.max(1, (ns.Recipes[sub] and ns.Recipes[sub][6]) or 1)
+        local subN = math.ceil((need - have) / subYield)
+        local sq = bySpell[sub]
+        if not sq then
+          local sitem = ns.Recipes[sub][5] or 0
+          local slabel = (sitem ~= 0 and ns.ItemName and ns.ItemName(sitem)) or ns.SpellName(sub)
+          sq = { spell = sub, item = sitem, label = slabel, n = 0,
+            entry = { kind = "craft", spell = sub, item = sitem, label = slabel } }
+          bySpell[sub] = sq
+          out[#out + 1] = sq
+        end
+        sq.n = sq.n + subN
+      end
+    end
+    local q = bySpell[spell]
+    if not q then
+      local item = r[5] or 0
+      local label = (item ~= 0 and ns.ItemName and ns.ItemName(item)) or ns.SpellName(spell)
+      q = { spell = spell, item = item, label = label, n = 0, tag = tag,
+        enchant = ns.EnchantSlots and ns.EnchantSlots[spell] ~= nil,
+        entry = { kind = "craft", spell = spell, item = item, label = label } }
+      bySpell[spell] = q
+      out[#out + 1] = q
+    end
+    q.n = q.n + qty
+  end
+  for _, r in pairs(ComradeCraftDB.requests or {}) do
+    if (r.status == "accepted" or r.status == "crafting") and r.spell and r.spell > 0
+      and ns.Requests and ns.Requests.Role(r) == "crafter" and (not me or r.to == me) then
+      local rec = ns.Recipes and ns.Recipes[r.spell]
+      if rec and rec[1] == line then
+        local mult = math.max(1, rec[6] or 1)
+        local haveOut = rec[5] and rec[5] ~= 0 and (bags[rec[5]] or 0) or 0
+        local rem = math.max(0, (r.qty or 1) - math.floor(((r.sentQty or 0) + haveOut) / mult))
+        if rem > 0 then
+          local dest = (ns.Requests.Recipient and ns.Requests.Recipient(r)) or r.from or ""
+          Push(r.spell, rem, dest:match("^[^-]+") or dest)
+        end
+      end
+    end
+  end
+  if ns.Wishlist and ns.Wishlist.List then
+    for _, e in ipairs(ns.Wishlist.List(me)) do
+      local rec = e.spell and ns.Recipes and ns.Recipes[e.spell]
+      if rec and rec[1] == line then
+        Push(e.spell, e.qty or 1, e.forWho or L["Wishlist"])
+      end
+    end
+  end
+  for _, q in ipairs(out) do
+    q.ready = math.min(q.n, ns.CraftableNow(q.spell, bags))
+    q.readyWithBank = math.min(q.n, ns.CraftableNow(q.spell, combined))
+  end
+  return out
+end
+
 -- The entry "Craft next" would start: the first one the bags allow (enchants excluded).
 function ns.NextCraft(queue)
   for _, q in ipairs(queue) do
@@ -205,6 +287,18 @@ local function Create()
   end
   panel.entries = {}
   for i = 1, MAX_ENTRIES do panel.entries[i] = CreateEntry(panel) end
+  -- Mode switcher: Plan (leveling) vs Orders & Wishlist for the open profession.
+  local function ModeBtn(x, w, mode)
+    local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    b:SetSize(w, 18)
+    b:SetScript("OnClick", function()
+      Settings().trackerMode = mode
+      ns.RefreshTracker()
+    end)
+    return b
+  end
+  panel.modePlan = ModeBtn(PAD, 118, "plan")
+  panel.modeOrders = ModeBtn(PAD + 122, W - 2 * PAD - 122, "orders")
   -- Queue extent: this step, or up to the end of the current milestone.
   panel.extent = CreateFrame("Button", nil, panel)
   panel.extent:SetSize(W - 2 * PAD, 16)
@@ -246,6 +340,7 @@ function ns.RefreshTracker()
   panel.shop:Hide()
   panel.extent:Hide()
   panel.craft:Hide()
+  if panel.modePlan then panel.modePlan:Hide() panel.modeOrders:Hide() end
   local y = PAD
   if not p then
     panel.title:SetText("ComradeCraft")
@@ -257,39 +352,63 @@ function ns.RefreshTracker()
     panel.after:SetText("")
   else
     panel.title:SetText(("%s  |cffffffff%d/%d|r"):format(pname, p.rank or 0, p.max or 0))
-    y = y + 18
+    y = y + 20
+    local orders = ns.OrdersQueue and ns.OrdersQueue(c, p.skillLine) or {}
+    local mode = Settings().trackerMode == "orders" and #orders > 0 and "orders" or "plan"
+    if #orders > 0 and panel.modePlan and panel.modeOrders then
+      panel.modePlan:ClearAllPoints()
+      panel.modePlan:SetPoint("TOPLEFT", PAD, -y)
+      panel.modePlan:SetText(mode == "plan" and ("|cffffd100" .. L["Plan"] .. "|r") or L["Plan"])
+      panel.modePlan:Show()
+      panel.modeOrders:ClearAllPoints()
+      panel.modeOrders:SetPoint("TOPLEFT", PAD + 122, -y)
+      local oLabel = L["Orders (%d)"]:format(#orders)
+      panel.modeOrders:SetText(mode == "orders" and ("|cff40ff40" .. oLabel .. "|r") or ("|cff80ff80" .. oLabel .. "|r"))
+      panel.modeOrders:Show()
+      y = y + 22
+    end
     local d = ns.DescribeNeed(p, c)
     local need = c.needs and c.needs[p.skillLine]
-    local step = need and need.plan and need.plan[1]
-    local first = d.steps and d.steps[1]
-    local info = {}
-    if d.status then info[#info + 1] = "|cff9d9d9d" .. d.status .. "|r" end
-    if d.rank and not (step and first) then
-      info[#info + 1] = "|cffffd100" .. d.rank.title .. "|r"
-      for _, e in ipairs(d.rank.entries) do info[#info + 1] = "|cff66ccff" .. e.text .. "|r |cff9d9d9d" .. e.detail .. "|r" end
-      for _, n in ipairs(d.rank.notes) do info[#info + 1] = "|cff9d9d9d" .. n .. "|r" end
+    local queue
+    if mode == "orders" then
+      queue = orders
+      panel.info:SetText("|cff80ccff" .. L["Accepted craft requests & pinned wishlist for this profession."]:gsub("|", "") .. "|r")
+      panel.info:ClearAllPoints()
+      panel.info:SetPoint("TOPLEFT", PAD, -y)
+      y = y + (panel.info:GetStringHeight() or 12) + 6
+    else
+      local step = need and need.plan and need.plan[1]
+      local first = d.steps and d.steps[1]
+      local info = {}
+      if d.status then info[#info + 1] = "|cff9d9d9d" .. d.status .. "|r" end
+      if d.rank and not (step and first) then
+        info[#info + 1] = "|cffffd100" .. d.rank.title .. "|r"
+        for _, e in ipairs(d.rank.entries) do info[#info + 1] = "|cff66ccff" .. e.text .. "|r |cff9d9d9d" .. e.detail .. "|r" end
+        for _, n in ipairs(d.rank.notes) do info[#info + 1] = "|cff9d9d9d" .. n .. "|r" end
+      end
+      if step and first then
+        local color = ns.RecipeColor(step.spell, p.rank) or "grey"
+        local chance = math.floor(ns.SkillUpChance(step.spell, p.rank) * 100 + 0.5)
+        info[#info + 1] = ("|cffffd100%s|r  |cff%s%s|r"):format(first.range, COLOR[color], L["%d%% chance per craft (%s)"]
+          :format(chance, L[color]))
+      elseif d.blocked then
+        info[#info + 1] = "|cffff9933" .. d.blocked .. "|r"
+      end
+      panel.info:SetText(table.concat(info, "\n"))
+      panel.info:ClearAllPoints()
+      panel.info:SetPoint("TOPLEFT", PAD, -y)
+      y = y + (panel.info:GetStringHeight() or 12) + 4
+      -- Queue (this step, or to the end of the milestone) with what the bags allow now.
+      local extent = Settings().queueExtent == "milestone" and "milestone" or "step"
+      local stop
+      queue, stop = ns.CraftQueue(c, p, extent)
+      panel.extent.text:SetText("|cff9d9d9d" .. L["Queue:"] .. "|r " .. (extent == "milestone"
+        and L["up to skill %d (click: this step only)"]:format(stop) or L["this step (click: up to the milestone)"]))
+      panel.extent:ClearAllPoints()
+      panel.extent:SetPoint("TOPLEFT", PAD, -y)
+      panel.extent:Show()
+      y = y + 18
     end
-    if step and first then
-      local color = ns.RecipeColor(step.spell, p.rank) or "grey"
-      local chance = math.floor(ns.SkillUpChance(step.spell, p.rank) * 100 + 0.5)
-      info[#info + 1] = ("|cffffd100%s|r  |cff%s%s|r"):format(first.range, COLOR[color], L["%d%% chance per craft (%s)"]
-        :format(chance, L[color]))
-    elseif d.blocked then
-      info[#info + 1] = "|cffff9933" .. d.blocked .. "|r"
-    end
-    panel.info:SetText(table.concat(info, "\n"))
-    panel.info:ClearAllPoints()
-    panel.info:SetPoint("TOPLEFT", PAD, -y)
-    y = y + (panel.info:GetStringHeight() or 12) + 4
-    -- Queue (this step, or to the end of the milestone) with what the bags allow now.
-    local extent = Settings().queueExtent == "milestone" and "milestone" or "step"
-    local queue, stop = ns.CraftQueue(c, p, extent)
-    panel.extent.text:SetText("|cff9d9d9d" .. L["Queue:"] .. "|r " .. (extent == "milestone"
-      and L["up to skill %d (click: this step only)"]:format(stop) or L["this step (click: up to the milestone)"]))
-    panel.extent:ClearAllPoints()
-    panel.extent:SetPoint("TOPLEFT", PAD, -y)
-    panel.extent:Show()
-    y = y + 18
     local more = 0
     for i, q in ipairs(queue) do
       local b = panel.entries[i]
@@ -304,8 +423,10 @@ function ns.RefreshTracker()
           local ready = q.other and ("|cff9d9d9d" .. L["other profession"] .. "|r")
             or q.enchant and ("|cff9d9d9d" .. L["by hand (needs a target)"] .. "|r")
             or ((q.ready or 0) >= q.n and ("|cff40ff40" .. L["ready"] .. "|r")
-            or ("|cffff9933" .. L["%d ready"]:format(q.ready or 0) .. "|r"))
-          text = ("%dx %s  %s"):format(q.n, q.label or "", ready)
+            or ((q.readyWithBank or 0) > (q.ready or 0) and ("|cff80ccff" .. L["in bank"] .. "|r")
+            or ("|cffff9933" .. L["%d ready"]:format(q.ready or 0) .. "|r")))
+          local whoTag = q.tag and (" |cff9d9d9d(" .. q.tag .. ")|r") or ""
+          text = ("%dx %s%s  %s"):format(q.n, q.label or "", whoTag, ready)
         end
         b.text:SetText(text)
         local h = math.max(ENTRY_H, (b.text:GetStringHeight() or 0) + 6)

@@ -58,7 +58,12 @@ end
 local function ItemInfo(id)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local name, link = get(id)
-  if not name and id and id ~= 0 then missingItems[id] = true end
+  if name then
+    if ns.RememberItemName then ns.RememberItemName(id, name) end
+  elseif id and id ~= 0 then
+    if ns.RequestItemData then ns.RequestItemData(id) else missingItems[id] = true end
+    name = ns.CachedItemName and ns.CachedItemName(id) or nil
+  end
   local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id))
     or (GetItemIcon and GetItemIcon(id)) or 134400
   return name, link, icon

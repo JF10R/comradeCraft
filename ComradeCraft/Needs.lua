@@ -536,6 +536,8 @@ end
 
 -- Recomputes c.needs[skillLine] for one character record (rank -> cap, minus owned).
 -- Shared bank alts never reserve materials for leveling: all of their stock is group surplus.
+-- Deducts consumed stock across multiple professions on the same character so shared mats
+-- (e.g. Tailoring + First Aid cloth, Blacksmithing + Engineering bars) are never double-counted.
 function ns.UpdateNeeds(c)
   c.needs = {}
   if c.bankAlt then
@@ -543,6 +545,10 @@ function ns.UpdateNeeds(c)
     return
   end
   if not (c.professions and c.known) then return end
+  local foundKey
+  for key, ch in pairs(ns.AllChars and ns.AllChars() or {}) do
+    if ch == c then foundKey = key break end
+  end
   local all = {}
   for _, set in pairs(c.known) do
     for spell in pairs(set) do all[spell] = true end
@@ -551,62 +557,89 @@ function ns.UpdateNeeds(c)
   for _, src in ipairs({ c.bags or {}, c.bank or {}, c.mail or {} }) do
     for item, n in pairs(src) do owned[item] = (owned[item] or 0) + n end
   end
-  local stock = ns.GroupObjective() == "group" and ns.GroupStock(c) or nil
+  -- Count active incoming peer mail (1h delay) as owned so nobody double-farms/double-mails.
+  if foundKey and ns.InTransitFor then
+    local _, tlist = ns.InTransitFor(foundKey)
+    for _, tr in ipairs(tlist or {}) do
+      owned[tr.item] = (owned[tr.item] or 0) + (tr.qty or 0)
+    end
+  end
+  local baseStock = ns.GroupObjective() == "group" and ns.GroupStock(c) or nil
+  local remOwned, remStock = {}, nil
+  for item, n in pairs(owned) do remOwned[item] = n end
+  if baseStock then
+    remStock = {}
+    for item, n in pairs(baseStock) do remStock[item] = n end
+  end
+  local profList = {}
   for name, p in pairs(c.professions) do
     local known = p.skillLine and c.known[p.skillLine]
     if known and p.rank and p.max and p.rank < p.max and not ns.GATHERING[p.skillLine] then
-      -- Route "with what you know" (kept as a summary) and route "optimal" (also learns
-      -- trainer recipes on the way, like leveling guides do). Needs follow the optimal one.
-      local learnable = ns.TrainerRecipes(p.skillLine, p.max, known)
-      local mode = ns.RouteMode(c)
-      local other = mode == "profit" and "cheap" or "profit"
-      local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, nil, mode, stock)
-      local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, mode, stock)
-      local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, owned, learnable, other, stock)
-      local net, vendor, have, handled = {}, {}, {}, {}
-      for item, n in pairs(gross) do
-        if not handled[item] then
-          local t = ns.ITEM_TRANSFORMS[item]
-          if t then
-            local small = t.isSmall and item or t.other
-            local big = t.isSmall and t.other or item
-            handled[small], handled[big] = true, true
-            local nS, nB = gross[small] or 0, gross[big] or 0
-            local hS, mS, _, hB, mB = ns.PairBalance(owned[small] or 0, owned[big] or 0, nS, nB, t.ratio)
-            if nS > 0 then
-              have[small] = hS
-              if mS > 0 then
-                if ns.IsVendorItem(small) then vendor[small] = mS else net[small] = mS end
-              end
+      profList[#profList + 1] = { name = name, p = p, known = known }
+    end
+  end
+  table.sort(profList, function(a, b) return (a.p.skillLine or 0) < (b.p.skillLine or 0) end)
+  for _, entry in ipairs(profList) do
+    local name, p, known = entry.name, entry.p, entry.known
+    -- Route "with what you know" (kept as a summary) and route "optimal" (also learns
+    -- trainer recipes on the way, like leveling guides do). Needs follow the optimal one.
+    local learnable = ns.TrainerRecipes(p.skillLine, p.max, known)
+    local mode = ns.RouteMode(c)
+    local other = mode == "profit" and "cheap" or "profit"
+    local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, remOwned, nil, mode, remStock)
+    local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, remOwned, learnable, mode, remStock)
+    local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, remOwned, learnable, other, remStock)
+    local net, vendor, have, handled = {}, {}, {}, {}
+    for item, n in pairs(gross) do
+      if not handled[item] then
+        local t = ns.ITEM_TRANSFORMS[item]
+        if t then
+          local small = t.isSmall and item or t.other
+          local big = t.isSmall and t.other or item
+          handled[small], handled[big] = true, true
+          local nS, nB = gross[small] or 0, gross[big] or 0
+          local hS, mS, spS, hB, mB, spB = ns.PairBalance(remOwned[small] or 0, remOwned[big] or 0, nS, nB, t.ratio)
+          remOwned[small], remOwned[big] = spS, spB
+          if remStock then
+            local _, _, rsS, _, _, rsB = ns.PairBalance(remStock[small] or 0, remStock[big] or 0, nS, nB, t.ratio)
+            remStock[small], remStock[big] = rsS, rsB
+          end
+          if nS > 0 then
+            have[small] = hS
+            if mS > 0 then
+              if ns.IsVendorItem(small) then vendor[small] = mS else net[small] = mS end
             end
-            if nB > 0 then
-              have[big] = hB
-              if mB > 0 then
-                if ns.IsVendorItem(big) then vendor[big] = mB else net[big] = mB end
-              end
+          end
+          if nB > 0 then
+            have[big] = hB
+            if mB > 0 then
+              if ns.IsVendorItem(big) then vendor[big] = mB else net[big] = mB end
             end
-          else
-            have[item] = owned[item] or 0
-            if n > have[item] then
-              if ns.IsVendorItem(item) then vendor[item] = n - have[item] else net[item] = n - have[item] end
-            end
+          end
+        else
+          local avail = remOwned[item] or 0
+          have[item] = avail
+          remOwned[item] = math.max(0, avail - n)
+          if remStock then remStock[item] = math.max(0, (remStock[item] or 0) - n) end
+          if n > avail then
+            if ns.IsVendorItem(item) then vendor[item] = n - avail else net[item] = n - avail end
           end
         end
       end
-      c.needs[p.skillLine] = { name = name, items = net, vendor = vendor, gross = gross, have = have,
-        reached = reached, target = p.max, plan = plan, reason = info.reason,
-        bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
-        knownOnly = { reached = kReached, reason = kInfo.reason },
-        mode = mode, milestones = info.milestones,
-        alt = { mode = other, reached = oReached, milestones = oInfo.milestones } }
     end
+    for item, u in pairs(info.used or {}) do
+      remOwned[item] = math.max(0, (remOwned[item] or 0) - u)
+      if remStock then remStock[item] = math.max(0, (remStock[item] or 0) - u) end
+    end
+    c.needs[p.skillLine] = { name = name, items = net, vendor = vendor, gross = gross, have = have,
+      reached = reached, target = p.max, plan = plan, reason = info.reason,
+      bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
+      knownOnly = { reached = kReached, reason = kInfo.reason },
+      mode = mode, milestones = info.milestones,
+      alt = { mode = other, reached = oReached, milestones = oInfo.milestones } }
   end
-  if ns.Wishlist and ns.Wishlist.InjectNeeds then
-    local foundKey
-    for key, ch in pairs(ns.AllChars()) do
-      if ch == c then foundKey = key break end
-    end
-    if foundKey then ns.Wishlist.InjectNeeds(c, foundKey) end
+  if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then
+    ns.Wishlist.InjectNeeds(c, foundKey)
   end
   if ns.ClearGiveCache then ns.ClearGiveCache() end
 end

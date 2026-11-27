@@ -168,6 +168,20 @@ function ns.RecipeSources(spell)
           if seen[v.id] then seen[v.id].visited, seen[v.id].place, seen[v.id].dist = true, v.place, v.dist
           else entries[#entries + 1] = v end
         end
+      elseif kind == "vendor" and ns.ForeverDB and ns.ForeverDB.Vendor then
+        local rid = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
+        local fv = rid and ns.ForeverDB.Vendor(rid)
+        if fv and fv.map then
+          local fp = { uiMap = fv.map, x = fv.x or 50, y = fv.y or 50 }
+          local fd = Distance(fp, map, px, py)
+          local hit = false
+          for _, e in ipairs(entries) do
+            if e.id == fv.npc then e.visited, e.place, e.dist = true, fp, fd hit = true break end
+          end
+          if not hit then
+            entries[#entries + 1] = { id = fv.npc or 0, name = fv.name, visited = true, place = fp, dist = fd }
+          end
+        end
       end
       table.sort(entries, function(a, b) return (a.dist or 0) < (b.dist or 0) end)
       if #entries > 0 then out[kind] = { total = math.max(list.total or 0, #entries), list = entries } end

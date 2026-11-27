@@ -226,8 +226,11 @@ end
 local panel, button, rows, dismissed = nil, nil, nil, false
 
 local function ItemInfo(id)
-  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local name = get and get(id)
+  local name = ns.ItemName and ns.ItemName(id)
+  if not name then
+    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    name = get and get(id)
+  end
   local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id))
     or (GetItemIcon and GetItemIcon(id)) or 134400
   return name, icon

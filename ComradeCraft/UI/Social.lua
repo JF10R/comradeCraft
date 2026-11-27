@@ -8,11 +8,29 @@ local ItemInfo, Ago, SortedKeys, ShortName, LevelSpecClass =
 local SectionBar, Section, Label, Action, Check, Toggle =
   U.SectionBar, U.Section, U.Label, U.Action, U.Check, U.Toggle
 
--- Wishlist view: local + synced group pinned crafts, material progress, who they're for, and quick actions.
+-- Wishlist view: reusable Craft Kits, local + synced group pinned crafts, material progress, and quick actions.
 function U.RenderWishlist()
   local Wl = ns.Wishlist
   local y = 0
   local list = Wl and Wl.List(nil, true) or {}
+  local kits = Wl and Wl.Kits and Wl.Kits() or {}
+  if #kits > 0 then
+    y = y - SectionBar(0, y, LIST_W, "|cff80ccff" .. L["Craft kits"] .. "|r",
+      L["Reusable craft bundles (raid, dungeon, reroll) — apply in 1 click."]) - 6
+    for _, kit in ipairs(kits) do
+      local kName = kit.name
+      local summary = ("%s  |cff9d9d9d(%d)|r"):format("|cffffd100" .. kName .. "|r", #kit.entries)
+      local _, kh = Label(8, y - 4, summary, "GameFontHighlightSmall", LIST_W - 252)
+      local b1 = Action(LIST_W - 238, y, L["Apply x1"], function() Wl.ApplyKit(kName, 1) end)
+      b1:SetWidth(76)
+      local b5 = Action(LIST_W - 158, y, L["Apply x5"], function() Wl.ApplyKit(kName, 5) end)
+      b5:SetWidth(76)
+      local bDel = Action(LIST_W - 78, y, L["Remove"], function() Wl.DeleteKit(kName) end)
+      bDel:SetWidth(74)
+      y = y - math.max(24, kh + 6)
+    end
+    y = y - 8
+  end
   if #list == 0 then
     local _, h = Label(0, y, "|cff9d9d9d" .. L["No craft pinned yet. Right-click any recipe in your Can craft tab to add it here, track its materials and get notified when ready."] .. "|r")
     y = y - h - 10
@@ -26,6 +44,10 @@ function U.RenderWishlist()
   end
   local me = ns.CharKey()
   local chars = ns.AllChars()
+  if Wl and Wl.ShowSaveKitDialog then
+    local bKit = Action(LIST_W - 236, y, L["Save as kit"], function() Wl.ShowSaveKitDialog() end)
+    bKit:SetWidth(114)
+  end
   local bShare = Action(LIST_W - 116, y, L["Share in chat"], function()
     local miss, order = {}, {}
     for _, e in ipairs(list) do
@@ -52,7 +74,8 @@ function U.RenderWishlist()
     local prog = Wl.Progress(e, chars[e.char])
     local label = e.item ~= 0 and (ItemInfo(e.item) or ("item:" .. e.item)) or ns.SpellName(e.spell)
     local who = e.forWho and ("  |cff80ccff" .. L["For %s"]:format(e.forWho) .. "|r") or ""
-    local status = prog.bagReady and ("  |cff40ff40" .. L["Ready to craft!"] .. "|r")
+    local convTxt = ns.FormatConversionHints and ns.FormatConversionHints(prog.convHints)
+    local status = prog.bagReady and (convTxt and ("  |cff66ccff" .. convTxt .. "|r") or ("  |cff40ff40" .. L["Ready to craft!"] .. "|r"))
       or (prog.ready and ("  |cffffd100" .. L["Ready (some mats in bank/mail)"] .. "|r") or "")
     local sub = e.remote and (L["via %s"]:format(ShortName(e.char)) .. (e.note and (" - " .. e.note) or ""))
       or (e.note or ShortName(e.char))
@@ -62,8 +85,7 @@ function U.RenderWishlist()
       local col = m.missing == 0 and "40ff40" or "ffd100"
       parts[#parts + 1] = ("%s |cff%s%d/%d|r"):format((ItemInfo(m.item)) or ("item:" .. m.item), col, m.have, m.need)
     end
-    local convTxt = ns.FormatConversionHints and ns.FormatConversionHints(prog.convHints)
-    if convTxt then parts[#parts + 1] = "|cff66ccff" .. convTxt .. "|r" end
+    if convTxt and not prog.bagReady then parts[#parts + 1] = "|cff66ccff" .. convTxt .. "|r" end
     local _, mh = Label(8, y - 2, table.concat(parts, "   "), "GameFontHighlightSmall",
       LIST_W - (e.remote and 20 or (e.char == me and 316 or 228)))
     if not e.remote then
@@ -294,6 +316,23 @@ function U.RenderManage()
     local _, lh = Label(0, y, (l:gsub("^%s+", "")))
     y = y - lh - 2
   end
+  if ns.ForeverDB and ns.ForeverDB.Stats then
+    local nb, nv, nd, np, ncr, nde = ns.ForeverDB.Stats()
+    y = Section(y - 10, L["Forever P2P database"],
+      L["Observed WoW Forever recipe bounds, custom recipes, disenchants, vendors and drops shared automatically."])
+    local statTxt = L["%d bounds  |  %d custom recipes  |  %d disenchants  |  %d vendors  |  %d drops  (%d peers)"]
+      :format(nb, ncr or 0, nde or 0, nv, nd, np)
+    local _, fh = Label(0, y - 4, statTxt, "GameFontHighlightSmall", LIST_W - 120)
+    local bSyncFdb = Action(LIST_W - 112, y, L["Share now"], function()
+      if ns.ForeverDB.BroadcastGuild then ns.ForeverDB.BroadcastGuild() end
+      for id, p in pairs(ComradeCraftDB.peers or {}) do
+        if p.included and p.name then ns.ForeverDB.SendToPeer(id, p.name) end
+      end
+      ns.Print(L["sync: sent to the players in your group"])
+    end)
+    bSyncFdb:SetWidth(108)
+    y = y - math.max(26, fh + 8)
+  end
   return -y
 end
 
@@ -440,9 +479,18 @@ local function RequestRow(y, r, incoming)
   local title = R.Label and R.Label(r) or ns.SpellName(r.spell)
   local prog = R.Progress and R.Progress(r)
   local progTag = prog and ("  |cff%s[%s]|r"):format(prog.color, prog.text) or ""
-  local line1 = ("|cffffffff%dx %s|r  |cff9d9d9d%s|r  |cff%s%s|r%s"):format(r.qty, title, who,
-    STATUS_COLOR[r.status] or "ffffff", L[r.status], progTag)
+  local chainTag = (r.chainStep and r.chainTotal) and ("  |cff80ccff[" .. L["Step %d/%d"]:format(r.chainStep, r.chainTotal) .. "]|r") or ""
+  local blockedTag = (R.IsBlocked and R.IsBlocked(r)) and ("  |cffff9933[" .. L["Waiting previous step"] .. "]|r") or ""
+  local line1 = ("|cffffffff%dx %s|r  |cff9d9d9d%s|r  |cff%s%s|r%s%s%s"):format(r.qty, title, who,
+    STATUS_COLOR[r.status] or "ffffff", L[r.status], progTag, chainTag, blockedTag)
   local details = {}
+  if r.deliverTo and r.deliverTo ~= r.from then
+    details[#details + 1] = "|cff80ccff" .. L["Deliver to %s"]:format(ShortName(r.deliverTo)) .. "|r"
+  end
+  if (r.sentQty or 0) > 0 and r.status ~= "shipped" and r.status ~= "done" then
+    local mult = (r.spell and r.spell > 0 and ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1
+    details[#details + 1] = L["Sent %d/%d"]:format(r.sentQty, (r.qty or 1) * math.max(1, mult))
+  end
   if r.note then details[#details + 1] = "\"" .. r.note .. "\"" end
   if r.acked ~= r.updated then details[#details + 1] = L["waiting to reach the other player"] end
   if incoming and (r.status == "pending" or r.status == "accepted" or r.status == "crafting") then
@@ -464,9 +512,17 @@ local function RequestRow(y, r, incoming)
     if r.status == "pending" then
       buttons = { { L["Accept"], "accepted" }, { L["Decline"], "declined" } }
     elseif r.status == "accepted" then
-      buttons = { { L["Done"], "done" }, { L["Shipped"], "shipped" }, { L["Crafting"], "crafting" } }
+      if r.to == ns.CharKey() and r.spell and r.spell > 0 and ns.OpenRecipe then
+        buttons = { { L["Done"], "done" }, { L["Shipped"], "shipped" }, { L["Craft"], function() ns.OpenRecipe(r.spell) end } }
+      else
+        buttons = { { L["Done"], "done" }, { L["Shipped"], "shipped" }, { L["Crafting"], "crafting" } }
+      end
     elseif r.status == "crafting" then
-      buttons = { { L["Done"], "done" }, { L["Shipped"], "shipped" } }
+      if r.to == ns.CharKey() and r.spell and r.spell > 0 and ns.OpenRecipe then
+        buttons = { { L["Done"], "done" }, { L["Shipped"], "shipped" }, { L["Craft"], function() ns.OpenRecipe(r.spell) end } }
+      else
+        buttons = { { L["Done"], "done" }, { L["Shipped"], "shipped" } }
+      end
     elseif r.status == "shipped" then
       buttons = { { L["Remove"], false }, { L["Done"], "done" } }
     end

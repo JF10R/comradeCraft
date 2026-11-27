@@ -171,6 +171,7 @@ local function LoadCustomRecipes()
     if not ns.Recipes[id] and type(r) == "table" and r[1] and r[7] then ns.Recipes[id] = r end
   end
 end
+ns.LoadCustomRecipes = LoadCustomRecipes
 
 local function OpenProfessionLineAndRank()
   local T = C_TradeSkillUI
@@ -216,16 +217,20 @@ local function DiscoverRecipe(id, info, line, rank)
   return row
 end
 
--- Applies saved live-observed Forever recipe difficulty bounds ({ yellow, grey }) on startup.
+-- Applies saved live-observed Forever recipe difficulty bounds ({ y, g } or legacy { [1], [2] }) on startup/sync.
 local function LoadRecipeBounds()
   if not (ComradeCraftDB and ComradeCraftDB.recipeBounds) then return end
   for id, b in pairs(ComradeCraftDB.recipeBounds) do
     local r = ns.Recipes and ns.Recipes[id]
-    if r and type(b) == "table" and b[1] and b[2] then
-      r[2], r[3] = b[1], b[2]
+    if r and type(b) == "table" then
+      local y = b.y or b[1]
+      local g = b.g or b[2]
+      if y and y > 0 then r[2] = y end
+      if g and g > 0 then r[3] = g end
     end
   end
 end
+ns.ApplyRecipeBounds = LoadRecipeBounds
 
 -- Refines yellow/grey bounds for ANY recipe observed live in WoW Forever's profession window.
 local function ObserveRecipeBound(id, r, diff, rank)
@@ -246,7 +251,7 @@ local function ObserveRecipeBound(id, r, diff, rank)
   if ny ~= y or ng ~= g then
     r[2], r[3] = ny, ng
     ComradeCraftDB.recipeBounds = ComradeCraftDB.recipeBounds or {}
-    ComradeCraftDB.recipeBounds[id] = { ny, ng }
+    ComradeCraftDB.recipeBounds[id] = { y = ny, g = ng }
   end
 end
 
@@ -526,7 +531,8 @@ local function ScanTrainer()
   -- Where this trainer stands and which recipes they actually teach (unlike LibProfessionDB's
   -- flat lists): used for "Learn" waypoints so Apprentice trainers aren't picked for high-rank recipes.
   local guid = UnitGUID and UnitGUID("npc")
-  local id = guid and select(6, strsplit("-", guid))
+  if guid and issecretvalue and issecretvalue(guid) then guid = nil end
+  local id = type(guid) == "string" and select(6, strsplit("-", guid))
   local npc = tonumber(id)
   local best, most = nil, 0
   for l, n in pairs(lineCount) do if n > most then best, most = l, n end end
@@ -536,7 +542,9 @@ local function ScanTrainer()
     if ComradeCraftDB.trainerRefused then ComradeCraftDB.trainerRefused[npc] = nil end
     ComradeCraftDB.trainerSpots = ComradeCraftDB.trainerSpots or {}
     local spot = ComradeCraftDB.trainerSpots[npc] or {}
-    spot.name = UnitName and UnitName("npc") or spot.name
+    local npcName = UnitName and UnitName("npc")
+    if npcName and issecretvalue and issecretvalue(npcName) then npcName = nil end
+    spot.name = npcName or spot.name
     spot.line = best or spot.line
     spot.scanned = true
     spot.spells = offered
@@ -581,8 +589,10 @@ local function CheckTrainerRefusal()
       end
       if matched then
         ComradeCraftDB.trainerRefused = ComradeCraftDB.trainerRefused or {}
+        local refName = UnitName and UnitName("npc")
+        if refName and issecretvalue and issecretvalue(refName) then refName = nil end
         ComradeCraftDB.trainerRefused[npc] = { line = line, rank = p.rank or 0,
-          name = UnitName and UnitName("npc") or ("#" .. npc), t = time() }
+          name = refName or ("#" .. npc), t = time() }
         ns.Print(ns.L["%s requires higher %s skill; skipped for waypoints until you level up."]
           :format(ComradeCraftDB.trainerRefused[npc].name, pname))
         ns.RequestRefresh()

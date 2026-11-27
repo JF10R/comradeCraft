@@ -12,6 +12,7 @@ ns.Synergies = Synergies
 local function ShortName(key) return key:match("^[^-]+") or key end
 
 local function ItemName(id)
+  if ns.ItemName then return ns.ItemName(id) end
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   return get and get(id) or ("item:" .. id)
 end

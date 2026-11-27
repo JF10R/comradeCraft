@@ -39,16 +39,68 @@ local function Facts(item)
     sellPrice = sellPrice or 0, classID = classID, subclassID = subclassID }
 end
 
+-- Bucket key "quality:maxReqLevel:isWeapon" for empirical Forever DE calibration.
+local DE_MIN_SAMPLES = 5
+local deCache, deCacheLocalOnly
+
+function ns.InvalidateDECache()
+  deCache, deCacheLocalOnly = nil, nil
+end
+
+local function BandMax(reqLevel)
+  for _, b in ipairs(BANDS) do
+    if (reqLevel or 0) <= b[1] then return b[1], b end
+  end
+  local last = BANDS[#BANDS]
+  return last[1], last
+end
+
+-- Aggregates logged local (and optionally peer ForeverDB) disenchant outcomes per bucket.
+function ns.DisenchantBucketStats(localOnly)
+  if localOnly and deCacheLocalOnly then return deCacheLocalOnly end
+  if not localOnly and deCache then return deCache end
+  local acc = {}
+  local function Push(bkey, n, mats)
+    local a = acc[bkey]
+    if not a then a = { n = 0, mats = {} } acc[bkey] = a end
+    a.n = a.n + n
+    for mid, q in pairs(mats or {}) do a.mats[mid] = (a.mats[mid] or 0) + q end
+  end
+  local raw = ComradeCraftDB and ComradeCraftDB.disenchants and ComradeCraftDB.disenchants.raw
+  for _, e in ipairs(raw or {}) do
+    if type(e) == "table" and e.quality and e.loot then
+      local rl = e.reqLevel or e.ilvl or 0
+      local bmax = BandMax(rl)
+      local isWep = e.classID == 2 and 1 or 0
+      local bkey = ("%d:%d:%d"):format(e.quality, bmax, isWep)
+      Push(bkey, 1, e.loot)
+    end
+  end
+  if not localOnly and ComradeCraftDB and ComradeCraftDB.foreverPeers then
+    for _, p in pairs(ComradeCraftDB.foreverPeers) do
+      for bkey, st in pairs(p.de or {}) do
+        if type(st) == "table" and (st.n or 0) > 0 then Push(bkey, st.n, st.mats) end
+      end
+    end
+  end
+  if localOnly then deCacheLocalOnly = acc else deCache = acc end
+  return acc
+end
+
 -- Expected mats of one disenchant: { [itemID] = expected count }, or nil if not disenchantable.
+-- Uses empirical Forever averages (local + peer ForeverDB) once a bucket reaches DE_MIN_SAMPLES.
 function ns.DisenchantYield(item)
   local f = Facts(item)
   if not (f and (f.classID == 2 or f.classID == 4) and f.quality >= 2 and f.quality <= 4) then return nil end
-  local band = BANDS[#BANDS]
-  for _, b in ipairs(BANDS) do
-    if f.reqLevel <= b[1] then
-      band = b
-      break
-    end
+  local bmax, band = BandMax(f.reqLevel)
+  local isWep = f.classID == 2 and 1 or 0
+  local bkey = ("%d:%d:%d"):format(f.quality, bmax, isWep)
+  local stats = ns.DisenchantBucketStats(false)
+  local st = stats and stats[bkey]
+  if st and st.n >= DE_MIN_SAMPLES and next(st.mats) then
+    local out = {}
+    for mid, total in pairs(st.mats) do out[mid] = total / st.n end
+    return out, true, st.n
   end
   local out = {}
   if f.quality == 2 then
@@ -62,7 +114,7 @@ function ns.DisenchantYield(item)
   else
     if band[1] > 50 then out[NEXUS] = 1 else out[band[8]] = 3 end
   end
-  return out
+  return out, false, st and st.n or 0
 end
 
 -- AH value of an item's expected disenchant mats (our yield table), or nil without prices
@@ -188,8 +240,8 @@ end
 
 local function ItemFacts(item)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local name, _, quality, ilvl, _, _, _, _, _, _, _, classID = get(item)
-  return name and { quality = quality, ilvl = ilvl, classID = classID } or nil
+  local name, _, quality, ilvl, reqLevel, _, _, _, _, _, _, classID = get(item)
+  return name and { quality = quality, ilvl = ilvl, reqLevel = reqLevel or 0, classID = classID } or nil
 end
 
 -- Pure: the item that went missing between two snapshots (count dropped), ignoring loot.
@@ -207,9 +259,10 @@ local function Finish()
   if not source then return end
   local facts = ItemFacts(source) or {}
   local raw = DB().raw
-  raw[#raw + 1] = { item = source, ilvl = facts.ilvl, quality = facts.quality, classID = facts.classID,
-    loot = p.loot, t = time() }
+  raw[#raw + 1] = { item = source, ilvl = facts.ilvl, reqLevel = facts.reqLevel, quality = facts.quality,
+    classID = facts.classID, loot = p.loot, t = time() }
   if #raw > MAX_RAW then table.remove(raw, 1) end
+  ns.InvalidateDECache()
   ns.Log(("disenchant: item %d -> %d result types"):format(source, (function()
     local n = 0
     for _ in pairs(p.loot) do n = n + 1 end
@@ -228,8 +281,10 @@ ns.On("LOOT_OPENED", function()
   local loot = {}
   for i = 1, (GetNumLootItems and GetNumLootItems()) or 0 do
     local link = GetLootSlotLink and GetLootSlotLink(i)
-    local id = link and tonumber(link:match("item:(%d+)"))
+    if link and issecretvalue and issecretvalue(link) then link = nil end
+    local id = type(link) == "string" and tonumber(link:match("item:(%d+)"))
     local _, _, qty = GetLootSlotInfo(i)
+    if qty and issecretvalue and issecretvalue(qty) then qty = nil end
     if id then loot[id] = (loot[id] or 0) + (qty or 1) end
   end
   pending.loot = loot

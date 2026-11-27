@@ -11,7 +11,7 @@ local L = ns.L
 local Alerts = {}
 ns.Alerts = Alerts
 
-local DEFAULTS = { mats = true, cooldown = true, requests = true, upgrade = false, keep = true }
+local DEFAULTS = { mats = true, cooldown = true, requests = true, upgrade = false, keep = true, zone = true }
 local LONG_CD = 600 -- seconds: shorter cooldowns (the global one) are not profession cooldowns
 local TOAST_TIME = 12
 
@@ -141,9 +141,12 @@ function Alerts.CheckMats()
       local nxt = ns.NextCraft((ns.CraftQueue(c, p, "step")))
       local now = nxt and nxt.ready >= nxt.n and nxt.spell or nil
       if primed and now and readyState[line] ~= now then
+        local convTxt = ns.ConversionHints and ns.FormatConversionHints
+          and ns.FormatConversionHints(ns.ConversionHints(now, nxt.n, c.bags or {}))
+        local msg = L["Your bags hold everything for %dx %s."]:format(nxt.n, nxt.label or ns.SpellName(now))
+        if convTxt then msg = msg .. "\n|cff66ccff" .. convTxt .. "|r" end
         Alerts.Notify({ title = L["%s: mats ready"]:format(name),
-          text = L["Your bags hold everything for %dx %s."]:format(nxt.n, nxt.label or ns.SpellName(now)),
-          icon = p.icon, item = nxt.item ~= 0 and nxt.item or nil })
+          text = msg, icon = p.icon, item = nxt.item ~= 0 and nxt.item or nil })
       end
       readyState[line] = now
     end

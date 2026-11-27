@@ -9,6 +9,7 @@ local W, PAD, LINE_H, MAX_LINES = 260, 10, 30, 10
 local function ShortName(key) return key:match("^[^-]+") or key end
 
 local function ItemName(item)
+  if ns.ItemName then return ns.ItemName(item) end
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   return get and get(item) or ("item:" .. item)
 end
@@ -107,6 +108,12 @@ function ns.AddPlanLines(tt, row)
   end
   for _, h in ipairs(row.holders) do
     tt:AddDoubleLine(L["Spare in the group"] .. ": " .. ShortName(h.key), tostring(h.n), 0.5, 0.8, 1, 0.5, 0.8, 1)
+  end
+  local _, trList = ns.InTransitFor and ns.InTransitFor(nil, row.item) or 0, {}
+  for _, tr in ipairs(trList) do
+    local mins = math.max(1, math.ceil((tr.left or 0) / 60))
+    tt:AddDoubleLine(L["In transit"], ("%dx %s -> %s (~%dm)"):format(tr.qty, ShortName(tr.from), ShortName(tr.to), mins),
+      0.5, 0.85, 1, 0.75, 0.92, 1)
   end
   for _, f in ipairs(row.farmers) do
     tt:AddDoubleLine(L["Farmed by %s"]:format(ShortName(f.key)), tostring(f.target), 0.4, 1, 0.4, 0.4, 1, 0.4)

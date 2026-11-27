@@ -251,7 +251,8 @@ function U.RecipeTags(e)
     t[#t + 1] = ("|cff80ff80%s : %s|r"):format(ShortName(n.key), L["needs %d"]:format(n.n))
   end
   for _, u in ipairs(e.fits) do
-    t[#t + 1] = "|cff66ccff" .. (u.gain and L["upgrade for %s (+%d)"]:format(ShortName(u.key), math.floor(u.gain + 0.5))
+    local rounded = u.gain and math.floor(u.gain + 0.5) or 0
+    t[#t + 1] = "|cff66ccff" .. (rounded > 0 and L["upgrade for %s (+%d)"]:format(ShortName(u.key), rounded)
       or L["gear for %s"]:format(ShortName(u.key))) .. "|r"
   end
   -- Two lines fit in a row; the rest is summed up.
@@ -415,54 +416,120 @@ end
 function U.RenderPatterns(key, c, filter)
   local y = 0
   local _, ih = Label(0, y, "|cff9d9d9d" .. L["Valuable unlearned patterns for yourself and your group: where to buy or farm them, drop rate when known, and 1-click waypoints."] .. "|r")
-  y = y - ih - 8
+  y = y - ih - 6
+  local ui = ComradeCraftDB and ComradeCraftDB.ui or {}
+  local groupMode = ui.patGroup or "all" -- "all" | "char" | "slot"
+  Label(0, y - 5, L["Group by:"], "GameFontNormalSmall", 68)
+  local function SetGroup(m)
+    ComradeCraftDB.ui = ComradeCraftDB.ui or {}
+    ComradeCraftDB.ui.patGroup = m
+    ns.RefreshWindow()
+  end
+  Toggle(70, y, L["All"], groupMode == "all", true, function() SetGroup("all") end):SetWidth(72)
+  Toggle(146, y, L["Character"], groupMode == "char", true, function() SetGroup("char") end):SetWidth(94)
+  Toggle(244, y, L["Slot"], groupMode == "slot", true, function() SetGroup("slot") end):SetWidth(76)
+  y = y - 28
+
   local list = ns.Audit and ns.Audit.PatternsForCrafter and ns.Audit.PatternsForCrafter(key) or {}
-  local shown = 0
+  local filtered = {}
   for _, p in ipairs(list) do
     if LineVisible(p.line) then
       local name = (p.item and p.item ~= 0 and (ItemInfo(p.item))) or ns.SpellName(p.spell)
-      local whoParts, whoPlain = {}, {}
-      for i = 1, math.min(3, #p.forList) do
-        local f = p.forList[i]
-        local sn = ShortName(f.key)
-        whoPlain[#whoPlain + 1] = sn
-        whoParts[#whoParts + 1] = f.isSelf and ("|cff66e89a" .. sn .. "|r") or ns.ClassColored(f.key, f.class)
-      end
+      local whoPlain = {}
+      for i = 1, math.min(3, #p.forList) do whoPlain[#whoPlain + 1] = ShortName(p.forList[i].key) end
       local haystack = (name .. " " .. (p.sourceText or "") .. " " .. table.concat(whoPlain, " ") .. " " .. (p.prof or "")):lower()
       if filter == "" or haystack:find(filter, 1, true) then
-        shown = shown + 1
-        local row = Acquire(P.patternRows, CreatePatternRow)
-        row.pat = p
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", U.content, "TOPLEFT", 0, y)
-        local even = (shown % 2 == 0)
-        if p.helpsSelf then
-          row.bg:SetColorTexture(0.09, 0.19, 0.13, even and 0.50 or 0.34)
-          row.selfBar:Show()
-        else
-          row.bg:SetColorTexture(even and 0.12 or 0.07, even and 0.12 or 0.07, even and 0.16 or 0.09, even and 0.44 or 0.24)
-          row.selfBar:Hide()
-        end
-        local ico = (p.item and p.item ~= 0 and select(3, ItemInfo(p.item)))
-          or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(p.spell)) or 134400
-        row.icon:SetTexture(ico)
-        if U.ApplyQualityBorder then U.ApplyQualityBorder(row, row.icon, p.item) end
-        local skillTag = p.canLearn and ("|cff40ff40" .. L["can learn now"] .. "|r")
-          or ("|cffffd100" .. L["needs skill %d"]:format(p.req) .. "|r")
-        local more = #p.forList > 3 and (" +" .. (#p.forList - 3)) or ""
-        row.line1:SetText(("|cffffffff%s|r  |cff9d9d9d(%s - %s)|r  %s: %s%s"):format(
-          name, p.prof, skillTag, L["For"], table.concat(whoParts, ", "), more))
-        row.line2:SetText("|cffc8d8ff" .. (p.sourceText or "") .. "|r")
-        local spell = p.spell
-        local bw = Action(LIST_W - 94, y - 7, L["Waypoint"], function()
-          if ns.WaypointRecipe then ns.WaypointRecipe(spell) end
-        end)
-        bw:SetWidth(88)
-        if bw.SetFrameLevel and row.GetFrameLevel then bw:SetFrameLevel(row:GetFrameLevel() + 2) end
-        y = y - PAT_H - 2
+        filtered[#filtered + 1] = p
       end
     end
   end
+
+  local shown = 0
+  local function DrawPatternRow(p)
+    shown = shown + 1
+    local name = (p.item and p.item ~= 0 and (ItemInfo(p.item))) or ns.SpellName(p.spell)
+    local whoParts = {}
+    for i = 1, math.min(3, #p.forList) do
+      local f = p.forList[i]
+      local sn = ShortName(f.key)
+      whoParts[#whoParts + 1] = f.isSelf and ("|cff66e89a" .. sn .. "|r") or ns.ClassColored(f.key, f.class)
+    end
+    local row = Acquire(P.patternRows, CreatePatternRow)
+    row.pat = p
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", U.content, "TOPLEFT", 0, y)
+    local even = (shown % 2 == 0)
+    if p.helpsSelf then
+      row.bg:SetColorTexture(0.09, 0.19, 0.13, even and 0.50 or 0.34)
+      row.selfBar:Show()
+    else
+      row.bg:SetColorTexture(even and 0.12 or 0.07, even and 0.12 or 0.07, even and 0.16 or 0.09, even and 0.44 or 0.24)
+      row.selfBar:Hide()
+    end
+    local ico = (p.item and p.item ~= 0 and select(3, ItemInfo(p.item)))
+      or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(p.spell)) or 134400
+    row.icon:SetTexture(ico)
+    if U.ApplyQualityBorder then U.ApplyQualityBorder(row, row.icon, p.item) end
+    local skillTag = p.canLearn and ("|cff40ff40" .. L["can learn now"] .. "|r")
+      or ("|cffffd100" .. L["needs skill %d"]:format(p.req) .. "|r")
+    local more = #p.forList > 3 and (" +" .. (#p.forList - 3)) or ""
+    row.line1:SetText(("|cffffffff%s|r  |cff9d9d9d(%s - %s)|r  %s: %s%s"):format(
+      name, p.prof, skillTag, L["For"], table.concat(whoParts, ", "), more))
+    row.line2:SetText("|cffc8d8ff" .. (p.sourceText or "") .. "|r")
+    local spell = p.spell
+    local bw = Action(LIST_W - 94, y - 7, L["Waypoint"], function()
+      if ns.WaypointRecipe then ns.WaypointRecipe(spell) end
+    end)
+    bw:SetWidth(88)
+    if bw.SetFrameLevel and row.GetFrameLevel then bw:SetFrameLevel(row:GetFrameLevel() + 2) end
+    y = y - PAT_H - 2
+  end
+
+  if groupMode == "char" then
+    local byChar, order = {}, {}
+    for _, p in ipairs(filtered) do
+      local f = p.forList[1]
+      if f then
+        if not byChar[f.key] then
+          byChar[f.key] = { key = f.key, class = f.class, isSelf = f.isSelf, level = f.level or 1, items = {} }
+          order[#order + 1] = byChar[f.key]
+        end
+        byChar[f.key].items[#byChar[f.key].items + 1] = p
+      end
+    end
+    table.sort(order, function(a, b)
+      if a.isSelf ~= b.isSelf then return a.isSelf end
+      if a.level ~= b.level then return a.level > b.level end
+      return a.key < b.key
+    end)
+    for _, g in ipairs(order) do
+      y = y - SectionBar(0, y, LIST_W, ns.ClassColored(g.key, g.class), L["Lvl %d"]:format(g.level)) - 4
+      for _, p in ipairs(g.items) do DrawPatternRow(p) end
+      y = y - 6
+    end
+  elseif groupMode == "slot" then
+    local SLOT_CATS = {
+      { "Weapon", L["Weapon"] }, { "Armor", L["Armor"] }, { "Enchants", L["Enchants"] },
+      { "Bags", L["Bags"] }, { "Consumables", L["Consumables"] }, { "Other", L["Other"] },
+    }
+    local byCat = {}
+    for _, p in ipairs(filtered) do
+      local sg = p.slotGroup or "Other"
+      byCat[sg] = byCat[sg] or {}
+      byCat[sg][#byCat[sg] + 1] = p
+    end
+    for _, def in ipairs(SLOT_CATS) do
+      local items = byCat[def[1]]
+      if items and #items > 0 then
+        y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. def[2] .. "|r", tostring(#items)) - 4
+        for _, p in ipairs(items) do DrawPatternRow(p) end
+        y = y - 6
+      end
+    end
+  else
+    for _, p in ipairs(filtered) do DrawPatternRow(p) end
+  end
+
   if shown == 0 then
     local _, eh = Label(0, y, "|cff9d9d9d" .. L["No unlearned upgrade patterns found for this character right now."] .. "|r")
     y = y - eh

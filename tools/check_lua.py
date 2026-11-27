@@ -2259,6 +2259,283 @@ def main():
         end
         Bagnon, ComradeCraftDB.chars["Vez-Realm"], ComradeCraftDB.chars["Mirandaa Jenkins-Realm"] = nil, nil, nil
 
+        -- #20 v0.4.0 innovation suite: ForeverDB P2P, ZoneRadar, AH Bargains & Search, Craft Chains.
+        do
+          -- 1. ForeverDB P2P crowd-calibration: payload + remote merge + DropRate + Vendor + /comrade forever.
+          ComradeCraftDB.recipeBounds = ComradeCraftDB.recipeBounds or {}
+          ComradeCraftDB.foreverDrops = ComradeCraftDB.foreverDrops or {}
+          ComradeCraftDB.foreverVendors = ComradeCraftDB.foreverVendors or {}
+          ComradeCraftDB.recipeBounds[2963] = { y = 25, g = 45 }
+          ComradeCraftDB.foreverDrops[88881] = { d = 3, k = 30, npc = 5555, name = "Rare Wolf", map = 1440, x = 42, y = 61, rare = true }
+          ComradeCraftDB.foreverVendors[16072] = { npc = 3413, name = "Shandrina", map = 1440, x = 49, y = 67, cost = 10000 }
+          local fp = ns.ForeverDB.Payload()
+          assert(fp and fp.t == "F" and fp.b[2963] and fp.d[88881] and fp.ve[16072], "foreverdb: payload built")
+          local savedBounds, savedDrops, savedVend = ComradeCraftDB.recipeBounds, ComradeCraftDB.foreverDrops, ComradeCraftDB.foreverVendors
+          ComradeCraftDB.recipeBounds, ComradeCraftDB.foreverDrops, ComradeCraftDB.foreverVendors = {}, {}, {}
+          assert(ns.ForeverDB.OnRemote("peer-f1", fp), "foreverdb: OnRemote merges peer packet")
+          local pct, kills = ns.ForeverDB.DropRate(88881)
+          assert(pct == 10 and kills == 30, "foreverdb: peer DropRate 3/30 = 10%")
+          assert(ns.DropRateText(88881) == "10%", "foreverdb: DropRateText uses peer ForeverDB rate")
+          local fv = ns.ForeverDB.Vendor(16072)
+          assert(fv and fv.name == "Shandrina" and fv.map == 1440, "foreverdb: peer Vendor lookup")
+          SlashCmdList.COMRADECRAFT("forever")
+          ComradeCraftDB.recipeBounds, ComradeCraftDB.foreverDrops, ComradeCraftDB.foreverVendors = savedBounds, savedDrops, savedVend
+          ComradeCraftDB.foreverPeers["peer-f1"] = nil
+
+          -- 2. ZoneRadar: surfaces Ashenvale rank vendor (Shandrina) + ForeverDB rare mob drop in map 1440.
+          local savedCook = me.professions.Cooking
+          me.professions.Cooking = { skillLine = 185, rank = 145, max = 150 }
+          local savedFac = UnitFactionGroup
+          UnitFactionGroup = function() return "Alliance" end
+          local zHits, zName = ns.ZoneRadar.Scan(1440)
+          local hasRare, hasVend = false, false
+          for _, h in ipairs(zHits) do
+            if h.kind == "rare" and h.item == 88881 then hasRare = true end
+            if h.kind == "vendor" and h.npcName == "Shandrina" then hasVend = true end
+          end
+          assert(hasRare and hasVend, "zoneradar: detects both rare mob drop and rank vendor in Ashenvale (1440)")
+          me.professions.Cooking = savedCook
+          UnitFactionGroup = savedFac
+          ComradeCraftDB.foreverDrops[88881], ComradeCraftDB.foreverVendors[16072] = nil, nil
+
+          -- 3. AH Bargain Radar + Auctionator MultiSearchExact + Blizzard SearchBar.
+          local savedNeeds = me.needs
+          me.needs = { [197] = { name = "Tailoring", items = { [77777] = 20 }, gross = { [77777] = 20 }, have = { [77777] = 0 }, when = { [77777] = 1 } } }
+          ComradeCraftDB.ahSeen = { [77777] = { avg = 1000, n = 5 } }
+          ns.AuctionPanel.ObserveListing(77777, 500) -- 50% below local avg!
+          local deals = ns.AuctionPanel.Bargains()
+          assert(#deals >= 1 and deals[1].item == 77777 and deals[1].pct == 50, "ah bargains: detects 50% underpriced group mat without TSM")
+          local aucSearched
+          Auctionator = { API = { v1 = { MultiSearchExact = function(_, terms) aucSearched = terms[1] end } } }
+          f.onEvent(f, "AUCTION_HOUSE_SHOW")
+          ns.AuctionPanel.SearchItem(2589)
+          assert(aucSearched == "Item2589", "ah search: calls Auctionator.API.v1.MultiSearchExact when Shopping active")
+          f.onEvent(f, "AUCTION_HOUSE_CLOSED")
+          Auctionator, me.needs, ComradeCraftDB.ahSeen = nil, savedNeeds, nil
+
+          -- 4. Multi-profession Craft Chain: resolves missing intermediate Bolt (2996) -> final craft (2385).
+          ComradeCraftDB.chars["PeerTailor-Realm"] = { peer = "p-chain", class = "MAGE", known = { [197] = { [2963] = true } }, bags = {} }
+          ComradeCraftDB.chars["PeerFinisher-Realm"] = { peer = "p-fin", class = "PRIEST", known = { [197] = { [2385] = true } }, bags = {} }
+          local savedMyBags, savedMyKnown = me.bags, me.known
+          me.bags, me.known = {}, {}
+          local chain = ns.Requests.BuildChain("PeerFinisher-Realm", 2385, 2)
+          assert(#chain == 2 and chain[1].spell == 2963 and chain[1].to == "PeerTailor-Realm"
+            and chain[1].deliverTo == "PeerFinisher-Realm"
+            and chain[2].spell == 2385 and chain[2].to == "PeerFinisher-Realm",
+            "craft chain: resolves missing intermediate Bolt -> final craft with direct deliverTo")
+          me.bags, me.known = savedMyBags, savedMyKnown
+          ComradeCraftDB.chars["PeerTailor-Realm"], ComradeCraftDB.chars["PeerFinisher-Realm"] = nil, nil
+        end
+
+        -- 20. Co-op Craft v0.4 suite: ForeverDB bounds+customRecipes+DE, Sync Delta+BankAlt+InTransit,
+        --     Multi-prof needs deduction, Partial ship & Chain v2, Wishlist Kits+AutoDec, Bank reagents,
+        --     Tracker OrdersQueue, and UI smoke renders.
+        do
+          local FDB = ns.ForeverDB
+          -- 20a. ForeverDB recipeBounds round-trip + customRecipes P2P sync + calibrated DE.
+          local origY, origG = ns.Recipes[2963][2], ns.Recipes[2963][3]
+          ComradeCraftDB.recipeBounds[2963] = { y = origY + 7, g = origG + 11 }
+          ComradeCraftDB.customRecipes[999501] = { 197, 55, 80, 1, 2996, 1, { 2589, 3 } }
+          ComradeCraftDB.disenchants = { raw = {} }
+          for i = 1, 5 do
+            ComradeCraftDB.disenchants.raw[i] = { item = 88801, reqLevel = 12, quality = 2, classID = 4, loot = { [10940] = 4 } }
+          end
+          ns.InvalidateDECache()
+          local fpay = FDB.Payload()
+          assert(fpay and fpay.b and fpay.b[2963] and fpay.b[2963][1] == origY + 7, "foreverdb: recipeBounds encoded from {y,g}")
+          assert(fpay.cr and fpay.cr[999501] and fpay.cr[999501][1] == 197, "foreverdb: customRecipes encoded")
+          assert(fpay.de and fpay.de["2:15:0"] and fpay.de["2:15:0"][1] == 5, "foreverdb: DE buckets encoded")
+          -- Receive on a clean peer side: custom recipe & bounds applied immediately.
+          ns.Recipes[999501], ComradeCraftDB.customRecipes[999501], ComradeCraftDB.recipeBounds[2963] = nil, nil, nil
+          assert(FDB.OnRemote("peer-fdb2", fpay), "foreverdb: OnRemote merges cr + bounds + de")
+          assert(ns.Recipes[999501] and ns.Recipes[999501][1] == 197, "foreverdb: custom recipe injected into ns.Recipes")
+          assert(ns.Recipes[2963][2] == origY + 7 and ns.Recipes[2963][3] == origG + 11, "foreverdb: ApplyRecipeBounds applied live")
+          -- Empirical DE overrides Classic estimate once >= 5 samples.
+          local prevGII = GetItemInfo
+          GetItemInfo = function(id)
+            if id == 88801 then return "Test Robe", "|Hitem:88801|h[Test Robe]|h", 2, 16, 12, nil, nil, nil, "INVTYPE_CHEST", nil, 100, 4, 1 end
+            return prevGII(id)
+          end
+          local dy, cal, cnt = ns.DisenchantYield(88801)
+          assert(cal and cnt >= 5 and dy and math.abs(dy[10940] - 4) < 0.01, "disenchant: uses calibrated Forever average")
+          GetItemInfo = prevGII
+          ns.Recipes[2963][2], ns.Recipes[2963][3] = origY, origG
+          ns.Recipes[999501], ComradeCraftDB.customRecipes[999501], ComradeCraftDB.recipeBounds[2963] = nil, nil, nil
+          ComradeCraftDB.disenchants = { raw = {} }
+          if ComradeCraftDB.foreverPeers then ComradeCraftDB.foreverPeers["peer-fdb2"] = nil end
+          ns.InvalidateDECache()
+
+          -- 20b. Sync Bank Alt non-ItemPrices + Stock Delta ("S") + Mail In-Transit.
+          ComradeCraftDB.peers["p-delta"] = { included = true, name = "DeltaPeer", chars = {} }
+          ComradeCraftDB.remote["DeltaBank-Realm"] = { peer = "p-delta", class = "WARRIOR", bankAlt = true, updated = 100,
+            professions = {}, known = {}, bags = {} }
+          local sEnc = ns.Sync.Encode({ t = "S", v = ns.Sync.PROTO, id = "p-delta", key = "DeltaBank-Realm",
+            s = { u = 200, owned = { [998877] = 5 }, inTransit = {
+              { t = ns.CharKey(), i = 2589, q = 12, s = time(), a = time() + 3000 }
+            } } })
+          ns.Sync.OnMessage(sEnc, "WHISPER", "DeltaPeer")
+          assert(ComradeCraftDB.remote["DeltaBank-Realm"].bags[998877] == 5, "sync S: Bank Alt accepts item outside ItemPrices")
+          local trTot, trList = ns.InTransitFor(ns.CharKey(), 2589)
+          assert(trTot == 12 and #trList == 1, "inTransit: tracked from remote Stock Delta")
+          ComradeCraftDB.remote["DeltaBank-Realm"], ComradeCraftDB.peers["p-delta"] = nil, nil
+
+          -- 20c. Partial shipment on Requests.OnItemSent.
+          local reqId = "partial-req-1"
+          ComradeCraftDB.requests[reqId] = { id = reqId, from = "PartialPeer-Realm", to = ns.CharKey(), fromPeer = "p-partial",
+            spell = 2963, item = 2996, qty = 5, status = "accepted", created = time(), updated = time() }
+          ns.Requests.OnItemSent("PartialPeer-Realm", 2996, 2)
+          assert(ComradeCraftDB.requests[reqId].status == "accepted" and ComradeCraftDB.requests[reqId].sentQty == 2,
+            "requests: partial shipment keeps status accepted and tracks sentQty")
+          ns.Requests.OnItemSent("PartialPeer-Realm", 2996, 3)
+          assert(ComradeCraftDB.requests[reqId].status == "shipped" and ComradeCraftDB.requests[reqId].sentQty == 5,
+            "requests: completing remaining qty marks shipped")
+          ComradeCraftDB.requests[reqId] = nil
+
+          -- 20d. Wishlist Kits + Auto-decrement on craft + Bank incoming request reagent withdraw + Tracker OrdersQueue.
+          local savedWl = ComradeCraftDB.wishlist
+          ComradeCraftDB.wishlist = {}
+          ns.Wishlist.Add(2963, 2, "Vez", "kit test", true, ns.CharKey())
+          assert(ns.Wishlist.SaveKit("Raid Kit"), "kits: SaveKit saves current wishlist")
+          assert(ns.Wishlist.OnCrafted(2963) and ComradeCraftDB.wishlist[1].qty == 1, "wishlist: OnCrafted decrements qty")
+          assert(ns.Wishlist.OnCrafted(2963) and #ComradeCraftDB.wishlist == 0, "wishlist: OnCrafted removes at 0")
+          assert(ns.Wishlist.ApplyKit("Raid Kit", 2) == 1 and ComradeCraftDB.wishlist[1].qty == 4, "kits: ApplyKit x2 adds 4x")
+          -- Bank withdraws missing reagents for an accepted incoming craft request.
+          local savedBank, savedBags = me.bank, me.bags
+          me.bags = {}
+          me.bank = { [2589] = 10 }
+          ComradeCraftDB.requests["bank-reag-1"] = { id = "bank-reag-1", from = "Vez-Realm", to = ns.CharKey(),
+            fromPeer = "p-vez", spell = 2963, item = 2996, qty = 3, status = "accepted", created = time(), updated = time() }
+          local bItems = ns.Bank.Items()
+          local foundReag = false
+          for _, bi in ipairs(bItems) do if bi.item == 2589 and bi.n >= 6 then foundReag = true end end
+          assert(foundReag, "bank: queues reagents in bank for accepted incoming craft request")
+          -- Tracker OrdersQueue lists incoming request + wishlist for Tailoring (197).
+          local oq = ns.OrdersQueue(me, 197)
+          assert(#oq == 1 and oq[1].spell == 2963 and oq[1].n == 7, "tracker: OrdersQueue merges request (3) + wishlist (4)")
+          ComradeCraftDB.requests["bank-reag-1"] = nil
+          me.bank, me.bags = savedBank, savedBags
+          ns.Wishlist.DeleteKit("Raid Kit")
+          ComradeCraftDB.wishlist = savedWl
+
+          -- 20e. UI smoke render: Group unified search, Wishlist kits, Requests chains, Manage ForeverDB.
+          ComradeCraftDB.ui.sel, ComradeCraftDB.ui.groupTab = "group", "overview"
+          ns.UI.RenderGroup("linen")
+          ComradeCraftDB.ui.sel = "wishlist"
+          ns.RefreshWindow()
+          ComradeCraftDB.ui.sel = "requests"
+          ns.RefreshWindow()
+          ComradeCraftDB.ui.sel = "manage"
+          ns.RefreshWindow()
+
+          -- 20f. Async item name resolution + locale-scoped SavedVariables cache (no stuck "item:2604").
+          local reqLoaded = nil
+          local savedGII2 = GetItemInfo
+          local savedCItem = C_Item
+          C_Item = { RequestLoadItemDataByID = function(id) reqLoaded = id end }
+          GetItemInfo = function(id)
+            if id == 2604 then return nil end
+            return savedGII2(id)
+          end
+          assert(ns.ItemName(2604) == "item:2604", "item name: fallback while uncached")
+          assert(reqLoaded == 2604 and ns.UI.missingItems[2604] == true, "item name: requests async load & tracks missing")
+          GetItemInfo = function(id)
+            if id == 2604 then return "Red Dye" end
+            return savedGII2(id)
+          end
+          f.onEvent(f, "GET_ITEM_INFO_RECEIVED", 2604, true)
+          assert(ns.UI.missingItems[2604] == nil and ns.CachedItemName(2604) == "Red Dye", "item name: resolves & caches on event")
+          -- Even if WoW cache drops it next session, SavedVariables cache prevents "item:2604" flicker.
+          GetItemInfo = function(id)
+            if id == 2604 then return nil end
+            return savedGII2(id)
+          end
+          assert(ns.ItemName(2604) == "Red Dye", "item name: returns persisted locale cache when uncached")
+          GetItemInfo, C_Item = savedGII2, savedCItem
+
+          -- 20g. Self-duplicate elimination on Forever (1-word w/ shared first name, realm variant, remote relay).
+          local savedRU = RegionalUniqueNamesEnabled
+          local savedUNU = UnitNameUnmodified
+          local savedUC = UnitClass
+          local savedUL = UnitLevel
+          RegionalUniqueNamesEnabled = function() return true end
+          UnitNameUnmodified = function() return "Jhf", "Mage" end
+          UnitClass = function() return "Mage", "MAGE" end
+          UnitLevel = function() return 34 end
+          ComradeCraftDB.chars["Jhf Mage-Realm"] = { class = "MAGE", level = 34, updated = 2000, shared = true, bags = {}, professions = {}, known = {} }
+          ComradeCraftDB.chars["Jhf Priest-Realm"] = { class = "PRIEST", level = 20, updated = 1500, bags = {}, professions = {}, known = {} }
+          ComradeCraftDB.chars["Jhf-Realm"] = { class = "MAGE", level = 33, updated = 1000, listed = true, bags = {}, professions = {}, known = {} }
+          ComradeCraftDB.chars["Jhf Mage-RealmAlias"] = { class = "MAGE", level = 33, updated = 900, bags = {}, professions = {}, known = {} }
+          ComradeCraftDB.peers["p-dup"] = { included = true, name = "Alice", chars = {} }
+          ComradeCraftDB.remote["Jhf Mage-OtherSpelling"] = { peer = "p-dup", class = "MAGE", level = 33, updated = 1200, bags = {}, professions = {}, known = {} }
+          ComradeCraftDB.remote["Jhf-Realm"] = { peer = "p-dup", class = "MAGE", level = 33, updated = 1100, bags = {}, professions = {}, known = {} }
+          -- Incoming peer DATA for our own char under another realm spelling must be ignored.
+          local dupEnc = ns.Sync.Encode({ t = "D", v = ns.Sync.PROTO, id = "p-dup", key = "Jhf Mage-RelayRealm",
+            rec = { class = "MAGE", level = 32, updated = 1300, professions = {}, known = {}, owned = {} } })
+          ns.Sync.OnMessage(dupEnc, "WHISPER", "Alice")
+          assert(ComradeCraftDB.remote["Jhf Mage-RelayRealm"] == nil, "sync D: refuses remote copy of own character")
+          -- CleanBrokenCharKeys merges 1-word (class-disambiguated even with Jhf Priest!) + realm alias + purges remote.
+          f.onEvent(f, "PLAYER_LOGIN")
+          assert(ComradeCraftDB.chars["Jhf-Realm"] == nil, "dedup: merged 1-word Jhf (MAGE) into Jhf Mage despite Jhf Priest")
+          assert(ComradeCraftDB.chars["Jhf Mage-RealmAlias"] == nil, "dedup: merged Forever realm-alias duplicate")
+          assert(ComradeCraftDB.chars["Jhf Mage-Realm"].level == 34 and ComradeCraftDB.chars["Jhf Mage-Realm"].listed == true,
+            "dedup: kept newer level 34 record and preserved flags")
+          assert(ComradeCraftDB.chars["Jhf Priest-Realm"] ~= nil, "dedup: untouched distinct alt Jhf Priest")
+          assert(ComradeCraftDB.remote["Jhf Mage-OtherSpelling"] == nil and ComradeCraftDB.remote["Jhf-Realm"] == nil,
+            "dedup: purged stale remote copies of own character")
+          local allNow, mageCount = ns.AllChars(), 0
+          for k, rec in pairs(allNow) do
+            if rec.class == "MAGE" and k:find("Jhf", 1, true) then mageCount = mageCount + 1 end
+          end
+          assert(mageCount == 1, "AllChars: active character appears strictly once")
+          -- Cleanup test fixtures.
+          ComradeCraftDB.chars["Jhf Mage-Realm"], ComradeCraftDB.chars["Jhf Priest-Realm"] = nil, nil
+          ComradeCraftDB.peers["p-dup"] = nil
+          RegionalUniqueNamesEnabled, UnitNameUnmodified, UnitClass, UnitLevel = savedRU, savedUNU, savedUC, savedUL
+
+          -- 20h. ForeverDB.ObserveLoot tolerates secret string GUIDs (Midnight/Forever combat/instance API).
+          local savedISV, savedGLSI, savedGNLI, savedGLSL = issecretvalue, GetLootSourceInfo, GetNumLootItems, GetLootSlotLink
+          local secretVal = "Creature-0-0-0-0-1234-SECRET"
+          issecretvalue = function(v) return v == secretVal end
+          GetLootSourceInfo = function() return secretVal end
+          GetNumLootItems = function() return 1 end
+          GetLootSlotLink = function() return "|Hitem:2589|h[Linen]|h" end
+          local okLoot, errLoot = pcall(ns.ForeverDB.ObserveLoot)
+          assert(okLoot, "foreverdb: ObserveLoot must not error on secret GUID: " .. tostring(errLoot))
+          issecretvalue, GetLootSourceInfo, GetNumLootItems, GetLootSlotLink = savedISV, savedGLSI, savedGNLI, savedGLSL
+
+          -- 20i. Wishlist ready alert shows Right-click conversion hint (3x Lesser -> 1x Greater) and deduplicates.
+          local savedNotify = ns.Alerts.Notify
+          local alertsCaptured = {}
+          ns.Alerts.Notify = function(t) alertsCaptured[#alertsCaptured + 1] = t end
+          ns.Recipes[999601] = { 333, 150, 175, 1, 0, 1, { 11082, 1 } } -- requires 1x Greater Astral Essence
+          local savedBags3, savedWl3 = me.bags, ComradeCraftDB.wishlist
+          me.bags = { [10998] = 3 } -- 3x Lesser Astral Essence, 0 Greater
+          ComradeCraftDB.wishlist = {
+            { id = "conv-1", char = ns.CharKey(), spell = 999601, item = 0, qty = 1, forWho = "Jhf Mage", pinned = true },
+            { id = "conv-2", char = ns.CharKey(), spell = 999601, item = 0, qty = 1, forWho = "Jhf Mage", pinned = true },
+          }
+          ns.Wishlist.CheckReady()
+          assert(#alertsCaptured == 1, "wishlist alert: deduplicates identical spell+forWho toasts")
+          assert(alertsCaptured[1].text:find("Right-click: 3x", 1, true) and alertsCaptured[1].text:find("1x", 1, true),
+            "wishlist alert: includes 3x Lesser -> 1x Greater conversion hint: " .. tostring(alertsCaptured[1].text))
+          ns.Alerts.Notify = savedNotify
+          ns.Recipes[999601], me.bags, ComradeCraftDB.wishlist = nil, savedBags3, savedWl3
+
+          -- 20j. ZoneRadar detects Expert/Artisan rank trainers in the current map ([cap][line] tuple shape).
+          local savedUFG = UnitFactionGroup
+          UnitFactionGroup = function() return "Alliance" end
+          local savedProfsZR = me.professions
+          me.professions = { Tailoring = { rank = 125, max = 150, skillLine = 197 } }
+          local zHits = ns.ZoneRadar.Scan(1453) -- Stormwind (Georgio Bolero, Expert Tailoring)
+          local foundTrainer = false
+          for _, h in ipairs(zHits) do
+            if h.npc == 1346 and h.x == 43.2 and h.y == 73.6 then foundTrainer = true end
+          end
+          assert(foundTrainer, "zoneradar: finds Expert Tailoring trainer Georgio Bolero in Stormwind")
+          me.professions = savedProfsZR
+          UnitFactionGroup = savedUFG
+        end
+
         -- Spec switcher command & UI render.
         SlashCmdList.COMRADECRAFT("spec fire")
         assert(GS.GetSpec(me) == "fire", "spec cmd: switched to fire")

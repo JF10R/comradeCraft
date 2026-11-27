@@ -109,11 +109,12 @@ function Mail.ItemsFor(to)
   local targetChar = ns.AllChars()[to]
   local targetBags = targetChar and targetChar.bags or {}
   for _, r in pairs(ComradeCraftDB.requests or {}) do
-    -- 1. Crafted items or shared bank items of accepted/crafting requests FROM `to`.
-    if r.from == to and (r.status == "accepted" or r.status == "crafting")
+    local dest = ns.Requests and ns.Requests.Recipient and ns.Requests.Recipient(r) or r.from
+    -- 1. Crafted items or shared bank items of accepted/crafting requests destined for `to`.
+    if dest == to and (r.status == "accepted" or r.status == "crafting")
       and ns.Requests and ns.Requests.Role(r) == "crafter" and r.item and r.item ~= 0 then
       local mult = (r.spell and r.spell > 0 and ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1
-      local want = r.qty * math.max(1, mult)
+      local want = math.max(1, r.qty * math.max(1, mult) - (r.sentQty or 0))
       local inBags = math.min(bags[r.item] or 0, want)
       local bankStock = (ns.CharData().bank or {})[r.item] or 0
       local inBank = math.min(bankStock, math.max(0, want - inBags))
@@ -221,9 +222,10 @@ function Mail.Recipients()
   end
   local bags = ns.CharData().bags or {}
   for _, r in pairs(ComradeCraftDB.requests or {}) do
+    local dest = ns.Requests and ns.Requests.Recipient and ns.Requests.Recipient(r) or r.from
     if (r.status == "accepted" or r.status == "crafting") and ns.Requests and ns.Requests.Role(r) == "crafter"
-      and r.item and r.item ~= 0 and (bags[r.item] or 0) > 0 then
-      local e = Entry(r.from)
+      and r.item and r.item ~= 0 and (bags[r.item] or 0) > 0 and dest then
+      local e = Entry(dest)
       e.items = e.items + 1
       e.bagItems = e.bagItems + 1
       e.bestUrg = 1
@@ -301,10 +303,11 @@ function Mail.Recipients()
   return order
 end
 
--- First bag slot holding `item` that is not locked: bag, slot, stack count.
+-- First bag slot holding `item` that is not locked (includes Reagent Bag): bag, slot, stack count.
 local function FindInBags(item)
   if not (C_Container and C_Container.GetContainerItemInfo) then return nil end
-  for bag = 0, (NUM_BAG_SLOTS or 4) do
+  local lastBag = (NUM_BAG_SLOTS or 4) + ((NUM_REAGENTBAG_SLOTS and NUM_REAGENTBAG_SLOTS > 0) and 1 or 0)
+  for bag = 0, lastBag do
     for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
       local info = C_Container.GetContainerItemInfo(bag, slot)
       if info and info.itemID == item and not info.isLocked then return bag, slot, info.stackCount or 1 end
@@ -506,7 +509,8 @@ end
 
 local function ItemInfo(id)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local name, link = get(id)
+  local name, link = get and get(id)
+  if not name and ns.ItemName then name = ns.ItemName(id) end
   local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id))
     or (GetItemIcon and GetItemIcon(id)) or 134400
   return name, link, icon
@@ -583,6 +587,18 @@ local function CreateRow(parent)
   return b
 end
 
+-- Next group member who still has bag-ready items to mail (for 1-click Mailbox Tour).
+function Mail.NextRecipient(excludeKey)
+  local recips = Mail.Recipients()
+  local others = {}
+  for _, rec in ipairs(recips) do
+    if (rec.bagItems or 0) > 0 and rec.key ~= excludeKey then
+      others[#others + 1] = rec
+    end
+  end
+  return others[1] and others[1].key or nil, #others
+end
+
 local dismissed = false
 local function UpdatePanel()
   if not panel then return end
@@ -596,6 +612,7 @@ local function UpdatePanel()
     r:Hide()
     r.itemID, r.recipKey, r.to, r.qtyNum = nil, nil, nil, nil
   end
+  if panel.nextBtn then panel.nextBtn:Hide() end
   local y = -32
   local chars = ns.AllChars()
   if to then
@@ -659,6 +676,15 @@ local function UpdatePanel()
     button:SetPoint("TOPLEFT", 10, y - 4)
     button:Show()
     y = y - 30
+    local nextKey, nextCount = Mail.NextRecipient(to)
+    if nextKey and panel.nextBtn then
+      panel.nextBtn.nextKey = nextKey
+      panel.nextBtn:SetText(L["Next: %s (%d left)"]:format(nextKey:match("^[^-]+") or nextKey, nextCount))
+      panel.nextBtn:ClearAllPoints()
+      panel.nextBtn:SetPoint("TOPLEFT", 10, y - 2)
+      panel.nextBtn:Show()
+      y = y - 26
+    end
     if bagReady then
       panel.foot:SetText("|cff80ff80" .. L["Highlighted in your bags"] .. "|r")
     elseif #items > 0 then
@@ -823,6 +849,12 @@ local function CreatePanel()
   button:SetSize(PANEL_W - 20, 22)
   button:SetText(L["Attach what they need"])
   button:SetScript("OnClick", function(self) if self.to then Mail.Prepare(self.to) end end)
+  panel.nextBtn = CreateFrame("Button", "ComradeCraftMailNextButton", panel, "UIPanelButtonTemplate")
+  panel.nextBtn:SetSize(PANEL_W - 20, 20)
+  panel.nextBtn:SetScript("OnClick", function(self)
+    if self.nextKey then Mail.SelectRecipient(self.nextKey) end
+  end)
+  panel.nextBtn:Hide()
   rows = {}
   if SendMailNameEditBox then SendMailNameEditBox:HookScript("OnTextChanged", OnMailChanged) end
   if SendMailFrame then
@@ -871,12 +903,16 @@ ns.On("MAIL_SHOW", function()
   end
 end)
 ns.On("MAIL_SEND_SUCCESS", function()
-  if pendingSend and ns.Requests and ns.Requests.OnItemSent then
-    for itemID, qty in pairs(pendingSend.items) do
-      ns.Requests.OnItemSent(pendingSend.to, itemID, qty)
+  if pendingSend then
+    if ns.RecordInTransit then ns.RecordInTransit(pendingSend.to, pendingSend.items) end
+    if ns.Requests and ns.Requests.OnItemSent then
+      for itemID, qty in pairs(pendingSend.items) do
+        ns.Requests.OnItemSent(pendingSend.to, itemID, qty)
+      end
     end
   end
   pendingSend = nil
+  if C_Timer and C_Timer.After then C_Timer.After(0.25, OnMailChanged) else OnMailChanged() end
 end)
 ns.On("MAIL_FAILED", function() pendingSend = nil end)
 ns.On("MAIL_CLOSED", function() pendingSend = nil OnMailboxHide() end)

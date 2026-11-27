@@ -54,17 +54,19 @@ local function AddNeeds(tooltip, itemID)
       end
     end
     for _, r in pairs(ComradeCraftDB.requests or {}) do
-      if r.status == "accepted" and ns.Requests and ns.Requests.Role(r) == "crafter" and r.item == itemID then
-        local qty = math.min(myBags[itemID], r.qty * math.max(1, (ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1))
-        local e = { to = r.from, n = qty, spell = r.spell, request = true }
+      if (r.status == "accepted" or r.status == "crafting") and ns.Requests and ns.Requests.Role(r) == "crafter" and r.item == itemID then
+        local dest = ns.Requests.Recipient and ns.Requests.Recipient(r) or r.from
+        local qty = math.min(myBags[itemID], math.max(1, r.qty * math.max(1, (ns.Recipes[r.spell] and ns.Recipes[r.spell][6]) or 1) - (r.sentQty or 0)))
+        local e = { to = dest, n = qty, spell = r.spell, request = true }
         sends[#sends + 1] = e
-        if mailTarget and r.from == mailTarget and not targetSend then targetSend = e end
+        if mailTarget and dest == mailTarget and not targetSend then targetSend = e end
       end
     end
   end
   local myReserve = ns.Reserve and ns.Reserve.Get and ns.Reserve.Get(itemID) or nil
   local incomingRes = ns.Reserve and ns.Reserve.IncomingFor and ns.Reserve.IncomingFor(me, itemID) or {}
-  if #rows == 0 and #sends == 0 and not myReserve and #incomingRes == 0 then return end
+  local _, transitList = ns.InTransitFor and ns.InTransitFor(nil, itemID) or 0, {}
+  if #rows == 0 and #sends == 0 and not myReserve and #incomingRes == 0 and #transitList == 0 then return end
   local supply, holders = ns.GroupSupply(itemID)
   -- Active mail recipient first, then most urgent, then biggest quantity.
   table.sort(rows, function(a, b)
@@ -119,6 +121,15 @@ local function AddNeeds(tooltip, itemID)
     end
     tooltip:AddDoubleLine(ns.L["Spare in the group"], table.concat(who, ", "), 0.5, 0.8, 1, 0.5, 0.8, 1)
   end
+  -- Active in-transit mail shipments (1h Classic/Forever delay).
+  for i = 1, math.min(#transitList, 3) do
+    local tr = transitList[i]
+    local mins = math.max(1, math.ceil((tr.left or 0) / 60))
+    tooltip:AddDoubleLine(ns.L["In transit"],
+      ("%dx %s -> %s (~%dm)"):format(tr.qty, tr.from:match("^[^-]+") or tr.from,
+        tr.to:match("^[^-]+") or tr.to, mins),
+      0.5, 0.85, 1, 0.75, 0.92, 1)
+  end
   -- Farming assignments (group plan).
   for _, f in ipairs(ns.Farmers and ns.Farmers(itemID) or {}) do
     tooltip:AddDoubleLine(ns.L["Farmed by %s"]:format(f.key:match("^[^-]+") or f.key), tostring(f.target),
@@ -151,10 +162,48 @@ elseif GameTooltip then
   end
 end
 
+local requestedItems = {}
+local function ItemNameCache()
+  if not ComradeCraftDB then return nil end
+  local loc = GetLocale and GetLocale() or "enUS"
+  local c = ComradeCraftDB.itemNames
+  if type(c) ~= "table" or c.locale ~= loc or type(c.map) ~= "table" then
+    c = { locale = loc, map = {} }
+    ComradeCraftDB.itemNames = c
+  end
+  return c.map
+end
+
+function ns.RequestItemData(id)
+  if not (type(id) == "number" and id > 0) then return end
+  if ns.NoteMissingItem then ns.NoteMissingItem(id) end
+  if not requestedItems[id] and C_Item and C_Item.RequestLoadItemDataByID then
+    requestedItems[id] = true
+    pcall(C_Item.RequestLoadItemDataByID, id)
+  end
+end
+
+function ns.CachedItemName(id)
+  local map = id and ItemNameCache()
+  return map and map[id] or nil
+end
+
+function ns.RememberItemName(id, name)
+  if type(id) == "number" and id > 0 and type(name) == "string" and name ~= "" then
+    local map = ItemNameCache()
+    if map then map[id] = name end
+  end
+end
+
 local function ItemName(id)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local name = get and get(id)
-  return name or ("item:" .. id)
+  if name then
+    ns.RememberItemName(id, name)
+    return name
+  end
+  ns.RequestItemData(id)
+  return ns.CachedItemName(id) or ("item:" .. tostring(id))
 end
 
 local function SpellName(id)

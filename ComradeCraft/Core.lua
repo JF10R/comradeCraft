@@ -369,21 +369,68 @@ function ns.CharKey()
   return realm and (name .. "-" .. realm) or name
 end
 
--- True when two character keys refer to the same character (ignoring realm spacing/punctuation).
-function ns.IsSameChar(k1, k2)
+-- True when two character keys refer to the same character (ignoring realm spacing/punctuation,
+-- Forever regionally-unique "First Last" realm spelling variants, and legacy 1-word -> 2-word
+-- upgrades when optional character records confirm the same class).
+function ns.IsSameChar(k1, k2, c1, c2)
   if not (k1 and k2) then return false end
   if k1 == k2 then return true end
   local b1, r1 = k1:match("^([^-]+)-(.*)$")
   local b2, r2 = k2:match("^([^-]+)-(.*)$")
   b1 = (b1 or k1):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " "):lower()
   b2 = (b2 or k2):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " "):lower()
-  if b1 ~= b2 then return false end
+  if b1 == "" or b2 == "" then return false end
   local nr1, nr2 = NormRealm(r1), NormRealm(r2)
-  return nr1 == nr2 or nr1 == "" or nr2 == ""
+  local sameRealm = nr1 == nr2 or nr1 == "" or nr2 == ""
+  if b1 == b2 then
+    -- On WoW Forever, two-part names ("First Last") are regionally unique regardless of realm alias.
+    if sameRealm or (ns.TwoPartNames() and b1:find(" ", 1, true)) then return true end
+    return false
+  end
+  if ns.TwoPartNames() and sameRealm and c1 and c2 and c1.class and c2.class and c1.class == c2.class then
+    local f1, hasSp1 = b1:match("^%S+"), b1:find(" ", 1, true) ~= nil
+    local f2, hasSp2 = b2:match("^%S+"), b2:find(" ", 1, true) ~= nil
+    if f1 and f1 == f2 and hasSp1 ~= hasSp2 then return true end
+  end
+  return false
 end
 
--- Merges broken "Name-" keys and realm-alias duplicates (e.g. GetRealmName vs
--- GetNormalizedRealmName on Forever), keeping newest stats + known recipes + share flags.
+local function MergeCharRecords(dst, src)
+  if not (dst and src) or dst == src then return dst end
+  if src.shared then dst.shared = true end
+  if src.listed then dst.listed = true end
+  if src.bankAlt then dst.bankAlt = true end
+  if src.specOverride and not dst.specOverride then dst.specOverride = src.specOverride end
+  if src.bank and next(src.bank) and not (dst.bank and next(dst.bank)) then dst.bank = src.bank end
+  if src.mail and next(src.mail) and not (dst.mail and next(dst.mail)) then dst.mail = src.mail end
+  if src.professions and next(src.professions) and not (dst.professions and next(dst.professions)) then
+    dst.professions = src.professions
+  end
+  dst.known = dst.known or {}
+  for line, set in pairs(src.known or {}) do
+    if not dst.known[line] then dst.known[line] = set end
+  end
+  return dst
+end
+
+local function RebindKeyRefs(oldKey, newKey)
+  if not (ComradeCraftDB and oldKey and newKey and oldKey ~= newKey) then return end
+  if ComradeCraftDB.ui and ComradeCraftDB.ui.sel == oldKey then ComradeCraftDB.ui.sel = newKey end
+  if ComradeCraftDB.favorites and ComradeCraftDB.favorites[oldKey] then
+    ComradeCraftDB.favorites[newKey] = true
+    ComradeCraftDB.favorites[oldKey] = nil
+  end
+  for _, e in ipairs(ComradeCraftDB.wishlist or {}) do
+    if e.char == oldKey then e.char = newKey end
+  end
+  for _, a in pairs(ComradeCraftDB.farm or {}) do
+    if a.char == oldKey then a.char = newKey end
+  end
+end
+
+-- Merges broken "Name-" keys, realm-alias duplicates, legacy 1-word Forever keys (even when
+-- multiple alts share a first name, using class disambiguation), and purges stale remote copies
+-- of local characters so you never see yourself twice.
 local function CleanBrokenCharKeys()
   local chars = ComradeCraftDB and ComradeCraftDB.chars
   if not chars then return end
@@ -399,6 +446,7 @@ local function CleanBrokenCharKeys()
   if GetCVar then AddAlias(GetCVar("realmName")) end
   if not ns.TwoPartNames() and UnitFullName then local _, ur = UnitFullName("player") AddAlias(ur) end
   local normCur = NormRealm(realm)
+  local twoPart = ns.TwoPartNames()
   local groups = {}
   for key in pairs(chars) do
     local bare, r = key:match("^([^-]+)-(.*)$")
@@ -406,15 +454,19 @@ local function CleanBrokenCharKeys()
     local cleanBare = bare:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
     local surname = cleanBare:match("%s+(%S+)$")
     local nr = NormRealm(r)
-    -- Also repair Forever keys where surname was mistaken for realm ("Jhf Mage-Mage").
+    -- Also repair Forever keys where surname was mistaken for realm ("Jhf Mage-Mage"),
+    -- and unify Forever regionally-unique two-part names across realm spelling variants.
     local bogusSurname = surname and nr ~= "" and nr == NormRealm(surname)
-    if (nr == "" or aliases[nr] or bogusSurname) and normCur ~= "" then nr = normCur end
-    if nr ~= "" then
+    if (nr == "" or aliases[nr] or bogusSurname or (twoPart and surname ~= nil)) and normCur ~= "" then
+      nr = normCur
+    end
+    if cleanBare ~= "" and nr ~= "" then
       local gkey = cleanBare:lower() .. "|" .. nr
       groups[gkey] = groups[gkey] or {}
       table.insert(groups[gkey], key)
     end
   end
+  local moved = false
   for _, list in pairs(groups) do
     if #list > 1 or list[1]:match("-$") or not list[1]:find("-", 1, true) then
       local canonical
@@ -430,41 +482,24 @@ local function CleanBrokenCharKeys()
         canonical = (list[1]:match("^([^-]+)") or list[1]) .. "-" .. realm
       end
       if canonical then
-        local best, bestU, shared, listed, bankAlt, specOverride, mergedBank, mergedMail, mergedProfs, mergedKnown =
-          nil, -1, nil, nil, nil, nil, nil, nil, nil, {}
+        local best, bestU, bestLv = nil, -1, -1
         for _, k in ipairs(list) do
           local v = chars[k]
           if v then
-            if v.shared then shared = true end
-            if v.listed then listed = true end
-            if v.bankAlt then bankAlt = true end
-            if v.specOverride and not specOverride then specOverride = v.specOverride end
-            if v.bank and next(v.bank) and not mergedBank then mergedBank = v.bank end
-            if v.mail and next(v.mail) and not mergedMail then mergedMail = v.mail end
-            if v.professions and next(v.professions) and not mergedProfs then mergedProfs = v.professions end
-            for line, set in pairs(v.known or {}) do
-              if not mergedKnown[line] then mergedKnown[line] = set end
-            end
-            if (v.updated or 0) > bestU then best, bestU = v, (v.updated or 0) end
+            local u, lv = v.updated or 0, v.level or 0
+            if u > bestU or (u == bestU and lv > bestLv) then best, bestU, bestLv = v, u, lv end
           end
         end
         if best then
-          if shared then best.shared = true end
-          if listed then best.listed = true end
-          if bankAlt then best.bankAlt = true end
-          if specOverride then best.specOverride = specOverride end
-          if mergedBank and not (best.bank and next(best.bank)) then best.bank = mergedBank end
-          if mergedMail and not (best.mail and next(best.mail)) then best.mail = mergedMail end
-          if mergedProfs and not (best.professions and next(best.professions)) then best.professions = mergedProfs end
-          best.known = best.known or {}
-          for line, set in pairs(mergedKnown) do
-            if not best.known[line] then best.known[line] = set end
+          for _, k in ipairs(list) do
+            if chars[k] and chars[k] ~= best then MergeCharRecords(best, chars[k]) end
           end
           chars[canonical] = best
           for _, k in ipairs(list) do
             if k ~= canonical then
               chars[k] = nil
-              if ComradeCraftDB.ui and ComradeCraftDB.ui.sel == k then ComradeCraftDB.ui.sel = canonical end
+              RebindKeyRefs(k, canonical)
+              moved = true
             end
           end
           if ns.UpdateNeeds then ns.UpdateNeeds(best) end
@@ -472,12 +507,12 @@ local function CleanBrokenCharKeys()
       end
     end
   end
-  -- Forever migration: upgrade legacy first-name-only keys ("Mirandaa-<realm>", "Wo-<realm>")
-  -- to full two-part names ("Mirandaa Jenkins-<realm>") using the current player, guild roster
-  -- (including offline alts!) and friends list — no need to log onto every alt.
-  if realm and ns.TwoPartNames() then
-    local byFirst = {} -- [firstLower] = fullName | false (ambiguous)
-    local function RegisterFull(full)
+  -- Forever migration: upgrade legacy first-name-only keys ("Mirandaa-<realm>", "Jhf-<realm>")
+  -- to full two-part names using current player, existing 2-word chars, guild roster & friends list.
+  -- Uses class disambiguation too so "Jhf" (MAGE) merges into "Jhf Mage" even when "Jhf Priest" exists!
+  if realm and twoPart then
+    local byFirst, byFirstClass = {}, {}
+    local function RegisterFull(full, cls)
       if type(full) ~= "string" then return end
       local clean = (full:match("^[^-]+") or full):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
       if not clean:find(" ", 1, true) then return end
@@ -486,12 +521,21 @@ local function CleanBrokenCharKeys()
       if not fl then return end
       if byFirst[fl] == nil then byFirst[fl] = clean
       elseif byFirst[fl] and byFirst[fl]:lower() ~= clean:lower() then byFirst[fl] = false end
+      if type(cls) == "string" and cls ~= "" then
+        local fc = fl .. "|" .. cls
+        if byFirstClass[fc] == nil then byFirstClass[fc] = clean
+        elseif byFirstClass[fc] and byFirstClass[fc]:lower() ~= clean:lower() then byFirstClass[fc] = false end
+      end
     end
-    RegisterFull(ns.UnitFullName("player"))
+    local _, playerCls = UnitClass and UnitClass("player")
+    RegisterFull(ns.UnitFullName("player"), playerCls)
+    for k, ch in pairs(chars) do
+      if type(ch) == "table" then RegisterFull(k, ch.class) end
+    end
     if IsInGuild and IsInGuild() and GetNumGuildMembers and GetGuildRosterInfo then
       for i = 1, (GetNumGuildMembers() or 0) do
-        local gname = GetGuildRosterInfo(i)
-        if gname then RegisterFull(gname) end
+        local gname, _, _, _, _, _, _, _, _, _, gcls = GetGuildRosterInfo(i)
+        if gname then RegisterFull(gname, gcls) end
       end
     end
     if C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex then
@@ -501,84 +545,140 @@ local function CleanBrokenCharKeys()
       end
     end
     local toMove = {}
-    for key in pairs(chars) do
+    for key, ch in pairs(chars) do
       local bare, r = key:match("^([^-]+)-(.*)$")
       if bare and not bare:find(" ", 1, true) then
-        local full = byFirst[bare:lower()]
+        local fl = bare:lower()
+        local full = (ch and ch.class and byFirstClass[fl .. "|" .. ch.class]) or byFirst[fl]
         if full and r and r ~= "" then
-          toMove[#toMove + 1] = { oldKey = key, newKey = full .. "-" .. r }
+          toMove[#toMove + 1] = { oldKey = key, newKey = full .. "-" .. realm }
         end
       end
     end
-    local moved = false
     for _, m in ipairs(toMove) do
       local oldC, newC = chars[m.oldKey], chars[m.newKey]
       if oldC and m.oldKey ~= m.newKey then
         if not newC then
           chars[m.newKey] = oldC
         else
-          if oldC.shared then newC.shared = true end
-          if oldC.listed then newC.listed = true end
-          if oldC.specOverride and not newC.specOverride then newC.specOverride = oldC.specOverride end
-          if oldC.bank and not newC.bank then newC.bank = oldC.bank end
-          newC.known = newC.known or {}
-          for line, set in pairs(oldC.known or {}) do
-            if not newC.known[line] then newC.known[line] = set end
-          end
+          local keep = ((newC.updated or 0) >= (oldC.updated or 0)) and newC or oldC
+          local drop = keep == newC and oldC or newC
+          MergeCharRecords(keep, drop)
+          chars[m.newKey] = keep
         end
         chars[m.oldKey] = nil
-        if ComradeCraftDB.ui and ComradeCraftDB.ui.sel == m.oldKey then ComradeCraftDB.ui.sel = m.newKey end
-        for _, e in ipairs(ComradeCraftDB.wishlist or {}) do
-          if e.char == m.oldKey then e.char = m.newKey end
-        end
-        for _, a in pairs(ComradeCraftDB.farm or {}) do
-          if a.char == m.oldKey then a.char = m.newKey end
-        end
+        RebindKeyRefs(m.oldKey, m.newKey)
         moved = true
       end
     end
-    if moved and ns.RequestRefresh then ns.RequestRefresh() end
   end
+  -- Purge any stale remote copies of our own local characters (e.g. relayed via Mesh Sync under a
+  -- legacy 1-word key or realm alias) so you never appear twice in the group list.
+  if ComradeCraftDB.remote then
+    for rKey, rRec in pairs(ComradeCraftDB.remote) do
+      for lKey, lRec in pairs(chars) do
+        if ns.IsSameChar(rKey, lKey, rRec, lRec) then
+          ComradeCraftDB.remote[rKey] = nil
+          moved = true
+          break
+        end
+      end
+    end
+  end
+  if moved and ns.RequestRefresh then ns.RequestRefresh() end
 end
 
 -- Returns (and creates) the SavedVariables entry for the current character.
 local scratchChar = {}
 function ns.CharData()
   local realm = RealmName()
-  if not realm then return scratchChar end
-  local key = (ns.UnitFullName("player") or "") .. "-" .. realm
+  local name = ns.UnitFullName("player")
+  if not realm or type(name) ~= "string" or name == "" or name == "Unknown" or name == UNKNOWNOBJECT then
+    return scratchChar
+  end
+  local _, class = UnitClass("player")
+  local key = name .. "-" .. realm
+  -- On Forever, if surname hasn't populated yet on a super-early login event, reuse the existing
+  -- 2-word entry for this first name + class instead of creating a duplicate 1-word entry.
+  if ns.TwoPartNames() and not name:find(" ", 1, true) and class and ComradeCraftDB and ComradeCraftDB.chars then
+    local fl = name:lower()
+    local matchKey
+    for k, ch in pairs(ComradeCraftDB.chars) do
+      local bare = (k:match("^[^-]+") or k):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+      if bare:find(" ", 1, true) and (bare:match("^%S+") or ""):lower() == fl and ch and ch.class == class then
+        if matchKey == nil then matchKey = k else matchKey = false break end
+      end
+    end
+    if matchKey then key = matchKey end
+  end
   local c = ComradeCraftDB.chars[key]
   if not c then
     c = {}
     if ComradeCraftDB.settings and ComradeCraftDB.settings.autoShareNew then c.shared = true end
     ComradeCraftDB.chars[key] = c
   end
-  local _, class = UnitClass("player")
   c.class = class
   c.level = UnitLevel and UnitLevel("player") or c.level
   return c
 end
 
 -- Every character the group views show: this account's characters plus the ones received
--- from peers the player included (Sync.lua). Local characters always win on a key clash
--- (including normalized realm-spelling duplicates so a peer never shadows your own character).
+-- from peers the player included (Sync.lua). Local characters always win on a key clash,
+-- and any residual duplicates (realm spelling or 1-word/2-word Forever variants) are collapsed
+-- so a character — especially the active player — can never appear twice.
 function ns.AllChars()
   local all = {}
   local db = ComradeCraftDB
   if not db then return all end
-  local localKeys = {}
-  for key, c in pairs(db.chars or {}) do
-    all[key] = c
-    localKeys[#localKeys + 1] = key
+  local meKey = ns.CharKey()
+  local localList = {}
+  -- Active character first so it always wins any dedup tie.
+  local keys = {}
+  for key in pairs(db.chars or {}) do keys[#keys + 1] = key end
+  table.sort(keys, function(a, b)
+    if (a == meKey) ~= (b == meKey) then return a == meKey end
+    local ca, cb = db.chars[a], db.chars[b]
+    local ua, ub = (ca and ca.updated) or 0, (cb and cb.updated) or 0
+    if ua ~= ub then return ua > ub end
+    return a < b
+  end)
+  for _, key in ipairs(keys) do
+    local c = db.chars[key]
+    local dup = false
+    for i = 1, #localList do
+      if ns.IsSameChar(key, localList[i].key, c, localList[i].rec) then dup = true break end
+    end
+    if not dup then
+      all[key] = c
+      localList[#localList + 1] = { key = key, rec = c }
+    end
   end
-  for key, rec in pairs(db.remote or {}) do
-    local peer = db.peers and db.peers[rec.peer]
+  local remoteKeys = {}
+  for key in pairs(db.remote or {}) do remoteKeys[#remoteKeys + 1] = key end
+  table.sort(remoteKeys, function(a, b)
+    local ra, rb = db.remote[a], db.remote[b]
+    local ua, ub = (ra and ra.updated) or 0, (rb and rb.updated) or 0
+    if ua ~= ub then return ua > ub end
+    return a < b
+  end)
+  local addedRemote = {}
+  for _, key in ipairs(remoteKeys) do
+    local rec = db.remote[key]
+    local peer = rec and db.peers and db.peers[rec.peer]
     if peer and peer.included and not all[key] then
       local dup = false
-      for i = 1, #localKeys do
-        if ns.IsSameChar(key, localKeys[i]) then dup = true break end
+      for i = 1, #localList do
+        if ns.IsSameChar(key, localList[i].key, rec, localList[i].rec) then dup = true break end
       end
-      if not dup then all[key] = rec end
+      if not dup then
+        for i = 1, #addedRemote do
+          if ns.IsSameChar(key, addedRemote[i].key, rec, addedRemote[i].rec) then dup = true break end
+        end
+      end
+      if not dup then
+        all[key] = rec
+        addedRemote[#addedRemote + 1] = { key = key, rec = rec }
+      end
     end
   end
   return all
@@ -654,6 +754,7 @@ function ns.RequestRefresh()
     end
     if ns.Audit and ns.Audit.Invalidate then ns.Audit.Invalidate() end
     if ns.ClearGiveCache then ns.ClearGiveCache() end
+    if ns.PruneInTransit then ns.PruneInTransit() end
     if ns.Reserve and ns.Reserve.Prune then ns.Reserve.Prune() end
     if ComradeCraftDB and ComradeCraftDB.chars then ns.UpdateNeeds(ns.CharData()) end
     if ns.Alerts then ns.Alerts.CheckMats() end

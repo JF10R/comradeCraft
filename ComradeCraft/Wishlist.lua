@@ -20,6 +20,7 @@ local function Settings()
 end
 
 local function ItemName(id)
+  if ns.ItemName then return ns.ItemName(id) end
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   return get and get(id) or ("item:" .. id)
 end
@@ -207,7 +208,7 @@ function Wishlist.InjectNeeds(c, charKey)
   if not (ComradeCraftDB and c and charKey) then return end
   local entries = c.peer and (c.wishlist or {}) or Wishlist.List(charKey)
   if #entries == 0 then return end
-  local items, vendor, gross, have, when = {}, {}, {}, {}, {}
+  local items, vendor, gross, have, when, whenSpell = {}, {}, {}, {}, {}, {}
   local any = false
   for _, e in ipairs(entries) do
     local prog = Wishlist.Progress(e, c)
@@ -217,6 +218,7 @@ function Wishlist.InjectNeeds(c, charKey)
       if m.missing > 0 then
         any = true
         when[m.item] = 1
+        if not whenSpell[m.item] then whenSpell[m.item] = e.spell end
         if m.vendor then vendor[m.item] = (vendor[m.item] or 0) + m.missing
         else items[m.item] = (items[m.item] or 0) + m.missing end
       end
@@ -225,32 +227,191 @@ function Wishlist.InjectNeeds(c, charKey)
   if any then
     c.needs = c.needs or {}
     c.needs[0] = { name = L["Wishlist"], items = items, vendor = vendor, gross = gross, have = have,
-      when = when, plan = { { spell = entries[1].spell } } }
+      when = when, whenSpell = whenSpell, plan = { { spell = entries[1].spell } } }
   end
 end
 
+-- Auto-decrements (or completes) matching local Wishlist entries when you cast the craft.
+function Wishlist.OnCrafted(spellID)
+  if not (ComradeCraftDB and ComradeCraftDB.wishlist and spellID) then return false end
+  local me = ns.CharKey()
+  local list = DB()
+  for i, e in ipairs(list) do
+    if e.char == me and e.spell == spellID then
+      e.qty = (e.qty or 1) - 1
+      local ch = ComradeCraftDB.chars and ComradeCraftDB.chars[me]
+      if ch then ch.updated = time() end
+      if e.qty <= 0 then
+        local name = e.item ~= 0 and ItemName(e.item) or ns.SpellName(e.spell)
+        table.remove(list, i)
+        ns.Print(L["Wishlist completed: %s"]:format(name))
+      end
+      ns.RequestRefresh()
+      Wishlist.RefreshTracker()
+      return true
+    end
+  end
+  return false
+end
+
+ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+  if unit == "player" and spellID then Wishlist.OnCrafted(spellID) end
+end)
+
+-- Reusable Craft Kits (e.g. Raid Kit / Dungeon Kit): save current Wishlist and apply xN in 1 click.
+local function KitsDB()
+  ComradeCraftDB.kits = ComradeCraftDB.kits or {}
+  return ComradeCraftDB.kits
+end
+
+function Wishlist.Kits()
+  local out = {}
+  for name, entries in pairs(KitsDB()) do
+    if type(entries) == "table" and #entries > 0 then
+      out[#out + 1] = { name = name, entries = entries }
+    end
+  end
+  table.sort(out, function(a, b) return a.name < b.name end)
+  return out
+end
+
+function Wishlist.SaveKit(name)
+  name = type(name) == "string" and name:match("^%s*(.-)%s*$") or ""
+  if name == "" then return false end
+  local me = ns.CharKey()
+  local src = Wishlist.List(me)
+  if #src == 0 then src = Wishlist.List() end
+  if #src == 0 then return false end
+  local entries = {}
+  for _, e in ipairs(src) do
+    if e.spell and ns.Recipes and ns.Recipes[e.spell] then
+      entries[#entries + 1] = { spell = e.spell, qty = math.max(1, e.qty or 1) }
+    end
+  end
+  if #entries == 0 then return false end
+  KitsDB()[name] = entries
+  ns.Print(L["Saved craft kit \"%s\" (%d recipes)."]:format(name, #entries))
+  if ns.RefreshWindow then ns.RefreshWindow() end
+  return true
+end
+
+function Wishlist.DeleteKit(name)
+  if not (name and KitsDB()[name]) then return false end
+  KitsDB()[name] = nil
+  if ns.RefreshWindow then ns.RefreshWindow() end
+  return true
+end
+
+function Wishlist.ApplyKit(name, mult, forWho)
+  local entries = name and KitsDB()[name]
+  if type(entries) ~= "table" or #entries == 0 then return 0 end
+  mult = math.max(1, math.floor(tonumber(mult) or 1))
+  local me = ns.CharKey()
+  local added = 0
+  for _, e in ipairs(entries) do
+    if e.spell and ns.Recipes and ns.Recipes[e.spell] then
+      local existing = Wishlist.Find(e.spell, forWho, me)
+      if existing then
+        existing.qty = (existing.qty or 1) + (e.qty or 1) * mult
+      else
+        Wishlist.Add(e.spell, (e.qty or 1) * mult, forWho, name, true, me)
+      end
+      added = added + 1
+    end
+  end
+  if added > 0 then
+    local ch = ComradeCraftDB.chars and ComradeCraftDB.chars[me]
+    if ch then ch.updated = time() end
+    ns.RequestRefresh()
+    Wishlist.RefreshTracker()
+    ns.Print(L["Applied craft kit \"%s\" (x%d)."]:format(name, mult))
+  end
+  return added
+end
+
+local kitDialog
+function Wishlist.ShowSaveKitDialog()
+  if not kitDialog then
+    kitDialog = CreateFrame("Frame", "ComradeCraftKitDialog", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    kitDialog:SetSize(320, 124)
+    kitDialog:SetPoint("CENTER")
+    kitDialog:SetFrameStrata("DIALOG")
+    kitDialog:SetToplevel(true)
+    kitDialog:EnableMouse(true)
+    local solid = kitDialog:CreateTexture(nil, "BACKGROUND", nil, -8)
+    solid:SetPoint("TOPLEFT", 4, -4)
+    solid:SetPoint("BOTTOMRIGHT", -4, 4)
+    solid:SetColorTexture(0.06, 0.05, 0.04, 0.97)
+    if kitDialog.SetBackdrop then
+      kitDialog:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+      kitDialog:SetBackdropBorderColor(1, 0.82, 0, 1)
+    end
+    kitDialog.title = kitDialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    kitDialog.title:SetPoint("TOPLEFT", 14, -14)
+    kitDialog.title:SetText(L["Save current wishlist as a reusable kit"])
+    kitDialog.name = CreateFrame("EditBox", nil, kitDialog, "InputBoxTemplate")
+    kitDialog.name:SetSize(280, 22)
+    kitDialog.name:SetPoint("TOPLEFT", 18, -46)
+    kitDialog.name:SetMaxLetters(40)
+    kitDialog.name:SetAutoFocus(false)
+    kitDialog.name:SetScript("OnEscapePressed", function() kitDialog:Hide() end)
+    local function Save()
+      if Wishlist.SaveKit(kitDialog.name:GetText()) then kitDialog:Hide() end
+    end
+    kitDialog.name:SetScript("OnEnterPressed", Save)
+    local ok = CreateFrame("Button", nil, kitDialog, "UIPanelButtonTemplate")
+    ok:SetSize(96, 22)
+    ok:SetPoint("BOTTOMRIGHT", -14, 12)
+    ok:SetText(L["Save kit"])
+    ok:SetScript("OnClick", Save)
+    local cancel = CreateFrame("Button", nil, kitDialog, "UIPanelButtonTemplate")
+    cancel:SetSize(84, 22)
+    cancel:SetPoint("RIGHT", ok, "LEFT", -6, 0)
+    cancel:SetText(CANCEL or "Cancel")
+    cancel:SetScript("OnClick", function() kitDialog:Hide() end)
+    if UISpecialFrames then tinsert(UISpecialFrames, "ComradeCraftKitDialog") end
+  end
+  kitDialog.name:SetText("")
+  kitDialog:Show()
+  kitDialog.name:SetFocus()
+end
+
 -- Fires a toast when all materials for a wishlist item are in the current character's bags.
+-- Includes right-click essence conversion hints (e.g. 3x Lesser -> 1x Greater) when required.
 function Wishlist.CheckReady()
   if not (ComradeCraftDB and ComradeCraftDB.wishlist and ns.Alerts) then return end
   local me = ns.CharKey()
   local c = ComradeCraftDB.chars and ComradeCraftDB.chars[me]
   if not c then return end
+  local alertedKey = {}
   for _, e in ipairs(Wishlist.List(me)) do
     local prog = Wishlist.Progress(e, c)
     if prog.bagReady then
       if not e.readyAlerted then
         e.readyAlerted = true
-        if ns.PlaySound then ns.PlaySound("ready") end
-        local name = e.item ~= 0 and ItemName(e.item) or ns.SpellName(e.spell)
-        local sub = e.forWho and L["For %s"]:format(e.forWho) or L["All materials are in your bags."]
-        ns.Alerts.Notify({
-          title = L["Wishlist ready: %dx %s"]:format(e.qty, name),
-          text = sub,
-          icon = ItemIcon(e.item, e.spell),
-          item = e.item ~= 0 and e.item or nil,
-          sticky = true,
-          buttons = { { L["Craft"], function() ns.OpenRecipe(e.spell) end } },
-        })
+        local dedup = tostring(e.spell) .. "|" .. tostring(e.forWho or "")
+        if not alertedKey[dedup] then
+          alertedKey[dedup] = true
+          if ns.PlaySound then ns.PlaySound("ready") end
+          local name = e.item ~= 0 and ItemName(e.item) or ns.SpellName(e.spell)
+          local convTxt = ns.FormatConversionHints and ns.FormatConversionHints(prog.convHints)
+          local lines = {}
+          if e.forWho then lines[#lines + 1] = L["For %s"]:format(e.forWho) end
+          if convTxt then
+            lines[#lines + 1] = "|cff66ccff" .. convTxt .. "|r"
+          elseif #lines == 0 then
+            lines[#lines + 1] = L["All materials are in your bags."]
+          end
+          ns.Alerts.Notify({
+            title = L["Wishlist ready: %dx %s"]:format(e.qty, name),
+            text = table.concat(lines, "\n"),
+            icon = ItemIcon(e.item, e.spell),
+            item = e.item ~= 0 and e.item or nil,
+            sticky = true,
+            buttons = { { L["Craft"], function() ns.OpenRecipe(e.spell) end } },
+          })
+        end
       end
     else
       e.readyAlerted = nil

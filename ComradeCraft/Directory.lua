@@ -157,7 +157,13 @@ function Directory.OnEntry(id, msg, dist, sender)
   for key, e in pairs(msg.c) do
     key = ns.Sync.Str(key, 80)
     local clean = key and not own[key] and n < MAX_PER_ACCOUNT and Directory.Clean(e)
+    local isOwn = false
     if clean then
+      for oKey, oRec in pairs(own) do
+        if ns.IsSameChar and ns.IsSameChar(key, oKey, { class = clean.cl }, oRec) then isOwn = true break end
+      end
+    end
+    if clean and not isOwn then
       clean.peer, clean.name, clean.seen, clean.guild = id, sender, time(), g
       fresh[key] = clean
       n = n + 1
