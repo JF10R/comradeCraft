@@ -37,6 +37,7 @@ local function LayoutProfession(y, name, p, c, own, key)
   end
 
   r.shop.key, r.shop.line = key, p.skillLine
+  r.tLabel:Hide() r.tBox:Hide() r.tHint:Hide() r.tMax:Hide()
   r.shop:SetShown(ns.CanShop() and need ~= nil and next(need.items or {}) ~= nil)
 
   -- Folding only makes sense with every profession listed ("All"); a filtered view is open.
@@ -68,30 +69,31 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.top:SetText(table.concat(top, "\n"))
   local yy = 8 + (#top > 0 and (r.top:GetStringHeight() + 4) or 0)
 
-  -- Target skill: shortcuts to the cap or a rank cap, -5/+5 (Shift: 25). Owner only.
+  -- Target skill: an editable box for any character of this account (like the route);
+  -- a peer's target is shown read-only.
   if p.skillLine and not ns.GATHERING[p.skillLine] and (c.known and c.known[p.skillLine]) then
-    local line = p.skillLine
-    local tl = target ~= maxRank and L["Target: %d"]:format(target) or L["Target: %d (cap)"]:format(target)
-    Label(PROF_W, y - yy - 5, "|cffffd100" .. tl .. "|r", "GameFontNormalSmall", 112)
-    if own then
-      local function Step(dir)
-        local v = target + dir * (IsShiftKeyDown and IsShiftKeyDown() and 25 or 5)
-        ns.SetTarget(key, line, v <= rank and nil or v)
-      end
-      local x = PROF_W + 114
-      Action(x, y - yy, "-", function() Step(-1) end):SetWidth(26)
-      Action(x + 28, y - yy, "+", function() Step(1) end):SetWidth(26)
-      x = x + 60
-      Toggle(x, y - yy, L["Cap"], target == maxRank, true, function() ns.SetTarget(key, line, nil) end):SetWidth(56)
-      x = x + 60
-      for _, v in ipairs({ 150, 225, 300 }) do
-        if v > rank and v ~= maxRank then
-          Toggle(x, y - yy, tostring(v), target == v, true, function() ns.SetTarget(key, line, v) end):SetWidth(46)
-          x = x + 50
-        end
-      end
+    local editable = not c.peer
+    r.tLabel:ClearAllPoints()
+    r.tLabel:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -(yy + 3))
+    r.tLabel:SetText(editable and L["Target:"] or L["Target: %d"]:format(target))
+    r.tLabel:Show()
+    if editable then
+      local b = r.tBox
+      b:ClearAllPoints()
+      b:SetPoint("LEFT", r.tLabel, "RIGHT", 10, 0)
+      b.key, b.line, b.value = key, p.skillLine, target
+      if not b:HasFocus() then b:SetText(tostring(target)) end
+      b:Show()
+      local atCap = target == maxRank
+      r.tHint:SetText(atCap and L["(cap) - click to change, Enter to apply"]
+        or L["click to change, Enter to apply"])
+      r.tHint:Show()
+      r.tMax.key, r.tMax.line = key, p.skillLine
+      r.tMax:ClearAllPoints()
+      r.tMax:SetPoint("LEFT", r.tHint, "RIGHT", 8, 0)
+      r.tMax:SetShown(not atCap)
     end
-    yy = yy + 28
+    yy = yy + 24
   end
 
   for _, step in ipairs(d.steps or {}) do
@@ -485,7 +487,6 @@ end
 
 function U.RenderPatterns(key, c, filter)
   local y = 0
-  local own = key == ns.CharKey()
   local _, ih = Label(0, y, "|cff9d9d9d" .. L["Valuable unlearned patterns for yourself and your group: where to buy or farm them, drop rate when known, and 1-click waypoints."] .. "|r")
   y = y - ih - 6
   local ui = ComradeCraftDB and ComradeCraftDB.ui or {}
@@ -556,7 +557,7 @@ function U.RenderPatterns(key, c, filter)
     -- Skill too low: one click sets the profession's target to the pattern's required skill.
     local rank
     for _, pr in pairs(c.professions or {}) do if pr.skillLine == p.line then rank = pr.rank end end
-    local canTarget = own and not p.canLearn and p.req and rank and p.req > rank
+    local canTarget = not c.peer and not p.canLearn and p.req and rank and p.req > rank
     row.line1:SetPoint("RIGHT", canTarget and -194 or -102, 0)
     row.line2:SetPoint("RIGHT", canTarget and -194 or -102, 0)
     if canTarget then
