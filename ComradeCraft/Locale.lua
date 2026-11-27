@@ -79,9 +79,6 @@ translations.frFR = {
     ["Craft %d %s (%s)"] = "Crafte %d %s (%s)",
     ["Craft %dx %s (%s)"] = "Crafte %dx %s (%s)",
     ["%d %s (vendor)"] = "%d %s (vendeur)",
-    ["Estimated cost: %s (%s prices)."] = "Coût estimé : %s (prix %s).",
-    ["Estimated cost: at least %s (%s prices, some items have no price)."] =
-      "Coût estimé : au moins %s (prix %s, certains objets sans prix).",
     [" + %d from stock"] = " + %d déjà en stock",
     ["%d %s from stock"] = "%d %s déjà en stock",
     ["With only your current recipes, you would be stuck at %d."] =
@@ -944,6 +941,26 @@ translations.frFR = {
     ["Waiting previous step"] = "Attend l'étape précédente",
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
+    -- Target skill (Plan tab)
+    ["Target: %d"] = "Cible : %d",
+    ["Target: %d (cap)"] = "Cible : %d (max)",
+    ["Target %d"] = "Viser %d",
+    ["Cap"] = "Max",
+    ["Level %d needed to learn this rank (now %d)."] = "Niveau %d requis pour apprendre ce rang (actuel : %d).",
+    ["Total %d to %d (%s prices)"] = "Total %d à %d (prix %s)",
+    ["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."] =
+      "Total %d à %d : brut %s, à acheter %s, revente %s, formateur %s, net %s (prix %s).",
+    ["Gross"] = "Brut",
+    ["To buy"] = "À acheter",
+    ["Resale"] = "Revente",
+    ["Net"] = "Net",
+    ["Trainer"] = "Formateur",
+    ["not counted"] = "non compté",
+    ["Stops at"] = "S'arrête à",
+    ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] =
+      "+ Formateur : %s (compris dans le net). À acheter = mats manquants (HV + marchand) ; net = à acheter - revente + formateur.",
+    ["Other route: trainer not counted."] = "Autre route : formateur non compté.",
+    ["> = some prices are unknown (minimum)."] = "> = certains prix sont inconnus (minimum).",
 }
 ns.Translations = translations
 

@@ -173,7 +173,8 @@ ns.MIN_GAIN = 0.25
 -- a trainer; each becomes an option from its required skill on (plan steps get .learn = true).
 -- stock (optional, "group" objective): { [itemID] = count } free to use; a step's cost counts
 -- only the raw mats beyond what is left of it, and the chosen action uses it up.
-function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, stock)
+-- breaks (optional): { [rank] = true } where a new step starts (rank caps crossed on the way).
+function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, stock, breaks)
   -- A recipe makes an intermediate only when its mats are worth no more than the item
   -- (Bolt of Woolen Cloth 100c <= 3 Wool 99c: craft it; Light Leather 15c < 3 Ruined
   -- Leather Scraps 21c: gather or buy it instead). Values: ns.ItemValue.
@@ -312,7 +313,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       if best.back[k] then m[k] = m[k] + best.back[k] * bestN else m[k .. "Missing"] = true end
     end
     local last = plan[#plan]
-    if not (last and last.spell == best.spell) then
+    if not (last and last.spell == best.spell and not (breaks and breaks[cur])) then
       last = { spell = best.spell, from = cur, crafts = 0, subs = {},
         learn = best.learn or nil, req = best.learn and best.minRank or nil }
       plan[#plan + 1] = last
@@ -493,6 +494,42 @@ function ns.SetRouteMode(key, mode)
   ns.RequestRefresh()
 end
 
+-- Skill to plan for in a profession: the character's own target (Plan tab, synced with its
+-- record) while it is above the current rank, else the current cap. Max ns.MAX_SKILL.
+ns.MAX_SKILL = 300
+function ns.TargetFor(c, p)
+  local t = c and c.targets and p and p.skillLine and c.targets[p.skillLine]
+  if t and p.rank and t > p.rank then return math.min(t, ns.MAX_SKILL) end
+  return p and p.max
+end
+
+-- Rank caps a plan from `cap` to `target` crosses: { 150, 225 } for 150 -> 260.
+function ns.RankCaps(cap, target)
+  local out = {}
+  if not (cap and target) or cap < 75 then return out end
+  local c = cap
+  while c < target and c < ns.MAX_SKILL do out[#out + 1] = c c = c + 75 end
+  return out
+end
+
+-- Sets the target of one of this account's characters (nil = back to the current cap).
+function ns.SetTarget(key, line, value)
+  local c = ComradeCraftDB.chars and ComradeCraftDB.chars[key]
+  if not (c and line) then return end
+  local p
+  for _, x in pairs(c.professions or {}) do if x.skillLine == line then p = x end end
+  if not p then return end
+  value = tonumber(value)
+  value = value and math.min(math.floor(value), ns.MAX_SKILL)
+  if value and value <= (p.rank or 0) then value = nil end
+  c.targets = c.targets or {}
+  c.targets[line] = value
+  if not next(c.targets) then c.targets = nil end
+  c.updated = time() -- peers pick up the change with the next sync
+  ns.UpdateNeeds(c)
+  ns.RequestRefresh()
+end
+
 -- Group plan objective, chosen in Manage group > Options: "group" (default) = least gold spent
 -- by the group, stock already held in the group is free; "solo" = market value for everything.
 function ns.GroupObjective()
@@ -534,7 +571,7 @@ function ns.GroupStock(c)
   return stock
 end
 
--- Recomputes c.needs[skillLine] for one character record (rank -> cap, minus owned).
+-- Recomputes c.needs[skillLine] for one character record (rank -> target, minus owned).
 -- Shared bank alts never reserve materials for leveling: all of their stock is group surplus.
 -- Deducts consumed stock across multiple professions on the same character so shared mats
 -- (e.g. Tailoring + First Aid cloth, Blacksmithing + Engineering bars) are never double-counted.
@@ -574,7 +611,13 @@ function ns.UpdateNeeds(c)
   local profList = {}
   for name, p in pairs(c.professions) do
     local known = p.skillLine and c.known[p.skillLine]
-    if known and p.rank and p.max and p.rank < p.max and not ns.GATHERING[p.skillLine] then
+    -- A target the rank has caught up with goes back to the default (the cap).
+    if c.targets and p.skillLine and c.targets[p.skillLine] and p.rank and c.targets[p.skillLine] <= p.rank then
+      c.targets[p.skillLine] = nil
+      if not next(c.targets) then c.targets = nil end
+    end
+    local target = ns.TargetFor(c, p)
+    if known and p.rank and target and p.rank < target and not ns.GATHERING[p.skillLine] then
       profList[#profList + 1] = { name = name, p = p, known = known }
     end
   end
@@ -583,12 +626,23 @@ function ns.UpdateNeeds(c)
     local name, p, known = entry.name, entry.p, entry.known
     -- Route "with what you know" (kept as a summary) and route "optimal" (also learns
     -- trainer recipes on the way, like leveling guides do). Needs follow the optimal one.
-    local learnable = ns.TrainerRecipes(p.skillLine, p.max, known)
+    local target = ns.TargetFor(c, p)
+    local caps = ns.RankCaps(p.max, target)
+    local breaks
+    for _, cap in ipairs(caps) do breaks = breaks or {} breaks[cap] = true end
+    local learnable = ns.TrainerRecipes(p.skillLine, target, known)
     local mode = ns.RouteMode(c)
     local other = mode == "profit" and "cheap" or "profit"
-    local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, p.max, known, all, remOwned, nil, mode, remStock)
-    local gross, reached, plan, info = ns.ComputeNeeds(p.rank, p.max, known, all, remOwned, learnable, mode, remStock)
-    local _, oReached, _, oInfo = ns.ComputeNeeds(p.rank, p.max, known, all, remOwned, learnable, other, remStock)
+    local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, nil, mode, remStock, breaks)
+    local gross, reached, plan, info = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, mode, remStock, breaks)
+    local oGross, oReached, _, oInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, other, remStock, breaks)
+    -- Other route's missing mats, against what is left before this route takes its share
+    -- (no Lesser/Greater conversion: close enough for the comparison).
+    local oItems = {}
+    for item, n in pairs(oGross) do
+      local m = n - (remOwned[item] or 0)
+      if m > 0 then oItems[item] = m end
+    end
     local net, vendor, have, handled = {}, {}, {}, {}
     for item, n in pairs(gross) do
       if not handled[item] then
@@ -632,11 +686,11 @@ function ns.UpdateNeeds(c)
       if remStock then remStock[item] = math.max(0, (remStock[item] or 0) - u) end
     end
     c.needs[p.skillLine] = { name = name, items = net, vendor = vendor, gross = gross, have = have,
-      reached = reached, target = p.max, plan = plan, reason = info.reason,
+      reached = reached, target = target, cap = p.max, rankCaps = caps, plan = plan, reason = info.reason,
       bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
       knownOnly = { reached = kReached, reason = kInfo.reason },
       mode = mode, milestones = info.milestones,
-      alt = { mode = other, reached = oReached, milestones = oInfo.milestones } }
+      alt = { mode = other, reached = oReached, milestones = oInfo.milestones, gross = oGross, items = oItems } }
   end
   if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then
     ns.Wishlist.InjectNeeds(c, foundKey)

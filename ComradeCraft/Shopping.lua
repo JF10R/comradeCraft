@@ -25,6 +25,13 @@ local function Api()
 end
 function ns.CanExportShopping() return Api() ~= nil end
 
+-- Pure: "<profession> (131-175)" when `ranged`, else "<profession>". The Auctionator list is
+-- "ComradeCraft: " .. this; a ranged name is only used when the previous list can be deleted.
+function ns.ShoppingListLabel(need, rank, ranged)
+  if not (ranged and need and rank and need.target) then return need and need.name end
+  return ("%s (%d-%d)"):format(need.name, rank, need.target)
+end
+
 -- Creates (or replaces) the Auctionator list "ComradeCraft: <profession>". Items whose name
 -- the client has not cached yet are skipped. Returns exported, skipped (nil without Auctionator).
 function ns.ExportShopping(key, line)
@@ -49,12 +56,24 @@ function ns.ExportShopping(key, line)
     end
   end
   if #strings == 0 then return 0, skipped end
-  local listName = "ComradeCraft: " .. need.name
+  -- With the range in the name, each export would add a list: delete the previous one first.
+  local rank
+  for _, p in pairs(c.professions or {}) do if p.skillLine == line then rank = p.rank end end
+  local label = ns.ShoppingListLabel(need, rank, api.DeleteShoppingList ~= nil)
+  local listName = "ComradeCraft: " .. label
+  ComradeCraftDB.shopLists = ComradeCraftDB.shopLists or {}
+  local slot = key .. ":" .. line
+  local prev = ComradeCraftDB.shopLists[slot]
+  if prev and prev ~= listName and api.DeleteShoppingList then
+    local okD, errD = pcall(api.DeleteShoppingList, CALLER, prev)
+    if not okD then ns.Log(("shopping: delete %s failed: %s"):format(prev, tostring(errD))) end
+  end
   local ok, err = pcall(api.CreateShoppingList, CALLER, listName, strings)
+  if ok then ComradeCraftDB.shopLists[slot] = listName end
   ns.Log(("shopping: %s -> %s (%d items, %d skipped)%s"):format(listName, ok and "ok" or "error",
     #strings, skipped, ok and "" or (" " .. tostring(err))))
   if not ok then return nil end
-  return #strings, skipped
+  return #strings, skipped, label
 end
 
 -- Pure: TSM Shopping search text, e.g. "Linen Cloth/exact/x124;Wool Cloth/exact/x60" (TSM
@@ -313,7 +332,7 @@ end)
 -- Exports and tells the player what happened.
 function ns.ExportShoppingVerbose(key, line)
   local need = ns.AllChars()[key] and ns.AllChars()[key].needs and ns.AllChars()[key].needs[line]
-  local n, skipped = ns.ExportShopping(key, line)
+  local n, skipped, label = ns.ExportShopping(key, line)
   if not n then
     ns.Print(L["Could not create the Auctionator list (see /comrade log)."])
   elseif n == 0 and skipped > 0 then
@@ -322,7 +341,7 @@ function ns.ExportShoppingVerbose(key, line)
     ns.Print(L["Nothing to buy for %s."]:format(need and need.name or "?"))
   else
     ns.Print(L["Auctionator list \"ComradeCraft: %s\" created: %d items. Open the Shopping tab at the auction house."]
-      :format(need.name, n) .. (skipped > 0 and (" " .. L["%d not cached yet; try again in a moment."]:format(skipped)) or ""))
+      :format(label or need.name, n) .. (skipped > 0 and (" " .. L["%d not cached yet; try again in a moment."]:format(skipped)) or ""))
   end
 end
 

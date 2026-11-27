@@ -76,9 +76,6 @@ ns.Translations[loc] = {
     ["Craft %d %s (%s)"] = "Crea %d %s (%s)",
     ["Craft %dx %s (%s)"] = "Crea %dx %s (%s)",
     ["%d %s (vendor)"] = "%d %s (mercante)",
-    ["Estimated cost: %s (%s prices)."] = "Costo stimato: %s (prezzi %s).",
-    ["Estimated cost: at least %s (%s prices, some items have no price)."] =
-      "Costo stimato: almeno %s (prezzi %s, alcuni oggetti senza prezzo).",
     [" + %d from stock"] = " + %d già in magazzino",
     ["%d %s from stock"] = "%d %s già in magazzino",
     ["With only your current recipes, you would be stuck at %d."] =
@@ -939,4 +936,22 @@ ns.Translations[loc] = {
   ["Waiting previous step"] = "In attesa fase precedente",
   ["Wishlist completed: %s"] = "Lista completata: %s",
   ["measured"] = "misurato",
+    -- Target skill (Plan tab)
+    ["Target: %d"] = "Obiettivo: %d",
+    ["Target: %d (cap)"] = "Obiettivo: %d (max)",
+    ["Target %d"] = "Punta a %d",
+    ["Cap"] = "Max",
+    ["Level %d needed to learn this rank (now %d)."] = "Serve il livello %d per imparare questo rango (ora %d).",
+    ["Total %d to %d (%s prices)"] = "Totale da %d a %d (prezzi %s)",
+    ["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."] = "Totale da %d a %d: lordo %s, da comprare %s, rivendita %s, istruttore %s, netto %s (prezzi %s).",
+    ["Gross"] = "Lordo",
+    ["To buy"] = "Da comprare",
+    ["Resale"] = "Rivendita",
+    ["Net"] = "Netto",
+    ["Trainer"] = "Istruttore",
+    ["not counted"] = "non contato",
+    ["Stops at"] = "Si ferma a",
+    ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] = "+ Istruttore: %s (incluso nel netto). Da comprare = materiali mancanti (asta + mercante); netto = da comprare - rivendita + istruttore.",
+    ["Other route: trainer not counted."] = "Altro percorso: istruttore non contato.",
+    ["> = some prices are unknown (minimum)."] = "> = alcuni prezzi sono sconosciuti (minimo).",
 }

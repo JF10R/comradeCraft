@@ -115,6 +115,16 @@ function Sync.CleanRecord(r)
     specOverride = Str(r.specOverride, 24), bankAlt = r.bankAlt and true or nil,
     route = r.route == "profit" and "profit" or nil,
     professions = {}, known = {}, bags = {}, equipped = {} }
+  -- Planned skill per profession: { [skillLine] = target }.
+  local nt = 0
+  for line, t in pairs(type(r.targets) == "table" and r.targets or {}) do
+    line, t = Num(line, 1, 2 ^ 31), Num(t, 1, 300)
+    if line and t and nt < MAX_PROFS then
+      out.targets = out.targets or {}
+      out.targets[line] = t
+      nt = nt + 1
+    end
+  end
   for slot, item in pairs(type(r.equipped) == "table" and r.equipped or {}) do
     slot, item = Num(slot, 1, 19), Num(item, 1, 2 ^ 31)
     if slot and item then out.equipped[slot] = item end
@@ -294,7 +304,7 @@ local function Record(c, key)
     end
   end
   return { class = c.class, level = c.level, spec = c.spec, specIcon = c.specIcon,
-    specOverride = c.specOverride, bankAlt = c.bankAlt or nil, route = c.route, updated = c.updated,
+    specOverride = c.specOverride, bankAlt = c.bankAlt or nil, route = c.route, targets = c.targets, updated = c.updated,
     professions = profs, known = known, owned = owned, equipped = c.equipped, enchants = c.enchants,
     bagSizes = c.bagSizes, farm = nf > 0 and farm or nil, cooldowns = nc > 0 and cds or nil,
     wishlist = #wl > 0 and wl or nil, reserved = nr > 0 and res or nil,
@@ -375,7 +385,7 @@ local function RemoteToWire(rec)
     if #tr == 0 then tr = nil end
   end
   return { class = rec.class, level = rec.level, spec = rec.spec, specIcon = rec.specIcon,
-    specOverride = rec.specOverride, bankAlt = rec.bankAlt or nil, route = rec.route, updated = rec.updated,
+    specOverride = rec.specOverride, bankAlt = rec.bankAlt or nil, route = rec.route, targets = rec.targets, updated = rec.updated,
     professions = rec.professions, known = known, owned = rec.bags, equipped = rec.equipped,
     enchants = rec.enchants, bagSizes = rec.bagSizes, farm = rec.farm, cooldowns = rec.cooldowns,
     wishlist = wl, reserved = res, inTransit = tr }
@@ -566,8 +576,11 @@ local function MetaSignature()
         if p.skillLine then pr[#pr + 1] = p.skillLine .. ":" .. (p.rank or 0) .. "/" .. (p.max or 0) end
       end
       table.sort(pr)
-      parts[#parts + 1] = ("%s=%s:%s:%s:%d:%d:%s"):format(key, tostring(c.level or 0),
-        tostring(c.spec or ""), tostring(c.route or ""), kn, ks, table.concat(pr, ","))
+      local tg = {}
+      for line, t in pairs(c.targets or {}) do tg[#tg + 1] = line .. ">" .. t end
+      table.sort(tg)
+      parts[#parts + 1] = ("%s=%s:%s:%s:%d:%d:%s:%s"):format(key, tostring(c.level or 0),
+        tostring(c.spec or ""), tostring(c.route or ""), kn, ks, table.concat(pr, ","), table.concat(tg, ","))
         .. (c.bankAlt and ":b" or "")
     end
   end

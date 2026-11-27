@@ -360,6 +360,8 @@ def main():
       ns.UpdateNeeds(c)
       local dc = ns.DescribeNeed(c.professions.Tailoring, c)
       assert(dc.cost and dc.cost:find("TSM", 1, true), "cost: total line, got " .. tostring(dc.cost))
+      assert(dc.totals and dc.totals.routes[1].active and dc.totals.routes[1].buy > 0
+        and dc.totals.routes[1].brut >= dc.totals.routes[1].buy, "totals: gross >= to buy > 0")
       assert(dc.steps[1].range:find("c", 1, true), "cost: step range has a price, got " .. dc.steps[1].range)
       assert(ns.DisenchantPrice and ns.DisenchantPrice(2589) == 100, "de price: TSM Destroy source wired")
       TSM_API, ns.PriceSource, ns.PriceSourceName, ns.DisenchantPrice = nil, nil, nil, nil
@@ -381,6 +383,52 @@ def main():
       assert(ns.RouteMode(c) == "profit" and c.needs[197] and c.needs[197].mode == "profit", "routes: mode stored")
       assert(ns.Sync.CleanRecord({ class = "MAGE", route = "profit" }).route == "profit"
         and ns.Sync.CleanRecord({ class = "MAGE", route = "x" }).route == nil, "routes: synced, validated")
+
+      -- Target skill: rank caps crossed, stored target drives c.needs, auto-reset, sync, steps.
+      do
+      local rc = ns.RankCaps(150, 300)
+      assert(#ns.RankCaps(150, 175) == 1 and rc[1] == 150 and rc[2] == 225 and #rc == 2
+        and #ns.RankCaps(75, 75) == 0, "target: rank caps")
+      assert(ns.TargetFor(c, c.professions.Tailoring) == 75, "target: default = cap")
+      ns.SetTarget("Test-Realm", 197, 30)
+      assert(c.targets[197] == 30 and c.needs[197].target == 30 and c.needs[197].reached == 30
+        and c.needs[197].cap == 75, "target: below the cap, got " .. tostring(c.needs[197].reached))
+      ns.SetTarget("Test-Realm", 197, 120)
+      assert(c.needs[197].target == 120 and c.needs[197].rankCaps[1] == 75, "target: past the cap")
+      ns.SetTarget("Test-Realm", 197, 999)
+      assert(c.targets[197] == 300, "target: clamped to 300")
+      ns.SetTarget("Test-Realm", 197, 30)
+      c.professions.Tailoring.rank = 30
+      ns.UpdateNeeds(c)
+      assert(c.targets == nil, "target: reset once the rank catches up")
+      c.professions.Tailoring.rank = 1
+      ns.SetTarget("Test-Realm", 197, nil)
+      assert(c.targets == nil and c.needs[197].target == 75, "target: back to the cap")
+      local ct = ns.Sync.CleanRecord({ class = "MAGE", targets = { [197] = 175, [171] = 999, x = 5 } }).targets
+      assert(ct and ct[197] == 175 and ct[171] == nil and ct.x == nil, "target: synced, validated")
+      local _, _, pb = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, nil, nil, "cheap", nil, { [5] = true })
+      assert(#pb == 2 and pb[1].to == 5 and pb[2].from == 5 and pb[2].spell == pb[1].spell, "target: step split at a cap")
+      assert(ns.ShoppingListLabel({ name = "Tailoring", target = 175 }, 131, true) == "Tailoring (131-175)"
+        and ns.ShoppingListLabel({ name = "Tailoring", target = 175 }, 131, false) == "Tailoring", "target: list label")
+      local oldPS2 = ns.PriceSource
+      ns.PriceSource = function(item) return item == 2589 and 100 or nil end
+      local tt = ns.TargetTotals({ mode = "cheap", reached = 40, gross = { [2589] = 10 }, items = { [2589] = 4 },
+        vendor = {}, milestones = { [0] = { best = 50 } },
+        alt = { mode = "profit", reached = 40, gross = { [2589] = 12 }, items = { [2589] = 6 }, milestones = { [0] = { best = 500 } } } },
+        30, true)
+      local a1, a2 = tt.routes[1], tt.routes[2]
+      assert(a1.brut == 1000 and a1.buy == 400 and a1.resale == 50 and a1.net == 380 and a1.netOk,
+        "totals: net = to buy - resale + trainer, got " .. a1.net)
+      assert(a2.brut == 1200 and a2.buy == 600 and a2.net == 100 and a2.noTrainer, "totals: other route")
+      ns.PriceSource = oldPS2
+      -- A rank step comes before the first step past the cap, warned when the level is too low.
+      local fp = { skillLine = 197, rank = 70, max = 75 }
+      local fc = { level = 5, known = { [197] = { [2963] = true } }, needs = { [197] = { name = "Tailoring",
+        plan = { { spell = 2963, from = 75, to = 80, crafts = 5, subs = {} } }, rankCaps = { 75 },
+        reached = 80, target = 80, cap = 75, items = {}, vendor = {}, gross = {}, milestones = {} } } }
+      local fd = ns.DescribeNeed(fp, fc)
+      assert(fd.steps[1].rankCap == 75 and fd.steps[1].warn and fd.steps[2].from == 75, "target: rank step + level warning")
+      end
       local mt = ns.MilestoneRows(c.needs[197])
       local r1 = mt and mt.rows[1]
       assert(r1 and r1.from == 1 and r1.to == 75 and #r1.routes == 2 and r1.routes[1].mode == "cheap"

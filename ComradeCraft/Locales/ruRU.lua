@@ -76,9 +76,6 @@ ns.Translations[loc] = {
     ["Craft %d %s (%s)"] = "Создать %d %s (%s)",
     ["Craft %dx %s (%s)"] = "Создать %dx %s (%s)",
     ["%d %s (vendor)"] = "%d %s (торговец)",
-    ["Estimated cost: %s (%s prices)."] = "Примерная цена: %s (цены: %s).",
-    ["Estimated cost: at least %s (%s prices, some items have no price)."] =
-      "Примерная цена: не менее %s (цены: %s, у некоторых предметов нет цены).",
     [" + %d from stock"] = " + %d из запасов",
     ["%d %s from stock"] = "%d %s из запасов",
     ["With only your current recipes, you would be stuck at %d."] =
@@ -939,4 +936,22 @@ ns.Translations[loc] = {
   ["Waiting previous step"] = "Ждёт предыдущий шаг",
   ["Wishlist completed: %s"] = "Список выполнен: %s",
   ["measured"] = "измерено",
+    -- Target skill (Plan tab)
+    ["Target: %d"] = "Цель: %d",
+    ["Target: %d (cap)"] = "Цель: %d (макс.)",
+    ["Target %d"] = "Цель %d",
+    ["Cap"] = "Макс.",
+    ["Level %d needed to learn this rank (now %d)."] = "Нужен уровень %d, чтобы выучить этот ранг (сейчас %d).",
+    ["Total %d to %d (%s prices)"] = "Итого с %d до %d (цены: %s)",
+    ["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."] = "Итого с %d до %d: всего %s, купить %s, перепродажа %s, учитель %s, чистыми %s (цены: %s).",
+    ["Gross"] = "Всего",
+    ["To buy"] = "Купить",
+    ["Resale"] = "Перепродажа",
+    ["Net"] = "Чистыми",
+    ["Trainer"] = "Учитель",
+    ["not counted"] = "не учтено",
+    ["Stops at"] = "Остановится на",
+    ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] = "+ Учитель: %s (входит в чистые). Купить = недостающие материалы (аукцион + торговец); чистыми = купить - перепродажа + учитель.",
+    ["Other route: trainer not counted."] = "Другой путь: учитель не учтён.",
+    ["> = some prices are unknown (minimum)."] = "> = некоторые цены неизвестны (минимум).",
 }

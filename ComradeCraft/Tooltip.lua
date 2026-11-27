@@ -309,6 +309,8 @@ end
 local RANK_NAMES = { [75] = "Journeyman", [150] = "Expert", [225] = "Artisan", [300] = "Master" }
 local SECONDARY = { [185] = true, [129] = true, [356] = true }
 local CLASSIC_REQ = { [75] = { 50, 10 }, [150] = { 125, 20 }, [225] = { 200, 35 }, [300] = { 275, 50 } }
+ns.RANK_REQ = CLASSIC_REQ -- [cap] = { skill, character level } to learn the next rank
+ns.RANK_NAMES = RANK_NAMES
 
 -- Classic/Forever Expert (cap 150) and Artisan (cap 225) trainers by [cap][skillLine][faction].
 -- Each entry: { npcID, name, zone, faction, fallbackPlace = { uiMap, x, y } }.
@@ -515,7 +517,7 @@ function ns.DescribeNeed(p, c)
   if not known then
     return { status = ns.L["Open this profession's window once so your recipes can be read."] }
   end
-  if p.rank >= p.max then
+  if p.rank >= (ns.TargetFor(c, p) or p.max) then
     return { status = ns.L["At the cap (%d)."]:format(p.max), rank = ns.RankAdvice(p) }
   end
   if not need then return { status = ns.L["No data."] } end
@@ -552,7 +554,33 @@ function ns.DescribeNeed(p, c)
       label = SpellName(spell),
       detail = ns.L["At the trainer - skill %s - %s"]:format((guessed and "~" or "") .. tostring(req or "?"), cost) }
   end
+  -- Rank caps the target crosses: a "learn the next rank" step before the first step past
+  -- each one, with a warning when the character is below the level it needs (the plan and
+  -- the shopping list still go on). rankCost: known book prices only.
+  local caps, capIdx, rankCost, rankComplete = need.rankCaps or {}, 1, 0, true
+  local function AddRankStep(cap)
+    local adv = ns.RankAdvice({ skillLine = line, max = cap })
+    if not adv then return end
+    local req = CLASSIC_REQ[cap]
+    local warn = req and c.level and c.level < req[2]
+      and ns.L["Level %d needed to learn this rank (now %d)."]:format(req[2], c.level) or nil
+    local first = adv.entries[1]
+    local book = first and first.kind == "learn" and first.item
+    local v = book and ns.BuyCost(book, 1)
+    if v then rankCost = rankCost + v else rankComplete = false end
+    out.steps[#out.steps + 1] = { rankCap = cap, header = adv.title, entries = adv.entries,
+      notes = adv.notes, warn = warn, from = cap, to = cap,
+      cost = priced and v and ("~" .. ns.Money(math.floor(v))) or nil }
+    out.plan[#out.plan + 1] = adv.title .. " :"
+    if warn then out.plan[#out.plan + 1] = "  " .. warn end
+    for _, e in ipairs(adv.entries) do out.plan[#out.plan + 1] = "  " .. e.text end
+    for _, n in ipairs(adv.notes) do out.plan[#out.plan + 1] = "  " .. n end
+  end
   for _, step in ipairs(need.plan or {}) do
+    while caps[capIdx] and step.from >= caps[capIdx] do
+      AddRankStep(caps[capIdx])
+      capIdx = capIdx + 1
+    end
     local entries = {}
     local subSpells = {}
     for sub in pairs(step.subs or {}) do subSpells[#subSpells + 1] = sub end
@@ -605,30 +633,33 @@ function ns.DescribeNeed(p, c)
     out.plan[#out.plan + 1] = range .. " :"
     for _, e in ipairs(entries) do out.plan[#out.plan + 1] = "  " .. e.text end
   end
+  while caps[capIdx] and (need.reached or 0) >= caps[capIdx] do
+    AddRankStep(caps[capIdx])
+    capIdx = capIdx + 1
+  end
   local k = need.knownOnly
   if k and k.reached < need.reached then
     out.knownOnly = ns.L["With only your current recipes, you would be stuck at %d."]:format(k.reached)
   end
 
-  -- Total still to spend: missing mats (net of stock) + vendor reagents + known trainer costs.
+  -- Totals of the route to the target, both route types (ns.TargetTotals).
   if priced then
-    local total, complete = 0, true
-    for _, list in ipairs({ need.items or {}, need.vendor or {} }) do
-      for item, n in pairs(list) do
-        local v = ns.BuyCost(item, n)
-        if v then total = total + v else complete = false end
-      end
-    end
+    local trainer, trainerOk = rankCost, rankComplete
     for _, step in ipairs(out.steps) do
-      for _, e in ipairs(step.entries) do
-        if e.kind == "learn" then
-          if e.copper then total = total + e.copper else complete = false end
+      if not step.rankCap then
+        for _, e in ipairs(step.entries) do
+          if e.kind == "learn" then
+            if e.copper then trainer = trainer + e.copper else trainerOk = false end
+          end
         end
       end
     end
-    out.cost = (complete and ns.L["Estimated cost: %s (%s prices)."]
-      or ns.L["Estimated cost: at least %s (%s prices, some items have no price)."])
-      :format(ns.Money(math.floor(total)), ns.PriceSourceName)
+    out.totals = ns.TargetTotals(need, trainer, trainerOk)
+    local t = out.totals.routes[1]
+    out.cost = ns.L["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."]:format(
+      p.rank, need.reached, ns.TotalMoney(t.brut, t.brutOk), ns.TotalMoney(t.buy, t.buyOk),
+      ns.Money(math.floor(t.resale)), ns.TotalMoney(trainer, trainerOk), ns.TotalMoney(t.net, t.netOk),
+      ns.PriceSourceName)
   end
 
   local used = {}
@@ -656,9 +687,55 @@ function ns.DescribeNeed(p, c)
     out.blocked = why .. (#learn > 0 and ns.L[" To learn: %s."]:format(table.concat(learn, ", "))
       or ns.L[" No recipe to learn found within the next 25 points."])
   end
-  -- The plan reaches the cap: what comes next.
-  if (need.reached or 0) >= p.max then out.rank = ns.RankAdvice(p) end
+  -- The plan reaches a rank cap: what comes next.
+  local goal = need.target or p.max
+  if (need.reached or 0) >= goal and RANK_NAMES[goal] then
+    out.rank = ns.RankAdvice({ skillLine = line, max = goal })
+  end
   return out
+end
+
+-- Copper as text, ">" in front when some prices were missing (the sum is a minimum).
+function ns.TotalMoney(v, complete)
+  local s = ns.Money(math.floor(math.abs(v or 0)))
+  if (v or 0) < 0 then s = "-" .. s end
+  return (complete and "" or ">") .. s
+end
+
+-- Pure: totals of a need's route to its target, active route first. Per route: brut (every
+-- mat), buy (missing mats, AH + merchant), resale (best per product, the milestone values),
+-- net = buy - resale + trainer. The other route has no trainer cost (its recipes differ).
+function ns.TargetTotals(need, trainer, trainerOk)
+  local function Buy(list)
+    local t, ok = 0, true
+    for item, n in pairs(list or {}) do
+      local v = ns.BuyCost(item, n)
+      if v then t = t + v else ok = false end
+    end
+    return t, ok
+  end
+  local function Resale(ms)
+    local t = 0
+    for _, m in pairs(ms or {}) do t = t + (m.best or 0) end
+    return t
+  end
+  local routes = {}
+  local brut, brutOk = Buy(need.gross)
+  local b1, ok1 = Buy(need.items)
+  local b2, ok2 = Buy(need.vendor)
+  local resale = Resale(need.milestones)
+  routes[1] = { mode = need.mode, active = true, reached = need.reached, brut = brut, brutOk = brutOk,
+    buy = b1 + b2, buyOk = ok1 and ok2, resale = resale, trainer = trainer or 0,
+    net = b1 + b2 - resale + (trainer or 0), netOk = ok1 and ok2 and (trainerOk ~= false) }
+  local alt = need.alt
+  if alt and alt.gross then
+    local ab, abOk = Buy(alt.gross)
+    local ob, obOk = Buy(alt.items)
+    local ar = Resale(alt.milestones)
+    routes[2] = { mode = alt.mode, reached = alt.reached, brut = ab, brutOk = abOk, buy = ob, buyOk = obOk,
+      resale = ar, net = ob - ar, netOk = obOk, noTrainer = true }
+  end
+  return { routes = routes, trainer = trainer or 0, trainerOk = trainerOk ~= false }
 end
 
 -- Cost per bracket of both route types, for the Plan tab's table. Per route: copper spent on

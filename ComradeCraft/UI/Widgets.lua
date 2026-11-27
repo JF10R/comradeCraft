@@ -286,6 +286,8 @@ end
 
 -- Milestone table columns (x inside the steps column): range, route, mats, resale, net.
 local MS_COLS = { { 0, 64, "LEFT" }, { 66, 86, "LEFT" }, { 154, 92, "RIGHT" }, { 250, 110, "RIGHT" }, { 364, 92, "RIGHT" } }
+-- Totals to the target: route | gross | to buy | resale | net.
+U.TOTAL_COLS = { { 0, 104, "LEFT" }, { 106, 84, "RIGHT" }, { 192, 92, "RIGHT" }, { 286, 84, "RIGHT" }, { 372, 92, "RIGHT" } }
 
 -- One line of the steps column: a range header ("87 - 107" + its cost), a learn/craft entry
 -- (icon | count | name, mats in grey below), or a milestone table row (5 columns).
@@ -412,6 +414,14 @@ local function PlaceStep(x, y, w, e, own, zebra)
     h = 22
   elseif e.kind == "milestone" then
     if zebra then s.bg:SetColorTexture(0.10, 0.10, 0.13, 0.35) s.bg:Show() end
+    -- e.layout: other column positions (same count), e.g. U.TOTAL_COLS.
+    for i, col in ipairs(e.layout or MS_COLS) do
+      local fs = s.cols[i]
+      fs:ClearAllPoints()
+      fs:SetPoint("TOPLEFT", col[1], -2)
+      fs:SetWidth(col[2])
+      fs:SetJustifyH(col[3])
+    end
     for i, v in ipairs(e.cols) do s.cols[i]:SetText(v) end
     h = 16
   else

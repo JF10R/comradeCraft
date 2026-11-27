@@ -25,7 +25,9 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.name:SetText(ns.ProfName and ns.ProfName(p.skillLine, name) or name)
   local need = p.skillLine and c.needs and c.needs[p.skillLine]
   local rank, maxRank = p.rank or 0, p.max or 0
-  r.level:SetText(("%d / %d"):format(rank, maxRank))
+  local target = ns.TargetFor(c, p) or maxRank
+  r.level:SetText(target ~= maxRank and ("%d / %d  > %d"):format(rank, maxRank, target)
+    or ("%d / %d"):format(rank, maxRank))
   r.bar:SetMinMaxValues(0, math.max(1, maxRank))
   r.bar:SetValue(rank)
   if maxRank > 0 and rank >= maxRank then
@@ -66,8 +68,43 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.top:SetText(table.concat(top, "\n"))
   local yy = 8 + (#top > 0 and (r.top:GetStringHeight() + 4) or 0)
 
+  -- Target skill: shortcuts to the cap or a rank cap, -5/+5 (Shift: 25). Owner only.
+  if p.skillLine and not ns.GATHERING[p.skillLine] and (c.known and c.known[p.skillLine]) then
+    local line = p.skillLine
+    local tl = target ~= maxRank and L["Target: %d"]:format(target) or L["Target: %d (cap)"]:format(target)
+    Label(PROF_W, y - yy - 5, "|cffffd100" .. tl .. "|r", "GameFontNormalSmall", 112)
+    if own then
+      local function Step(dir)
+        local v = target + dir * (IsShiftKeyDown and IsShiftKeyDown() and 25 or 5)
+        ns.SetTarget(key, line, v <= rank and nil or v)
+      end
+      local x = PROF_W + 114
+      Action(x, y - yy, "-", function() Step(-1) end):SetWidth(26)
+      Action(x + 28, y - yy, "+", function() Step(1) end):SetWidth(26)
+      x = x + 60
+      Toggle(x, y - yy, L["Cap"], target == maxRank, true, function() ns.SetTarget(key, line, nil) end):SetWidth(56)
+      x = x + 60
+      for _, v in ipairs({ 150, 225, 300 }) do
+        if v > rank and v ~= maxRank then
+          Toggle(x, y - yy, tostring(v), target == v, true, function() ns.SetTarget(key, line, v) end):SetWidth(46)
+          x = x + 50
+        end
+      end
+    end
+    yy = yy + 28
+  end
+
   for _, step in ipairs(d.steps or {}) do
-    yy = yy + 4 + PlaceStep(PROF_W, y - yy - 2, RIGHT_W, { kind = "range", from = step.from, to = step.to, cost = step.cost }, own)
+    yy = yy + 4 + PlaceStep(PROF_W, y - yy - 2, RIGHT_W, { kind = "range", from = step.from, to = step.to,
+      cost = step.cost, header = step.header }, own)
+    if step.warn then
+      local _, wh = Label(PROF_W + 4, y - yy - 2, "|cffff9933" .. step.warn .. "|r", nil, RIGHT_W - 4)
+      yy = yy + wh + 4
+    end
+    for _, n in ipairs(step.notes or {}) do
+      local _, nh = Label(PROF_W + 4, y - yy - 2, "|cff9d9d9d" .. n .. "|r", nil, RIGHT_W - 4)
+      yy = yy + nh + 4
+    end
     for idx, e in ipairs(step.entries) do
       if e.kind == "craft" and e.item and e.item ~= 0 and ns.Synergies and ns.Synergies.DisenchantTarget then
         local deTo = ns.Synergies.DisenchantTarget(key, e.item)
@@ -82,8 +119,41 @@ local function LayoutProfession(y, name, p, c, own, key)
     end
   end
 
+  -- Totals to the target, both routes: gross | to buy | resale | net (hover: details).
+  if d.totals then
+    local t = d.totals
+    local goal = need and need.target or target
+    yy = yy + 4 + PlaceStep(PROF_W, y - yy - 2, RIGHT_W, { kind = "range",
+      header = L["Total %d to %d (%s prices)"]:format(rank, goal, ns.PriceSourceName or "?") }, own)
+    local lay = U.TOTAL_COLS
+    yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", layout = lay, cols = {
+      "|cff8f8f8f" .. L["Route"] .. "|r", "|cff8f8f8f" .. L["Gross"] .. "|r", "|cff8f8f8f" .. L["To buy"] .. "|r",
+      "|cff8f8f8f" .. L["Resale"] .. "|r", "|cff8f8f8f" .. L["Net"] .. "|r" } }, own)
+    local TM = ns.TotalMoney
+    for i, rt in ipairs(t.routes) do
+      local name = L[rt.mode == "cheap" and "Cheapest" or "Profitable"]
+      if (rt.reached or goal) < goal then name = name .. " (" .. rt.reached .. ")" end
+      name = rt.active and ("|cffffd100" .. name .. "|r") or ("|cffb0b0b0" .. name .. "|r")
+      local net = rt.net < 0 and ("|cff40ff40+" .. TM(-rt.net, rt.netOk) .. "|r") or TM(rt.net, rt.netOk)
+      local tip = { { L["Gross"], TM(rt.brut, rt.brutOk) }, { L["To buy"], TM(rt.buy, rt.buyOk) },
+        { L["Resale"], ShortMoney(rt.resale) },
+        { L["Trainer"], rt.noTrainer and L["not counted"] or TM(rt.trainer, t.trainerOk) }, { L["Net"], net } }
+      if (rt.reached or goal) < goal then tip[#tip + 1] = { L["Stops at"], tostring(rt.reached) } end
+      yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", layout = lay, tip = tip, cols = {
+        name, TM(rt.brut, rt.brutOk), TM(rt.buy, rt.buyOk), ShortMoney(rt.resale), net } }, own, i % 2 == 0)
+    end
+    local note = L["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."]
+      :format(TM(t.trainer, t.trainerOk))
+    if #t.routes > 1 then note = note .. " " .. L["Other route: trainer not counted."] end
+    if not (t.routes[1].brutOk and t.routes[1].buyOk and t.trainerOk) then
+      note = note .. " " .. L["> = some prices are unknown (minimum)."]
+    end
+    local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. note .. "|r", "GameFontDisableSmall", RIGHT_W)
+    yy = yy + nh + 8
+  end
+
   local extra = {}
-  if d.cost then extra[#extra + 1] = "|cffffd100" .. d.cost .. "|r" end
+  if d.cost and not d.totals then extra[#extra + 1] = "|cffffd100" .. d.cost .. "|r" end
   if d.used then extra[#extra + 1] = "|cff80c080" .. d.used .. "|r" end
   if d.knownOnly then extra[#extra + 1] = "|cff9d9d9d" .. d.knownOnly .. "|r" end
   r.mid:ClearAllPoints()
@@ -415,6 +485,7 @@ end
 
 function U.RenderPatterns(key, c, filter)
   local y = 0
+  local own = key == ns.CharKey()
   local _, ih = Label(0, y, "|cff9d9d9d" .. L["Valuable unlearned patterns for yourself and your group: where to buy or farm them, drop rate when known, and 1-click waypoints."] .. "|r")
   y = y - ih - 6
   local ui = ComradeCraftDB and ComradeCraftDB.ui or {}
@@ -482,6 +553,18 @@ function U.RenderPatterns(key, c, filter)
     end)
     bw:SetWidth(88)
     if bw.SetFrameLevel and row.GetFrameLevel then bw:SetFrameLevel(row:GetFrameLevel() + 2) end
+    -- Skill too low: one click sets the profession's target to the pattern's required skill.
+    local rank
+    for _, pr in pairs(c.professions or {}) do if pr.skillLine == p.line then rank = pr.rank end end
+    local canTarget = own and not p.canLearn and p.req and rank and p.req > rank
+    row.line1:SetPoint("RIGHT", canTarget and -194 or -102, 0)
+    row.line2:SetPoint("RIGHT", canTarget and -194 or -102, 0)
+    if canTarget then
+      local line, req = p.line, p.req
+      local bt = Action(LIST_W - 186, y - 7, L["Target %d"]:format(req), function() ns.SetTarget(key, line, req) end)
+      bt:SetWidth(88)
+      if bt.SetFrameLevel and row.GetFrameLevel then bt:SetFrameLevel(row:GetFrameLevel() + 2) end
+    end
     y = y - PAT_H - 2
   end
 

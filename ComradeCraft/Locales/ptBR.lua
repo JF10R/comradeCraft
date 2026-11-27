@@ -116,10 +116,6 @@ ns.Translations[loc] = {
       "Crie %dx %s (%s)",
     ["%d %s (vendor)"] =
       "%d %s (vendedor)",
-    ["Estimated cost: %s (%s prices)."] =
-      "Custo estimado: %s (preços de %s).",
-    ["Estimated cost: at least %s (%s prices, some items have no price)."] =
-      "Custo estimado: pelo menos %s (preços de %s, alguns itens não têm preço).",
     [" + %d from stock"] =
       " + %d do estoque",
     ["%d %s from stock"] =
@@ -1066,4 +1062,22 @@ ns.Translations[loc] = {
   ["Waiting previous step"] = "Aguardando etapa anterior",
   ["Wishlist completed: %s"] = "Lista concluída: %s",
   ["measured"] = "medido",
+    -- Target skill (Plan tab)
+    ["Target: %d"] = "Meta: %d",
+    ["Target: %d (cap)"] = "Meta: %d (máx.)",
+    ["Target %d"] = "Mirar %d",
+    ["Cap"] = "Máx.",
+    ["Level %d needed to learn this rank (now %d)."] = "Nível %d necessário para aprender este grau (agora %d).",
+    ["Total %d to %d (%s prices)"] = "Total de %d a %d (preços %s)",
+    ["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."] = "Total de %d a %d: bruto %s, a comprar %s, revenda %s, instrutor %s, líquido %s (preços %s).",
+    ["Gross"] = "Bruto",
+    ["To buy"] = "A comprar",
+    ["Resale"] = "Revenda",
+    ["Net"] = "Líquido",
+    ["Trainer"] = "Instrutor",
+    ["not counted"] = "não contado",
+    ["Stops at"] = "Para em",
+    ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] = "+ Instrutor: %s (no líquido). A comprar = materiais em falta (leilão + vendedor); líquido = a comprar - revenda + instrutor.",
+    ["Other route: trainer not counted."] = "Outra rota: instrutor não contado.",
+    ["> = some prices are unknown (minimum)."] = "> = alguns preços são desconhecidos (mínimo).",
 }
