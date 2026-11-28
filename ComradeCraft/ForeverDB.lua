@@ -9,6 +9,7 @@ ns.ForeverDB = FDB
 
 local MAX_BOUNDS, MAX_DROPS, MAX_VENDORS, MAX_CUSTOM, MAX_DE = 60, 40, 40, 40, 30
 local MAX_STATION_SPOTS, MAX_NPCS = 60, 80
+local MAX_SKILL = 450 -- highest valid yellow/grey skill bound
 local PEER_COOLDOWN = 300 -- seconds between P2P ForeverDB syncs to the same peer
 local lastSentPeer, guildSent = {}, false
 
@@ -228,8 +229,8 @@ function FDB.Payload()
   local b, d, v, cr, de = {}, {}, {}, {}, {}
   local nb, nd, nv, ncr, nde = 0, 0, 0, 0, 0
   for spell, rec in pairs(db.recipeBounds or {}) do
-    if nb < MAX_BOUNDS and type(rec) == "table" and ns.BoundIsCurrent(rec) then
-      local yv, gv = rec.y or rec[1], rec.g or rec[2]
+    if nb < MAX_BOUNDS and type(rec) == "table" and not rec.peer and ns.BoundIsCurrent(rec) then
+      local yv, gv = not rec.py and (rec.y or rec[1]) or nil, not rec.pg and (rec.g or rec[2]) or nil -- own halves only
       if (yv and yv > 0) or (gv and gv > 0) then
         b[spell] = { yv or 0, gv or 0, rec.b }
         nb = nb + 1
@@ -249,7 +250,8 @@ function FDB.Payload()
     end
   end
   for spell, r in pairs(db.customRecipes or {}) do
-    if ncr < MAX_CUSTOM and type(r) == "table" and r[1] and type(r[7]) == "table" and #r[7] >= 2 and #r[7] <= 16 then
+    if ncr < MAX_CUSTOM and type(r) == "table" and not r.peer and r[1] and type(r[7]) == "table"
+      and #r[7] >= 2 and #r[7] <= 16 then
       cr[spell] = { r[1], r[2] or 1, r[3] or 1, r[4] or 1, r[5] or 0, r[6] or 1, r[7] }
       ncr = ncr + 1
     end
@@ -287,6 +289,12 @@ function FDB.Payload()
     st = nst > 0 and st or nil, np = nnp > 0 and np or nil }
 end
 
+-- Newest build a peer bound may claim: ours or our data's, plus slack for a patch rollout.
+local function MaxBuild()
+  local top = math.max(ns.ClientBuild and ns.ClientBuild() or 0, ns.DataBuild and ns.DataBuild() or 0)
+  return top > 0 and top + 2000 or 2 ^ 31
+end
+
 -- Strict validation & merge of an incoming P2P ForeverDB packet.
 function FDB.OnRemote(peerID, msg)
   if not (ComradeCraftDB and peerID and type(msg) == "table" and ns.Sync) then return false end
@@ -302,8 +310,8 @@ function FDB.OnRemote(peerID, msg)
     spell = Num(spell, 1, 2 ^ 24)
     if spell and type(x) == "table" and ncr < MAX_CUSTOM then
       local line = Num(x[1], 1, 2 ^ 24)
-      local yv = Num(x[2], 1, 500)
-      local gv = Num(x[3], 1, 500)
+      local yv = Num(x[2], 1, MAX_SKILL)
+      local gv = Num(x[3], yv or 1, MAX_SKILL)
       local gain = Num(x[4], 1, 10) or 1
       local outItem = Num(x[5], 0, 2 ^ 24) or 0
       local yield = Num(x[6], 1, 100) or 1
@@ -317,7 +325,7 @@ function FDB.OnRemote(peerID, msg)
           reag[#reag + 1] = rq
         end
         if okR and #reag >= 2 then
-          local row = { line, yv, gv, gain, outItem, yield, reag }
+          local row = { line, yv, gv, gain, outItem, yield, reag, peer = true } -- not re-shared
           if not db.customRecipes[spell] then
             db.customRecipes[spell] = row
             customAdded = true
@@ -334,9 +342,9 @@ function FDB.OnRemote(peerID, msg)
   for spell, x in pairs(type(msg.b) == "table" and msg.b or {}) do
     spell = Num(spell, 1, 2 ^ 24)
     if spell and ns.Recipes and ns.Recipes[spell] and type(x) == "table" and nb < MAX_BOUNDS then
-      local yv, gv = Num(x[1], 0, 500), Num(x[2], 0, 500)
-      if (yv and yv > 0) or (gv and gv > 0) then
-        local bv = Num(x[3], 1, 2 ^ 31)
+      local yv, gv = Num(x[1], 0, MAX_SKILL), Num(x[2], 0, MAX_SKILL) -- 0 = half not observed
+      local bv = Num(x[3], 1, MaxBuild()) -- a far-future build would never go stale
+      if bv and yv and gv and (yv > 0 or gv > 0) and not (gv > 0 and yv > gv) then
         store.bounds[spell] = { y = yv and yv > 0 and yv or nil, g = gv and gv > 0 and gv or nil, b = bv }
         local loc = db.recipeBounds[spell]
         if loc and not ns.BoundIsCurrent(loc) then loc = nil end -- an outdated local bound gives way
@@ -346,8 +354,9 @@ function FDB.OnRemote(peerID, msg)
           added = added + 1
         else
           local ly, lg = loc.y or loc[1], loc.g or loc[2]
-          if not ly and store.bounds[spell].y then loc.y = store.bounds[spell].y boundsAdded = true added = added + 1 end
-          if not lg and store.bounds[spell].g then loc.g = store.bounds[spell].g boundsAdded = true added = added + 1 end
+          local py, pg = store.bounds[spell].y, store.bounds[spell].g
+          if not ly and py and (not lg or py <= lg) then loc.y, loc.py = py, true boundsAdded = true added = added + 1 end
+          if not lg and pg and (not ly or pg >= ly) then loc.g, loc.pg = pg, true boundsAdded = true added = added + 1 end
         end
         nb = nb + 1
       end

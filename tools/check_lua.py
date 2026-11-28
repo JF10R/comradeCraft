@@ -3062,6 +3062,33 @@ def main():
             ComradeCraftDB.disenchants = { raw = {} }
             ns.InvalidateDECache()
           end
+          do -- ForeverDB shares only local observations and validates incoming bounds.
+            local savedB, savedCR = ComradeCraftDB.recipeBounds, ComradeCraftDB.customRecipes
+            local r1, r2 = { ns.Recipes[2963][2], ns.Recipes[2963][3] }, { ns.Recipes[2385][2], ns.Recipes[2385][3] }
+            ComradeCraftDB.recipeBounds, ComradeCraftDB.customRecipes = {}, {}
+            local db = ns.DataBuild()
+            FDB.OnRemote("peer-val", { t = "F", b = {
+              [2963] = { 0, 60, db },              -- half bound: accepted
+              [2385] = { 90, 40, db },             -- yellow > grey: rejected
+              [2386] = { 10, 999, db },            -- above 450: rejected
+              [2387] = { 10, 20, 2 ^ 31 - 1 },     -- far-future build: rejected
+            }, cr = { [999601] = { 197, 50, 30, 1, 0, 1, { 2589, 1 } },     -- yellow > grey: rejected
+                      [999602] = { 197, 30, 50, 1, 0, 1, { 2589, 1 } } } })
+            local rb = ComradeCraftDB.recipeBounds
+            assert(rb[2963] and rb[2963].g == 60 and rb[2963].peer, "foreverdb: half bound accepted, flagged peer")
+            assert(not rb[2385] and not rb[2386] and not rb[2387], "foreverdb: invalid bounds / build rejected")
+            assert(not ComradeCraftDB.customRecipes[999601] and ComradeCraftDB.customRecipes[999602], "foreverdb: custom bounds validated")
+            ComradeCraftDB.recipeBounds[2385] = { y = 30, b = db }   -- own yellow, grey filled by a peer
+            FDB.OnRemote("peer-val", { t = "F", b = { [2385] = { 0, 70, db } } })
+            assert(rb[2385].g == 70 and rb[2385].pg, "foreverdb: peer half fills a local bound, flagged")
+            local pay = FDB.Payload()
+            assert(pay and pay.b and pay.b[2385] and pay.b[2385][1] == 30 and pay.b[2385][2] == 0
+              and not pay.b[2963] and not (pay.cr and pay.cr[999602]), "foreverdb: peer data not re-broadcast")
+            ns.Recipes[999602] = nil
+            ns.Recipes[2963][2], ns.Recipes[2963][3], ns.Recipes[2385][2], ns.Recipes[2385][3] = r1[1], r1[2], r2[1], r2[2]
+            ComradeCraftDB.recipeBounds, ComradeCraftDB.customRecipes = savedB, savedCR
+            ComradeCraftDB.foreverPeers["peer-val"] = nil
+          end
 
           -- 20b. Sync Bank Alt non-ItemPrices + Stock Delta ("S") + Mail In-Transit.
           ComradeCraftDB.peers["p-delta"] = { included = true, name = "DeltaPeer", chars = {} }
