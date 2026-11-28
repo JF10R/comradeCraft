@@ -3033,6 +3033,30 @@ def main():
           ComradeCraftDB.disenchants = { raw = {} }
           if ComradeCraftDB.foreverPeers then ComradeCraftDB.foreverPeers["peer-fdb2"] = nil end
           ns.InvalidateDECache()
+          do -- DE bucket: reqLevel 0 falls back to item level; pre-fix peer buckets (no dv) are dropped.
+            ComradeCraftDB.disenchants = { raw = { { item = 88802, ilvl = 58, reqLevel = 0, quality = 2, classID = 4,
+              loot = { [16204] = 2 } } } }
+            ns.InvalidateDECache()
+            local st = ns.DisenchantBucketStats(true)
+            assert(st["2:60:0"] and not st["2:10:0"], "disenchant: reqLevel 0 buckets by item level")
+            local prevGII = GetItemInfo
+            GetItemInfo = function(id)
+              if id == 88802 then return "Old Robe", "|Hitem:88802|h", 2, 58, 0, nil, nil, nil, "INVTYPE_CHEST", nil, 100, 4, 1 end
+              return prevGII(id)
+            end
+            assert(ns.DisenchantYield(88802)[16204], "disenchant: reqLevel 0 yield looked up by item level")
+            assert(ns.DisenchantSkill(88802) == 225, "disenchant: reqLevel 0 skill by item level")
+            GetItemInfo = prevGII
+            FDB.OnRemote("peer-olddv", { t = "F", de = { ["2:10:0"] = { 9, { [10940] = 9 } } } })
+            assert(not ns.DisenchantBucketStats(false)["2:10:0"], "foreverdb: DE buckets without dv ignored")
+            ComradeCraftDB.foreverPeers["peer-olddv"].de = { ["2:10:0"] = { n = 9, mats = { [10940] = 9 } } }
+            ComradeCraftDB.foreverPeers["peer-olddv"].dv = nil
+            ns.InvalidateDECache()
+            assert(not ns.DisenchantBucketStats(false)["2:10:0"], "disenchant: stored pre-fix peer buckets ignored")
+            ComradeCraftDB.foreverPeers["peer-olddv"] = nil
+            ComradeCraftDB.disenchants = { raw = {} }
+            ns.InvalidateDECache()
+          end
 
           -- 20b. Sync Bank Alt non-ItemPrices + Stock Delta ("S") + Mail In-Transit.
           ComradeCraftDB.peers["p-delta"] = { included = true, name = "DeltaPeer", chars = {} }

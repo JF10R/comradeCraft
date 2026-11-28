@@ -284,7 +284,7 @@ function FDB.Payload()
   if nb == 0 and nd == 0 and nv == 0 and ncr == 0 and nde == 0 and nst == 0 and nnp == 0 then return nil end
   return { t = "F", v = ns.Sync and ns.Sync.PROTO or 1, id = db.accountId,
     b = nb > 0 and b or nil, d = nd > 0 and d or nil, ve = nv > 0 and v or nil,
-    cr = ncr > 0 and cr or nil, de = nde > 0 and de or nil,
+    cr = ncr > 0 and cr or nil, de = nde > 0 and de or nil, dv = nde > 0 and ns.DE_KEY_VERSION or nil,
     st = nst > 0 and st or nil, np = nnp > 0 and np or nil }
 end
 
@@ -394,7 +394,9 @@ function FDB.OnRemote(peerID, msg)
   end
   -- 4. Calibrated Forever disenchant bucket aggregates ({ [bucketKey] = { count, { [matID] = totalQty } } }).
   local nde = 0
-  for bkey, x in pairs(type(msg.de) == "table" and msg.de or {}) do
+  if msg.dv ~= ns.DE_KEY_VERSION then store.de = {} end -- older peers bucket reqLevel 0 items as level 1
+  store.dv = ns.DE_KEY_VERSION
+  for bkey, x in pairs(msg.dv == ns.DE_KEY_VERSION and type(msg.de) == "table" and msg.de or {}) do
     bkey = Str(bkey, 24)
     if bkey and bkey:match("^%d+:%d+:%d+$") and type(x) == "table" and nde < MAX_DE then
       local cnt = Num(x[1], 1, 100000)
@@ -443,7 +445,7 @@ function FDB.OnRemote(peerID, msg)
   db.foreverPeers[peerID] = store
   if customAdded and ns.LoadCustomRecipes then ns.LoadCustomRecipes() end
   if boundsAdded and ns.ApplyRecipeBounds then ns.ApplyRecipeBounds() end
-  if nde > 0 and ns.InvalidateDECache then ns.InvalidateDECache() end
+  if ns.InvalidateDECache then ns.InvalidateDECache() end
   return added > 0
 end
 

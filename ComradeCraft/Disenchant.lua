@@ -33,13 +33,20 @@ ns.ENCHANTING = 333
 -- Facts needed to judge an item; nil until the client has it cached.
 local function Facts(item)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-  local name, _, quality, _, reqLevel, _, _, _, equipLoc, _, sellPrice, classID, subclassID = get(item)
+  local name, _, quality, ilvl, reqLevel, _, _, _, equipLoc, _, sellPrice, classID, subclassID = get(item)
   if not name then return nil end
   return { name = name, quality = quality or 0, reqLevel = reqLevel or 0, equipLoc = equipLoc or "",
-    sellPrice = sellPrice or 0, classID = classID, subclassID = subclassID }
+    sellPrice = sellPrice or 0, classID = classID, subclassID = subclassID, level = ns.DELevel(reqLevel, ilvl) }
+end
+
+-- Level that picks the DE band: required level, or item level when it has none (reqLevel 0).
+function ns.DELevel(reqLevel, ilvl)
+  if (tonumber(reqLevel) or 0) > 0 then return reqLevel end
+  return tonumber(ilvl) or 0
 end
 
 -- Bucket key "quality:maxReqLevel:isWeapon" for empirical Forever DE calibration.
+ns.DE_KEY_VERSION = 2 -- sent as "dv" in ForeverDB; peer buckets without it are ignored
 local DE_MIN_SAMPLES = 5
 local deCache, deCacheLocalOnly
 
@@ -69,8 +76,7 @@ function ns.DisenchantBucketStats(localOnly)
   local raw = ComradeCraftDB and ComradeCraftDB.disenchants and ComradeCraftDB.disenchants.raw
   for _, e in ipairs(raw or {}) do
     if type(e) == "table" and e.quality and e.loot then
-      local rl = e.reqLevel or e.ilvl or 0
-      local bmax = BandMax(rl)
+      local bmax = BandMax(ns.DELevel(e.reqLevel, e.ilvl))
       local isWep = e.classID == 2 and 1 or 0
       local bkey = ("%d:%d:%d"):format(e.quality, bmax, isWep)
       Push(bkey, 1, e.loot)
@@ -78,7 +84,7 @@ function ns.DisenchantBucketStats(localOnly)
   end
   if not localOnly and ComradeCraftDB and ComradeCraftDB.foreverPeers then
     for _, p in pairs(ComradeCraftDB.foreverPeers) do
-      for bkey, st in pairs(p.de or {}) do
+      for bkey, st in pairs(p.dv == ns.DE_KEY_VERSION and p.de or {}) do -- older keys mis-bucket reqLevel 0
         if type(st) == "table" and (st.n or 0) > 0 then Push(bkey, st.n, st.mats) end
       end
     end
@@ -92,7 +98,7 @@ end
 function ns.DisenchantYield(item)
   local f = Facts(item)
   if not (f and (f.classID == 2 or f.classID == 4) and f.quality >= 2 and f.quality <= 4) then return nil end
-  local bmax, band = BandMax(f.reqLevel)
+  local bmax, band = BandMax(f.level)
   local isWep = f.classID == 2 and 1 or 0
   local bkey = ("%d:%d:%d"):format(f.quality, bmax, isWep)
   local stats = ns.DisenchantBucketStats(false)
@@ -125,7 +131,7 @@ function ns.DisenchantSkill(item)
   local f = Facts(item)
   if not f then return nil end
   for _, b in ipairs(DE_SKILL) do
-    if f.reqLevel <= b[1] then return b[2] end
+    if f.level <= b[1] then return b[2] end
   end
   return 225
 end
