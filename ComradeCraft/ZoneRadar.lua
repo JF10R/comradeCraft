@@ -185,7 +185,8 @@ function Radar.Scan(uiMap)
   if ns.ForeverDB and ns.ForeverDB.ObservedDropsInMap then
     for _, d in ipairs(ns.ForeverDB.ObservedDropsInMap(uiMap)) do
       if d.rare then
-        local rate = d.k >= 10 and (("%.1f%%"):format(math.min(100, d.d * 100 / d.k))) or nil
+        local pct = ns.ForeverDB.DropRate(d.item) -- post-discovery estimate, not raw d/k
+        local rate = pct and ("%.1f%%"):format(pct) or nil
         Push("fd:" .. d.item .. ":" .. (d.npc or 0), {
           kind = "rare", prio = 1, item = d.item, npc = d.npc, npcName = d.name or "Rare",
           rare = true, x = d.x, y = d.y, rate = rate,

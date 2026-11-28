@@ -158,17 +158,16 @@ function FDB.ObserveLoot()
   end
 end
 
--- Merged peer + local Forever drop rate for `itemID` (requires >= 10 kills and >= 1 drop).
--- Returns percentage (number, e.g. 4.5) and total kills, or nil when sample is too small.
+-- Merged peer + local Forever drop rate for `itemID`. Each tally starts at its first drop, so that
+-- kill is dropped per contributor: sum(d-1)/sum(k-1), needing >= 10 such kills and >= 1 drop.
 function FDB.DropRate(itemID)
   if not (ComradeCraftDB and itemID and itemID > 0) then return nil end
   local drops, kills = 0, 0
-  local mine = ComradeCraftDB.foreverDrops and ComradeCraftDB.foreverDrops[itemID]
-  if mine then drops, kills = drops + (mine.d or 0), kills + (mine.k or 0) end
-  for _, p in pairs(ComradeCraftDB.foreverPeers or {}) do
-    local pd = p.drops and p.drops[itemID]
-    if pd then drops, kills = drops + (pd.d or 0), kills + (pd.k or 0) end
+  local function Add(e)
+    if e and (e.d or 0) >= 1 and (e.k or 0) >= 2 then drops, kills = drops + e.d - 1, kills + e.k - 1 end
   end
+  Add(ComradeCraftDB.foreverDrops and ComradeCraftDB.foreverDrops[itemID])
+  for _, p in pairs(ComradeCraftDB.foreverPeers or {}) do Add(p.drops and p.drops[itemID]) end
   if kills >= 10 and drops >= 1 then
     return math.min(100, (drops / kills) * 100), kills
   end

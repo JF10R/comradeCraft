@@ -2943,8 +2943,13 @@ def main():
           ComradeCraftDB.recipeBounds, ComradeCraftDB.foreverDrops, ComradeCraftDB.foreverVendors = {}, {}, {}
           assert(ns.ForeverDB.OnRemote("peer-f1", fp), "foreverdb: OnRemote merges peer packet")
           local pct, kills = ns.ForeverDB.DropRate(88881)
-          assert(pct == 10 and kills == 30, "foreverdb: peer DropRate 3/30 = 10%")
-          assert(ns.DropRateText(88881) == "10%", "foreverdb: DropRateText uses peer ForeverDB rate")
+          assert(math.abs(pct - 200 / 29) < 1e-9 and kills == 29, "foreverdb: peer DropRate (3-1)/(30-1), discovery excluded")
+          assert(ns.DropRateText(88881) == "6.9%", "foreverdb: DropRateText uses peer ForeverDB rate")
+          ComradeCraftDB.foreverDrops[88881] = { d = 1, k = 12 } -- local tally: 0 drops in 11 more kills
+          pct, kills = ns.ForeverDB.DropRate(88881)
+          assert(math.abs(pct - 5) < 1e-9 and kills == 40, "foreverdb: DropRate merges per-contributor (2+0)/(29+11)")
+          ComradeCraftDB.foreverDrops[88881], ComradeCraftDB.foreverPeers["peer-f1"].drops[88881] = { d = 1, k = 1 }, nil
+          assert(ns.ForeverDB.DropRate(88881) == nil, "foreverdb: first drop alone is no rate (was 100%)")
           local fv = ns.ForeverDB.Vendor(16072)
           assert(fv and fv.name == "Shandrina" and fv.map == 1440, "foreverdb: peer Vendor lookup")
           SlashCmdList.COMRADECRAFT("forever")
