@@ -3062,6 +3062,16 @@ def main():
             ComradeCraftDB.disenchants = { raw = {} }
             ns.InvalidateDECache()
           end
+          do -- Sync.Decode caps the wire and inflated sizes.
+            local S = ns.Sync
+            assert(S.Decode(S.Encode({ t = "P", v = 1, id = "x" })).id == "x", "sync: normal message decodes")
+            local bomb = S.Encode({ t = "P", v = 1, pad = string.rep("a", S.MAX_INFLATED + 1) })
+            assert(#bomb < S.MAX_WIRE and S.Decode(bomb) == nil, "sync: inflated size capped")
+            local noise = {}
+            for i = 1, 6000 do noise[i] = math.random(1, 2 ^ 30) end
+            local big = S.Encode({ t = "P", v = 1, pad = noise })
+            assert(#big > S.MAX_WIRE and S.Decode(big) == nil, "sync: wire size capped")
+          end
           do -- ForeverDB shares only local observations and validates incoming bounds.
             local savedB, savedCR = ComradeCraftDB.recipeBounds, ComradeCraftDB.customRecipes
             local r1, r2 = { ns.Recipes[2963][2], ns.Recipes[2963][3] }, { ns.Recipes[2385][2], ns.Recipes[2385][3] }

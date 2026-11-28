@@ -35,12 +35,16 @@ function Sync.Encode(msg)
   return LD:EncodeForWoWAddonChannel(LD:CompressDeflate(LS:Serialize(msg)))
 end
 
+-- Largest legit message measured: ~9 KB encoded, ~15 KB serialized (full record, 2000 items).
+-- LibDeflate cannot stop early, so the inflated cap only shields Deserialize.
+Sync.MAX_WIRE, Sync.MAX_INFLATED = 24 * 1024, 96 * 1024
+
 function Sync.Decode(text)
   local LS, LD = Libs()
-  if not (LS and LD and type(text) == "string") then return nil end
+  if not (LS and LD and type(text) == "string") or #text > Sync.MAX_WIRE then return nil end
   local compressed = LD:DecodeForWoWAddonChannel(text)
   local raw = compressed and LD:DecompressDeflate(compressed)
-  if not raw then return nil end
+  if type(raw) ~= "string" or #raw > Sync.MAX_INFLATED then return nil end
   local ok, msg = LS:Deserialize(raw)
   return ok and type(msg) == "table" and msg or nil
 end
