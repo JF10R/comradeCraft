@@ -292,7 +292,7 @@ local function PatternSourceText(spell, recipeItem)
     if p and p > 0 then ahTxt = " | " .. L["AH ~%s"]:format(ns.Money(math.floor(p))) end
   end
   if not src then -- Forever recipe with a teaching item but no known source: the AH
-    if not (recipeItem and recipeItem > 0) then return nil, nil end
+    if not (recipeItem and recipeItem > 0) or (ns.IsBoP and ns.IsBoP(recipeItem)) then return nil, nil end
     return ahTxt ~= "" and ahTxt:sub(4) or L["auction house"], "ah"
   end
   local myMap = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
@@ -355,7 +355,7 @@ local function FindUnlearnedPatterns(tc, tkey, chars, knownSet, bestKnownBySlot,
       if item and item ~= 0 and not knownSet[spell] and not BAG_SLOTS[item] and IsEquipInstant(item)
         and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell))
         and req <= pb.rank + 25 then
-        local bop = ns.IsBoP and ns.IsBoP(item)
+        local bop = ItemInfo(item, false) and ns.IsBoP and ns.IsBoP(item) -- cached only: no mass requests
         if not bop or pb.key == tkey then
           -- Fast path: only score cached items with a known source kind (O(1)); defer heavy
           -- Questie/HereBeDragons RecipeSources lookup to the final top-3 winners only!

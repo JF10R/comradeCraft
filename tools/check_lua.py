@@ -3286,6 +3286,8 @@ def main():
         assert(ns.FarmAdvice.Spot(2770).x == 40, "farm advice: Alliance not sent to Durotar")
         UnitFactionGroup = function() return "Horde" end
         assert(ns.FarmAdvice.Spot(2770).x == 50, "farm advice: Horde not sent to Elwynn")
+        LibQuestieDB.Object.spawns = function() return { [40] = { { 10, 10 } }, [44] = { { 20, 20 } } } end
+        assert(ns.FarmAdvice.Spot(2770) == nil, "farm advice: no pick when every zone ties")
         LibQuestieDB, UnitFactionGroup = oQ, oFac
 
         -- Cold cache: IsBoP unknown + requested; upgrade skipped while worn piece uncached.

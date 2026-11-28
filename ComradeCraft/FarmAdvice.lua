@@ -40,6 +40,7 @@ function FarmAdvice.Spot(itemID)
   local faction = UnitFactionGroup and UnitFactionGroup("player")
   local enemy = faction == "Alliance" and HORDE_START or faction == "Horde" and ALLIANCE_START
     or { area = {}, map = {} }
+  local areas, nAreas, worst = {}, 0, nil
 
   local function TrySpawns(spawns, name, kind, lvl)
     if type(spawns) ~= "table" then return end
@@ -50,6 +51,8 @@ function FarmAdvice.Spot(itemID)
         -- Prefer nodes, level-appropriate mobs, then the zone with the most spawn points.
         local lvlPenalty = (lvl and lvl > myLvl + 3) and (lvl - myLvl) * 20 or 0
         local score = (kind == "node" and 0 or 50) + lvlPenalty + (uiMap and 0 or 500) - math.min(#pts, 40) * 0.5
+        if not areas[areaId] then nAreas = nAreas + 1 end
+        areas[areaId], worst = true, math.max(worst or score, score)
         if not best or score < bestScore then
           bestScore = score
           best = { name = name or "?", zone = AreaName(areaId, uiMap), uiMap = uiMap, x = p[1], y = p[2], kind = kind }
@@ -75,6 +78,7 @@ function FarmAdvice.Spot(itemID)
       TrySpawns(Q.Npc.spawns and Q.Npc.spawns(nid), name, "drop", lvl)
     end
   end
+  if nAreas > 1 and worst == bestScore then return nil end -- every zone ties: no real pick
   return best
 end
 
