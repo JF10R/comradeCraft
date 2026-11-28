@@ -147,7 +147,11 @@ end
 -- Equipped bag slot sizes { s1, s2, s3, s4 } (0 = empty bag slot).
 function ns.ScanBagSizes()
   local out = {}
-  for b = 1, (NUM_BAG_SLOTS or 4) do out[b] = GetSlots(b) or 0 end
+  for b = 1, (NUM_BAG_SLOTS or 4) do
+    local family = C_Container and C_Container.GetContainerNumFreeSlots
+      and select(2, C_Container.GetContainerNumFreeSlots(b))
+    if (family or 0) == 0 then out[b] = GetSlots(b) or 0 end -- skip quivers, soul/profession bags
+  end
   return out
 end
 
@@ -321,7 +325,8 @@ local function ScanInbox()
   local out = {}
   local n = GetInboxNumItems() or 0
   for i = 1, n do
-    for a = 1, (ATTACHMENTS_MAX_RECEIVE or 16) do
+    local cod = GetInboxHeaderInfo and select(6, GetInboxHeaderInfo(i))
+    for a = 1, (type(cod) == "number" and cod > 0) and 0 or (ATTACHMENTS_MAX_RECEIVE or 16) do -- unpaid C.O.D.
       local id, count
       if GetInboxItem then
         local _, itemID, _, qty = GetInboxItem(i, a)
@@ -433,6 +438,17 @@ local function ProfsEqual(a, b)
   return true
 end
 
+-- Withdrawals/deposits while the bank is open keep c.bank current (no double count with bags).
+local bankOpen = false
+local function RescanBank()
+  if not (bankOpen and ComradeCraftDB and ComradeCraftDB.chars) then return end
+  local bank = ScanBags(BankIndexes())
+  local c = ns.CharData()
+  if FlatEqual(c.bank, bank) then return end
+  c.bank, c.updated = bank, time()
+  ns.RequestRefresh()
+end
+
 -- Targeted lightweight scans so frequent events (bag changes, looting, combat) never re-scan
 -- unrelated state or trigger redundant UpdateNeeds() passes when nothing actually changed.
 local function ScanBagsOnly()
@@ -506,7 +522,13 @@ for _, e in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE
   ns.On(e, ScanSpecOnly) -- talents change the specialization
 end
 ns.On("PLAYER_EQUIPMENT_CHANGED", ScanGearOnly)
-ns.On("BANKFRAME_OPENED", ScanBank)
+ns.On("BANKFRAME_OPENED", function() bankOpen = true ScanBank() end)
+ns.On("PLAYERBANKSLOTS_CHANGED", RescanBank)
+ns.On("BAG_UPDATE_DELAYED", RescanBank)
+ns.On("BANKFRAME_CLOSED", function()
+  if (GetSlots(BANK_CONTAINER or -1) or 0) > 0 then RescanBank() end -- only while still readable
+  bankOpen = false
+end)
 ns.On("MAIL_INBOX_UPDATE", ScanInbox)
 ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", ScanAHBrowse)
 ns.On("AUCTION_ITEM_LIST_UPDATE", ScanAHClassic)

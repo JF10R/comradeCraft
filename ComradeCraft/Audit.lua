@@ -27,13 +27,18 @@ local function SlotLabel(slot, isShield)
 end
 
 -- Known crafted bags (itemID -> slot count) in Classic/Forever (fallback if GetContainerNumSlots N/A).
+-- Slot counts from ItemSparse 1.60.1.71139 (ContainerSlots); false = reagent bag (reagent slot only).
 local BAG_SLOTS = {
-  [4238] = 6, [4240] = 8, [4241] = 8, [4245] = 10, [4957] = 10, [10050] = 12,
-  [10051] = 12, [14046] = 14, [14155] = 16, [14156] = 18, [21841] = 16,
+  [4238] = 6, [4240] = 8, [4241] = 10, [4245] = 10, [4957] = 6, [5081] = 6, [5762] = 8, [5763] = 10,
+  [5764] = 12, [5765] = 12, [10050] = 12, [10051] = 14, [14046] = 14, [14155] = 18, [14156] = 20,
+  [21841] = 16, [227844] = 18, [239147] = 24, [239148] = 30,
+  [253664] = false, [253667] = false, [253973] = false, [254035] = false, [254079] = false,
+  [254133] = false, [254139] = false, [277715] = false,
 }
 
 local function BagSize(item)
-  if BAG_SLOTS[item] then return BAG_SLOTS[item] end
+  local known = BAG_SLOTS[item]
+  if known ~= nil then return known or nil end
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   if not get then return nil end
   local _, _, _, ilvl, _, _, _, _, _, _, _, classID, subClassID = get(item)
@@ -41,6 +46,7 @@ local function BagSize(item)
     return math.min(18, math.max(6, math.floor(ilvl / 3.5) * 2))
   end
 end
+Audit.BagSize = BagSize
 
 -- Async pre-caching for uncached known-crafter items (capped per session to avoid event floods).
 local requestedItems, requestedCount = {}, 0
@@ -651,7 +657,8 @@ function Audit.PatternsForCrafter(crafterKey)
   local minBagOf = {}
   for tkey, tc in pairs(chars) do
     local mb
-    for _, sz in ipairs(tc.bagSizes or {}) do
+    for i = 1, 4 do -- special bags (quiver, soul bag) are nil holes
+      local sz = (tc.bagSizes or {})[i]
       if type(sz) == "number" and sz > 0 and (not mb or sz < mb) then mb = sz end
     end
     minBagOf[tkey] = mb

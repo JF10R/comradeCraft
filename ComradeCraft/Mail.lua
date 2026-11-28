@@ -322,7 +322,8 @@ local function FreeAttachment()
 end
 
 -- Attachments to make, split so that each one is a single bag stack (or part of one).
-local queue, running = {}, false
+local queue, running, queueTo, queueBox = {}, false, nil, nil -- queueBox: recipient the To box resolved to
+local function ResetQueue() queue, running, queueTo, queueBox = {}, false, nil, nil end
 
 local function Step()
   local job = queue[1]
@@ -330,16 +331,14 @@ local function Step()
     running = false
     return
   end
-  if InCombatLockdown and InCombatLockdown() then
-    running = false
-    queue = {}
-    return
+  local cur = isOpen and Mail.CurrentRecipient()
+  if not isOpen or (InCombatLockdown and InCombatLockdown()) or (cur and cur ~= queueBox) then
+    return ResetQueue() -- mailbox closed or another recipient typed: stop attaching
   end
   local index = FreeAttachment()
   if not index then
     ns.Print(L["Mail full (%d attachments): send it, then click again for the rest."]:format(MaxAttachments()))
-    queue, running = {}, false
-    return
+    return ResetQueue()
   end
   local bag, slot, stack = FindInBags(job.item)
   if not bag then
@@ -452,7 +451,10 @@ function Mail.Prepare(to)
     ns.Print(#items > 0 and L["In bank (retrieve first)"] or L["Nothing to give to %s."]:format(to:match("^[^-]+") or to))
     return
   end
+  if running and queueTo == to then return end -- double click: already attaching these
   if not EnsureSendForm(to) then return end
+  if queueTo ~= to then ResetQueue() end
+  queueTo, queueBox = to, Mail.CurrentRecipient() or to
   for _, it in ipairs(ready) do queue[#queue + 1] = { item = it.item, n = it.inBags } end
   ns.Log(("mail: preparing %d item types for %s"):format(#ready, to))
   if not running then
@@ -468,6 +470,9 @@ function Mail.PrepareItem(to, item, n)
     return
   end
   if not EnsureSendForm(to) then return end
+  if queueTo ~= to then ResetQueue() end
+  queueTo, queueBox = to, Mail.CurrentRecipient() or to
+  for _, job in ipairs(queue) do if job.item == item then return end end -- already queued
   queue[#queue + 1] = { item = item, n = n }
   if not running then
     running = true
@@ -755,6 +760,7 @@ end
 
 local function OnMailboxHide()
   isOpen, manualTo = false, nil
+  ResetQueue()
   if panel then panel:Hide() end
   NotifyBags()
 end
@@ -916,7 +922,7 @@ ns.On("MAIL_SEND_SUCCESS", function()
 end)
 ns.On("MAIL_FAILED", function() pendingSend = nil end)
 ns.On("MAIL_CLOSED", function() pendingSend = nil OnMailboxHide() end)
-ns.On("BAG_UPDATE_DELAYED", OnMailChanged)
+ns.On("BAG_UPDATE_DELAYED", function() if isOpen then OnMailChanged() end end) -- Bags.lua refreshes itself
 ns.On("MAIL_SEND_INFO_UPDATE", OnMailChanged)
 
 -- Writes a craft request as a mail (opt-in mode): recipient, subject, note. Never sends.

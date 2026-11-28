@@ -114,6 +114,27 @@ function Bags.ItemState(itemID, recipient)
   return Bags.BuildIndex(recipient)[itemID]
 end
 
+-- Per-frame index cache (one per recipient) for hooks that run once per bag slot.
+local frameCacheT, frameCache = nil, {}
+local function FastIndex(recipient)
+  local now = GetTime and GetTime() or nil
+  if not now or now ~= frameCacheT then frameCacheT, frameCache = now, {} end
+  local k = recipient or false
+  local idx = frameCache[k]
+  if not idx then
+    idx = Bags.BuildIndex(recipient)
+    if now then frameCache[k] = idx end
+  end
+  return idx
+end
+
+-- Index + focus flag: dim the other slots only when the recipient has something to send.
+local function IndexFor(recipient, enabled)
+  local idx = FastIndex(recipient)
+  if recipient and next(idx) == nil then return enabled and FastIndex(nil) or idx, false end
+  return idx, recipient ~= nil
+end
+
 -- Weak-keyed overlay cache: never writes fields onto Blizzard's or bag addons' secure item buttons.
 local overlays = setmetatable({}, { __mode = "k" })
 
@@ -321,6 +342,7 @@ end
 
 function Bags.Refresh()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
+  frameCacheT = nil -- data may have changed since the hooks' last paint
   local enabled = Bags.On()
   local recipient = Bags.ActiveRecipient()
   local idx = (enabled or recipient) and Bags.BuildIndex(recipient) or {}
@@ -417,9 +439,9 @@ local function RegisterBaganator()
       if not details or not details.itemID then return false end
       local enabled = Bags.On()
       local recipient = Bags.ActiveRecipient()
-      local focusMode = recipient ~= nil
-      if not enabled and not focusMode then return false end
-      local hit = Bags.ItemState(details.itemID, recipient)
+      if not enabled and not recipient then return false end
+      local idx, focusMode = IndexFor(recipient, enabled)
+      local hit = idx[details.itemID]
       if hit then
         if cornerFrame.dim then cornerFrame.dim:Hide() end
         local r, g, bl, a
@@ -486,7 +508,7 @@ local function RegisterBagCategories()
     baganatorRegistered = true
     pcall(Baganator.API.RegisterCategory, "ComradeCraft", "comradecraft_group", function(details)
       if not (details and details.itemID and Bags.On()) then return false end
-      return Bags.ItemState(details.itemID) ~= nil
+      return FastIndex(nil)[details.itemID] ~= nil
     end)
   end
   -- BetterBags native category: groups items needed/reserved for your group into a "ComradeCraft" section.
@@ -498,7 +520,7 @@ local function RegisterBagCategories()
       betterBagsRegistered = true
       pcall(cats.RegisterCategoryFunction, cats, "ComradeCraftCategory", function(data)
         local id = data and data.itemInfo and data.itemInfo.itemID
-        if id and Bags.On() and Bags.ItemState(id) then return "ComradeCraft" end
+        if id and Bags.On() and FastIndex(nil)[id] then return "ComradeCraft" end
       end)
     end
   end
@@ -506,18 +528,8 @@ end
 
 -- Debounced refresh when bag addons redraw dozens of slots in a single Layout/Update burst.
 local refreshQueued = false
-local frameCacheT, frameCacheRecip, frameCacheIdx
-local function FastIndex(recipient)
-  local now = GetTime and GetTime() or nil
-  if now and frameCacheIdx and frameCacheT == now and frameCacheRecip == recipient then
-    return frameCacheIdx
-  end
-  local idx = Bags.BuildIndex(recipient)
-  if now then frameCacheT, frameCacheRecip, frameCacheIdx = now, recipient, idx end
-  return idx
-end
 local function QueueRefresh()
-  frameCacheIdx = nil
+  frameCacheT = nil
   if refreshQueued then return end
   if C_Timer and C_Timer.After then
     refreshQueued = true
@@ -549,8 +561,8 @@ local function HookBagAddons()
             if self.IsCached and self:IsCached() then return end
             local enabled = Bags.On()
             local recipient = Bags.ActiveRecipient()
-            local focusMode = recipient ~= nil
-            local idx = (enabled or focusMode) and FastIndex(recipient) or {}
+            local idx, focusMode = {}, false
+            if enabled or recipient then idx, focusMode = IndexFor(recipient, enabled) end
             ApplyButton(self, self.bag or (self.GetBag and self:GetBag()), idx, focusMode, enabled)
           end)
         end

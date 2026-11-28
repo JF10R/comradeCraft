@@ -111,6 +111,20 @@ function Trainer.Highlights()
   return out
 end
 
+-- Current index of service `name` (and `cost`): the list shifts after learning or a filter change.
+function Trainer.ResolveService(idx, name, cost)
+  if not (GetNumTrainerServices and GetTrainerServiceInfo and name) then return nil end
+  local function Match(i)
+    local n, _, kind = GetTrainerServiceInfo(i)
+    return n == name and kind == "available"
+      and (not (cost and GetTrainerServiceCost) or GetTrainerServiceCost(i) == cost)
+  end
+  if idx and Match(idx) then return idx end
+  for i = 1, GetNumTrainerServices() do
+    if Match(i) then return i end
+  end
+end
+
 -- Panel docked to the right of ClassTrainerFrame ------------------------------------------
 
 local panel, rows, dismissed = nil, nil, false
@@ -155,7 +169,8 @@ local function CreateRow(parent)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
     if self.serviceIdx and BuyTrainerService then
-      BuyTrainerService(self.serviceIdx)
+      local i = Trainer.ResolveService(self.serviceIdx, self.serviceName, self.serviceCost)
+      if i then BuyTrainerService(i) end
       if C_Timer then C_Timer.After(0.3, Trainer.UpdatePanel) else Trainer.UpdatePanel() end
     end
   end)
@@ -202,6 +217,7 @@ function Trainer.UpdatePanel()
     local r = rows[i]
     if not r then r = CreateRow(panel) rows[i] = r end
     r.serviceIdx, r.spell, r.item = it.index, it.spell, it.item
+    r.serviceName, r.serviceCost = it.name, it.cost
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", 10, y)
     r.icon:SetTexture(RowIcon(it.item, it.spell))

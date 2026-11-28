@@ -762,10 +762,13 @@ frame:RegisterEvent("ADDON_LOADED")
 
 -- Lets other files register events: ns.On("EVENT", fn)
 -- Events missing on this client are skipped (RegisterEvent errors on unknown events).
+local PLAYER_ONLY = { UNIT_SPELLCAST_SUCCEEDED = true, UNIT_SPELLCAST_START = true } -- all handlers want "player"
 function ns.On(event, fn)
   local prev = handlers[event]
   handlers[event] = prev and function(...) prev(...) fn(...) end or fn
-  pcall(frame.RegisterEvent, frame, event)
+  if not (PLAYER_ONLY[event] and frame.RegisterUnitEvent and pcall(frame.RegisterUnitEvent, frame, event, "player")) then
+    pcall(frame.RegisterEvent, frame, event)
+  end
 end
 
 ns.On("PLAYER_LOGIN", function()

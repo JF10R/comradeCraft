@@ -1327,6 +1327,35 @@ def main():
       assert(SendMailNameEditBox.text == "Vez Stone" and SendMailSubjectEditBox.text == "ComradeCraft", "mail: form filled")
       f.onEvent(f, "MAIL_CLOSED")
       ns.Mail.Prepare("Vez Stone-Realm") -- closed: only a message
+      do -- Mail queue: a double click attaches once; closing or retyping the recipient stops it.
+        local pend = {}
+        local function Drain() local i = 1 while pend[i] do pend[i]() i = i + 1 end pend = {} end
+        local function Reset()
+          slots[1], slots[2] = { itemID = 2589, stackCount = 10 }, { itemID = 2589, stackCount = 10 }
+          attached, ops, cursor = {}, {}, nil
+        end
+        C_Timer = { After = function(_, fn) pend[#pend + 1] = fn end }
+        f.onEvent(f, "MAIL_SHOW")
+        Reset()
+        ns.Mail.Prepare("Vez Stone-Realm")
+        ns.Mail.Prepare("Vez Stone-Realm") -- double click while attaching
+        Drain()
+        local total = 0
+        for _, a in pairs(attached) do total = total + a[2] end
+        assert(total == 15, "mail queue: double click attached " .. total .. " instead of 15")
+        Reset()
+        ns.Mail.Prepare("Vez Stone-Realm")
+        f.onEvent(f, "MAIL_CLOSED")
+        Drain()
+        assert(#ops == 1, "mail queue: dropped on close, got " .. table.concat(ops, ","))
+        f.onEvent(f, "MAIL_SHOW")
+        Reset()
+        ns.Mail.Prepare("Vez Stone-Realm")
+        SendMailNameEditBox.text = "Test"
+        Drain()
+        assert(#ops == 1, "mail queue: dropped on recipient change, got " .. table.concat(ops, ","))
+        f.onEvent(f, "MAIL_CLOSED")
+      end
       C_Container, C_Timer = oldC, oldTimer
       ComradeCraftDB.chars = saved3
 
@@ -1900,6 +1929,49 @@ def main():
       me.needs = oldNeedsM
       GetInboxNumItems, GetInboxItem = nil, nil
       me.mail = oldMail
+      do -- Unpaid C.O.D. mail is not owned yet.
+        GetInboxNumItems = function() return 1 end
+        GetInboxItem = function(i, a) if a == 1 then return "Wool", 2592, 134400, 12 end end
+        GetInboxHeaderInfo = function() return nil, nil, "Vez", "Wool", 0, 500 end
+        f.onEvent(f, "MAIL_INBOX_UPDATE")
+        assert(me.mail == nil, "mail inbox: unpaid C.O.D. not counted")
+        GetInboxNumItems, GetInboxItem, GetInboxHeaderInfo = nil, nil, nil
+        me.mail = oldMail
+      end
+      do -- Bank: rescanned while open (withdrawals), kept when unreadable at close; splits skip quivers.
+        local oldBank, oldCC = me.bank, C_Container
+        local bankItem = { itemID = 2592, stackCount = 5 }
+        local placed
+        C_Container = {
+          GetContainerNumSlots = function(bag) return bag <= 1 and 1 or 0 end,
+          GetContainerItemInfo = function(bag) if bag == -1 then return bankItem end end,
+          GetContainerNumFreeSlots = function(bag)
+            if bag == 0 or bag == 2 then return 1, 1 elseif bag == 1 then return 1, 0 end
+            return 0, 0
+          end,
+          SplitContainerItem = function() end,
+          PickupContainerItem = function(bag) placed = bag end,
+        }
+        f.onEvent(f, "BANKFRAME_OPENED")
+        assert(me.bank[2592] == 5, "bank: scanned on open")
+        bankItem = nil
+        f.onEvent(f, "PLAYERBANKSLOTS_CHANGED")
+        assert(me.bank[2592] == nil, "bank: withdrawal rescanned")
+        bankItem = { itemID = 2592, stackCount = 3 }
+        f.onEvent(f, "BAG_UPDATE_DELAYED")
+        assert(me.bank[2592] == 3, "bank: bank-bag change rescanned")
+        assert(ns.Bank.WithdrawItem(2592, 2) == 2 and placed == 1, "bank: split lands in a generic bag, not a quiver")
+        local sizes = ns.ScanBagSizes()
+        assert(sizes[1] == 1 and sizes[2] == nil, "bag sizes: quiver/soul bag skipped")
+        C_Container = { GetContainerNumSlots = function() return 0 end, GetContainerItemInfo = function() end }
+        f.onEvent(f, "BANKFRAME_CLOSED")
+        assert(me.bank[2592] == 3, "bank: unreadable at close, last scan kept")
+        f.onEvent(f, "BAG_UPDATE_DELAYED")
+        assert(me.bank[2592] == 3, "bank: no rescan once closed")
+        assert(ns.Audit.BagSize(14156) == 20 and ns.Audit.BagSize(253664) == nil, "audit: bag slots from ItemSparse")
+        C_Container, me.bank = oldCC, oldBank
+        me.bags = {}
+      end
 
       -- 4. Wishlist: add, progress, needs injection, ready alert, tracker & UI view.
       me.bags = { [2589] = 4 }
@@ -1932,6 +2004,12 @@ def main():
       local mp, mTotal = ns.Merchant.PlanItems()
       assert(#mp == 1 and mp[1].need == 6 and mTotal == 60, "merchant: plan vendor items detected")
       assert(ns.Merchant.BuyAll() == 6 and boughtCount == 6, "merchant: bought exact missing vendor qty")
+      do -- Purchases are split by the vendor's max stack.
+        local chunks = {}
+        BuyMerchantItem = function(_, n) chunks[#chunks + 1] = n end
+        assert(ns.Merchant.BuyItem(1, 45, 1) == 45 and table.concat(chunks, ",") == "20,20,5",
+          "merchant: split by max stack, got " .. table.concat(chunks, ","))
+      end
       f.onEvent(f, "MERCHANT_CLOSED")
       GetMerchantNumItems, GetMerchantItemID, GetMerchantItemInfo, GetMerchantItemMaxStack, GetMoney, BuyMerchantItem, MerchantFrame = nil, nil, nil, nil, nil, nil, nil
 
@@ -1943,7 +2021,7 @@ def main():
         needs = { [197] = { name = "Tailoring", items = { [2592] = 8 }, when = { [2592] = 1 }, plan = { { spell = 2963 } } } } }
       local bagReg = false
       Baganator = { API = {
-        RegisterCornerWidget = function() bagReg = true end,
+        RegisterCornerWidget = function(_, _, cb) bagReg = cb end,
         RequestItemButtonsRefresh = function() end,
       } }
       TradeFrame = MockWidget()
@@ -1953,6 +2031,39 @@ def main():
       f.onEvent(f, "TRADE_SHOW")
       assert(ns.Trade.CurrentRecipient() == "Vez-Realm" and ns.Bags.ActiveRecipient() == "Vez-Realm",
         "trade: active recipient synced with Bags")
+      do -- Corner widget: one index build per frame; no dimming when the recipient gets nothing.
+        local corner = { dim = MockWidget(), glow = MockWidget(), badgeBg = MockWidget(), badge = MockWidget() }
+        local oldBI, oldGT, oldIF, builds = ns.Bags.BuildIndex, GetTime, ns.Mail.ItemsFor, 0
+        local forVez = { { item = 2592, inBags = 10 } }
+        ns.Mail.ItemsFor = function(to) return to == "Vez-Realm" and forVez or {} end
+        ns.Bags.BuildIndex = function(...) builds = builds + 1 return oldBI(...) end
+        GetTime = function() return 777 end
+        for _ = 1, 5 do assert(bagReg(corner, { itemID = 2592 }) == true, "bags: corner widget hit") end
+        assert(builds == 1, "bags: corner widget reuses the frame's index, built " .. builds)
+        local oldB = me.bags
+        me.bags, forVez = { [99999] = 1 }, {}
+        ns.Bags.Refresh()
+        corner.dim:Hide()
+        assert(bagReg(corner, { itemID = 99999 }) == false and not corner.dim:IsShown(),
+          "bags: no dimming when nothing goes to the recipient")
+        me.bags, ns.Bags.BuildIndex, GetTime, ns.Mail.ItemsFor = oldB, oldBI, oldGT, oldIF
+      end
+      do -- Alt+Right-click reserve menu stays shut while a merchant/bank/mail/trade window is open.
+        local hooked, opened = nil, 0
+        local btn = { HookScript = function(_, _, fn) hooked = fn end, GetID = function() return 1 end }
+        local oldOpen, oldAlt = ns.Reserve.OpenMenu, IsAltKeyDown
+        ns.Reserve.OpenMenu = function() opened = opened + 1 end
+        IsAltKeyDown = function() return true end
+        ns.Reserve.AttachButton(btn, 0)
+        TradeFrame:Show()
+        hooked(btn, "RightButton")
+        assert(opened == 0, "reserve: no menu while trading")
+        TradeFrame:Hide()
+        hooked(btn, "RightButton")
+        assert(opened == 1, "reserve: menu opens with no window shown")
+        TradeFrame:Show()
+        ns.Reserve.OpenMenu, IsAltKeyDown = oldOpen, oldAlt
+      end
       f.onEvent(f, "TRADE_CLOSED")
       assert(ns.Trade.CurrentRecipient() == nil, "trade: cleared on close")
 
@@ -2256,6 +2367,15 @@ def main():
         local th = ns.Trainer.Highlights()
         assert(#th == 1 and th[1].spell == 999101 and th[1].prio == 2, "trainer: BiS upgrade recipe highlighted")
         ns.SpellName = oldSN
+        do -- Trainer click re-resolves the service by name and cost (the list shifts after learning).
+          local tl = { { "Linen Belt", 125 }, { "Frost Gloves", 500 } }
+          GetNumTrainerServices = function() return #tl end
+          GetTrainerServiceInfo = function(i) return tl[i] and tl[i][1], nil, "available" end
+          GetTrainerServiceCost = function(i) return tl[i] and tl[i][2] end
+          assert(ns.Trainer.ResolveService(1, "Frost Gloves", 500) == 2, "trainer: stale index re-resolved")
+          assert(ns.Trainer.ResolveService(2, "Frost Gloves", 500) == 2, "trainer: current index kept")
+          assert(ns.Trainer.ResolveService(1, "Frost Gloves", 900) == nil, "trainer: no match -> no buy")
+        end
         GetNumTrainerServices, GetTrainerServiceInfo, GetTrainerServiceSkillReq, GetTrainerServiceCost = nil, nil, nil, nil
         ns.Recipes[999111] = nil
 

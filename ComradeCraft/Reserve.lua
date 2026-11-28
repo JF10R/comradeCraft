@@ -305,6 +305,11 @@ end
 local function OnBagClick(self, button)
   if button ~= "RightButton" or not (IsAltKeyDown and IsAltKeyDown()) then return end
   if InCombatLockdown and InCombatLockdown() then return end
+  -- Post-hook: the click already sold/deposited/attached the item at these windows.
+  for _, name in ipairs({ "MerchantFrame", "BankFrame", "MailFrame", "TradeFrame" }) do
+    local fr = _G[name]
+    if fr and fr.IsShown and fr:IsShown() then return end
+  end
   local now = GetTime and GetTime() or 0
   if lastClickBtn == self and math.abs(now - lastClickT) < 0.05 then return end
   lastClickT, lastClickBtn = now, self

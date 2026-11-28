@@ -168,8 +168,10 @@ end
 local function FindFreeBagSlot()
   if not (C_Container and C_Container.GetContainerNumSlots) then return nil end
   for _, bag in ipairs(PlayerBagIndexes()) do
-    local free = C_Container.GetContainerNumFreeSlots and C_Container.GetContainerNumFreeSlots(bag) or 0
-    if free > 0 then
+    local free, family = 0, 0
+    if C_Container.GetContainerNumFreeSlots then free, family = C_Container.GetContainerNumFreeSlots(bag) end
+    -- Generic bags only: quivers, soul/profession bags and the reagent bag refuse most items.
+    if (free or 0) > 0 and (family or 0) == 0 and bag <= (NUM_BAG_SLOTS or 4) then
       for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
         if not C_Container.GetContainerItemInfo(bag, slot) then return bag, slot end
       end
