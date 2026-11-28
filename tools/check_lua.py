@@ -1803,6 +1803,56 @@ def main():
       assert(ns.LiveAHPrice(2589) == 42 and ns.PriceSource and ns.PriceSource(2589) == 42, "ah: live browse price captured")
       ComradeCraftDB.ahPrices, C_AuctionHouse = nil, nil
       ns.DetectPriceSource()
+      do -- AH pricing fixes: benchmark excludes this scan, expiry purge, search events, deposits.
+        local now, savedNeeds, savedAH = time(), ns.CharData().needs, C_AuctionHouse
+        ns.CharData().needs = { [197] = { name = "Tailoring", items = { [77778] = 5 }, when = { [77778] = 1 } } }
+        local savedGP = ns.GroupPlan
+        ns.GroupPlan = function() return { { item = 77778, toGet = 5 } } end
+        ComradeCraftDB.ahPrices = { [77778] = { price = 1000, t = now - 3600 } }
+        C_AuctionHouse = { GetBrowseResults = function() return { { itemKey = { itemID = 77778 }, minPrice = 500 } } end }
+        f.onEvent(f, "AUCTION_HOUSE_SHOW")
+        f.onEvent(f, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        f.onEvent(f, "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+        assert(ns.LiveAHPrice(77778) == 500 and ns.ReferencePrice(77778) == 1000, "ah ref: previous scan kept as benchmark")
+        local deals = ns.AuctionPanel.Bargains()
+        assert(#deals == 1 and deals[1].item == 77778 and deals[1].pct == 50, "ah ref: deal fires despite Scan.lua writing first")
+        f.onEvent(f, "AUCTION_HOUSE_CLOSED")
+        ns.GroupPlan, ns.CharData().needs, ComradeCraftDB.ahSeen = savedGP, savedNeeds, nil
+        -- Expired scans: no price source; past 7 days purged; PriceSourceIsComplete only for TSM/Auctionator.
+        ComradeCraftDB.ahPrices = { [1] = { price = 5, t = now - 90000 }, [2] = { price = 5, t = now - 8 * 86400 } }
+        ns.DetectPriceSource()
+        assert(ns.PriceSource == nil and ComradeCraftDB.ahPrices[1] and ComradeCraftDB.ahPrices[2] == nil, "ah expiry: stale scans no source, old purged")
+        assert(ns.PriceSourceIsComplete() == false, "ah complete: false without TSM/Auctionator")
+        TSM_API = { GetCustomPriceValue = function() return nil end }
+        assert(ns.PriceSourceIsComplete() == true, "ah complete: true with TSM")
+        TSM_API = nil
+        -- Commodity / item search results: exact buyouts replace a fresh browse minPrice (maybe a bid).
+        ComradeCraftDB.ahPrices = { [2589] = { price = 10, t = now } }
+        C_AuctionHouse = {
+          GetCommoditySearchResultInfo = function(id, i) return i == 1 and { unitPrice = 30 } or nil end,
+          GetNumItemSearchResults = function() return 3 end,
+          GetItemSearchResultInfo = function(_, i)
+            return ({ { bidAmount = 5 }, { buyoutAmount = 900, quantity = 1 }, { buyoutAmount = 700, quantity = 1 } })[i]
+          end,
+        }
+        f.onEvent(f, "COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
+        assert(ns.LiveAHPrice(2589) == 30, "ah commodity: exact unit price beats browse minPrice")
+        f.onEvent(f, "ITEM_SEARCH_RESULTS_UPDATED", { itemID = 2996 })
+        assert(ns.LiveAHPrice(2996) == 700, "ah item search: lowest buyout, bid-only skipped")
+        C_AuctionHouse.GetBrowseResults = function() return { { itemKey = { itemID = 2589 }, minPrice = 3 } } end
+        f.onEvent(f, "AUCTION_HOUSE_BROWSE_RESULTS_ADDED", {})
+        assert(ns.LiveAHPrice(2589) == 30, "ah browse added: handled, keeps the exact price")
+        -- Deposits: never 0, and normalized to the 2 h basis.
+        ns.LearnDeposit(2589, 5, 20)
+        assert(ComradeCraftDB.deposits[2589] == 1 and ns.AuctionDeposit(2589) == 1, "deposit: floors to 1c, not 0")
+        ComradeCraftDB.deposits[2589] = 0
+        assert(ns.AuctionDeposit(2589) == 100, "deposit: stored 0 ignored")
+        ns.LearnDeposit(2589, 1200, 1, 3)
+        assert(ComradeCraftDB.deposits[2589] == 100, "deposit: 24 h normalized to 2 h")
+        assert(ns.IsVendorItem(249409) and ns.IsVendorItem(18567) and ns.IsVendorItem(11291), "vendor: new reagents")
+        ComradeCraftDB.ahPrices, ComradeCraftDB.deposits, C_AuctionHouse = nil, nil, savedAH
+        ns.DetectPriceSource()
+      end
 
       -- 3. Inbox mail counted in Surplus / owned.
       local me = ns.CharData()

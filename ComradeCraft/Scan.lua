@@ -342,13 +342,20 @@ local function ScanInbox()
 end
 
 -- Captures live lowest unit buyout prices while browsing the AH (modern & classic APIs).
-local function RecordAHPrice(item, unitPrice)
+-- `prev` keeps the price from before this scan (deal benchmark); `exact` buyouts (item or
+-- commodity search) beat a browse minPrice, which may be a bid.
+local function RecordAHPrice(item, unitPrice, exact)
   if not (ComradeCraftDB and item and unitPrice and unitPrice > 0) then return end
   ComradeCraftDB.ahPrices = ComradeCraftDB.ahPrices or {}
   local cur = ComradeCraftDB.ahPrices[item]
   local now = time()
-  if not cur or (now - (cur.t or 0)) > 60 or unitPrice < cur.price then
-    ComradeCraftDB.ahPrices[item] = { price = math.floor(unitPrice), t = now }
+  local fresh = cur and (now - (cur.t or 0)) <= 60
+  if fresh and cur.exact and not exact then return end
+  if not fresh or unitPrice < (cur.price or 0) or (exact and not cur.exact) then
+    local prev, prevT = cur and cur.prev, cur and cur.prevT
+    if cur and not fresh then prev, prevT = cur.price, cur.t end
+    ComradeCraftDB.ahPrices[item] = { price = math.floor(unitPrice), t = now,
+      prev = prev, prevT = prevT, exact = exact or nil }
   end
 end
 
@@ -363,6 +370,35 @@ local function ScanAHBrowse()
   ns.DetectPriceSource()
 end
 
+-- Commodity search: results come sorted by unit price, the first is the lowest buyout.
+local function ScanAHCommodity(itemID)
+  local f = C_AuctionHouse and C_AuctionHouse.GetCommoditySearchResultInfo
+  if not (f and itemID) then return end
+  local ok, r = pcall(f, itemID, 1)
+  if ok and type(r) == "table" and type(r.unitPrice) == "number" then
+    RecordAHPrice(itemID, r.unitPrice, true)
+    ns.DetectPriceSource()
+  end
+end
+
+-- Item search: lowest single-item buyout (bid-only auctions have no buyoutAmount).
+local function ScanAHItemSearch(itemKey)
+  local C = C_AuctionHouse
+  if not (C and C.GetNumItemSearchResults and C.GetItemSearchResultInfo
+    and type(itemKey) == "table" and itemKey.itemID) then return end
+  local okN, n = pcall(C.GetNumItemSearchResults, itemKey)
+  local best
+  for i = 1, (okN and type(n) == "number") and math.min(n, 200) or 0 do
+    local ok, r = pcall(C.GetItemSearchResultInfo, itemKey, i)
+    local b = ok and type(r) == "table" and r.buyoutAmount
+    if type(b) == "number" and b > 0 and (r.quantity or 1) <= 1 and (not best or b < best) then best = b end
+  end
+  if best then
+    RecordAHPrice(itemKey.itemID, best, true)
+    ns.DetectPriceSource()
+  end
+end
+
 local function ScanAHClassic()
   if not (GetNumAuctionItems and GetAuctionItemInfo) then return end
   local n = GetNumAuctionItems("list") or 0
@@ -374,6 +410,9 @@ local function ScanAHClassic()
   end
   ns.DetectPriceSource()
 end
+ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", ScanAHBrowse)
+ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", ScanAHCommodity)
+ns.On("ITEM_SEARCH_RESULTS_UPDATED", ScanAHItemSearch)
 
 local function FlatEqual(a, b)
   if a == b then return true end

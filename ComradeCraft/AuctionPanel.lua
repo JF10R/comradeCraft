@@ -101,7 +101,8 @@ local function RecordSeenPrice(itemID, price)
 end
 
 function AH.ReferencePrice(itemID)
-  local p = ns.PriceSource and ns.PriceSource(itemID)
+  -- Not ns.PriceSource: Scan.lua has already stored this scan's listing as the live price.
+  local p = ns.ReferencePrice and ns.ReferencePrice(itemID)
   if p and p > 0 then return p end
   local s = ComradeCraftDB and ComradeCraftDB.ahSeen and ComradeCraftDB.ahSeen[itemID]
   if type(s) == "table" and (s.n or 0) >= 2 and (s.avg or 0) > 0 then return s.avg end
@@ -148,11 +149,13 @@ function AH.Bargains()
   return out
 end
 
-local function ScanBrowseResults()
+-- `added`: AUCTION_HOUSE_BROWSE_RESULTS_ADDED payload, so pages aren't re-counted in ahSeen.
+local function ScanBrowseResults(added)
   if not isOpen then return end
   local changed = false
   if C_AuctionHouse and C_AuctionHouse.GetBrowseResults then
-    local ok, list = pcall(C_AuctionHouse.GetBrowseResults)
+    local ok, list = true, added
+    if type(added) ~= "table" then ok, list = pcall(C_AuctionHouse.GetBrowseResults) end
     for _, r in ipairs(ok and type(list) == "table" and list or {}) do
       local id = r.itemKey and r.itemKey.itemID
       local price = r.minPrice
@@ -399,6 +402,7 @@ ns.On("AUCTION_HOUSE_CLOSED", function()
   if panel then panel:Hide() end
 end)
 ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", ScanBrowseResults)
+ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", ScanBrowseResults)
 ns.On("AUCTION_ITEM_LIST_UPDATE", ScanBrowseResults)
 ns.On("BAG_UPDATE_DELAYED", function() if isOpen then AH.UpdatePanel() end end)
 local infoRefreshPending = false

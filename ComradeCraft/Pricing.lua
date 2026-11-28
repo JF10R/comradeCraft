@@ -13,6 +13,7 @@ ns.VENDOR_ITEMS = {
   [2880] = true, [3466] = true, [3857] = true, [4289] = true, [4470] = true,  -- flux, coal, salt, wood
   [6217] = true, [814] = true, [4399] = true, [4400] = true,                  -- rod, oil, stocks
   [2928] = true, [2930] = true, [8923] = true, [8924] = true, [5173] = true,  -- poison reagents
+  [249409] = true, [249430] = true, [249431] = true, [18567] = true, [11291] = true, -- dyes, flux, wood (1.60.1.71139)
 }
 
 function ns.IsVendorItem(id)
@@ -21,32 +22,56 @@ function ns.IsVendorItem(id)
 end
 
 local AH_PRICE_TTL = 86400 -- 24 h freshness window for directly scanned AH prices
+local AH_REF_TTL = 7 * 86400 -- scanned prices kept this long as deal benchmarks (ns.ReferencePrice)
 
 function ns.LiveAHPrice(item)
   local e = ComradeCraftDB and ComradeCraftDB.ahPrices and ComradeCraftDB.ahPrices[item]
   if e and e.price and e.price > 0 and (time() - (e.t or 0)) <= AH_PRICE_TTL then return e.price end
 end
 
+local function HasTSM() return TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil end
+local function HasAuc()
+  return Auctionator ~= nil and Auctionator.API ~= nil and Auctionator.API.v1 ~= nil
+    and Auctionator.API.v1.GetAuctionPriceByItemID ~= nil
+end
+local function TSMPrice(item)
+  if not HasTSM() then return nil end
+  local key = "i:" .. item
+  for _, expr in ipairs({ "DBMinBuyout", "DBRecent", "DBMarket" }) do
+    local ok, v = pcall(TSM_API.GetCustomPriceValue, expr, key)
+    if ok and type(v) == "number" and v > 0 then return v end
+  end
+end
+local function AucPrice(item)
+  if not HasAuc() then return nil end
+  local ok, v = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "ComradeCraft", item)
+  if ok and type(v) == "number" and v > 0 then return v end
+end
+
+-- True only when TSM or Auctionator prices items (live scans cover just what you browsed).
+function ns.PriceSourceIsComplete()
+  return HasTSM() or HasAuc()
+end
+
+-- Deal benchmark that ignores the scan in progress: TSM, Auctionator, else the scanned price
+-- stored before this scan (Scan.lua keeps it as `prev`).
+function ns.ReferencePrice(item)
+  local v = TSMPrice(item) or AucPrice(item)
+  if v then return v end
+  local e = ComradeCraftDB and ComradeCraftDB.ahPrices and ComradeCraftDB.ahPrices[item]
+  if e and (e.prev or 0) > 0 and (time() - (e.prevT or 0)) <= AH_REF_TTL then return e.prev end
+end
+
 -- Auction prices from live AH scans, TSM (latest buyout/recent/market) and/or Auctionator.
 -- When both TSM and Auctionator are loaded, falls back cleanly between them so new/rare items
 -- still get a price. Sets ns.PriceSource(itemID) -> copper|nil and ns.PriceSourceName.
 function ns.DetectPriceSource()
-  local hasTSM = TSM_API and TSM_API.GetCustomPriceValue ~= nil
-  local hasAuc = Auctionator and Auctionator.API and Auctionator.API.v1
-    and Auctionator.API.v1.GetAuctionPriceByItemID ~= nil
-  local hasLive = ComradeCraftDB and ComradeCraftDB.ahPrices and next(ComradeCraftDB.ahPrices) ~= nil
-  local function TSMPrice(item)
-    if not hasTSM then return nil end
-    local key = "i:" .. item
-    for _, expr in ipairs({ "DBMinBuyout", "DBRecent", "DBMarket" }) do
-      local ok, v = pcall(TSM_API.GetCustomPriceValue, expr, key)
-      if ok and type(v) == "number" and v > 0 then return v end
-    end
-  end
-  local function AucPrice(item)
-    if not hasAuc then return nil end
-    local ok, v = pcall(Auctionator.API.v1.GetAuctionPriceByItemID, "ComradeCraft", item)
-    if ok and type(v) == "number" and v > 0 then return v end
+  local hasTSM, hasAuc = HasTSM(), HasAuc()
+  -- Drop scans past the benchmark window; only fresh ones make "AH" a price source.
+  local hasLive, prices, now = false, ComradeCraftDB and ComradeCraftDB.ahPrices, time()
+  for id, e in pairs(prices or {}) do
+    local age = now - (type(e) == "table" and e.t or 0)
+    if age > AH_REF_TTL then prices[id] = nil elseif age <= AH_PRICE_TTL then hasLive = true end
   end
   if hasTSM or hasAuc or hasLive then
     ns.PriceSourceName = hasTSM and hasAuc and "TSM + Auctionator"
@@ -138,7 +163,7 @@ end
 function ns.AuctionDeposit(item)
   local db = ComradeCraftDB
   local d = db and db.deposits and db.deposits[item]
-  if d then return d end
+  if d and d > 0 then return d end
   local p = ns.ItemPrices and ns.ItemPrices[item]
   local sell = p and p[1]
   if not sell then
