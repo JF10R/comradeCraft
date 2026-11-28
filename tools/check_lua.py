@@ -556,6 +556,33 @@ def main():
         ComradeCraftDB.foreverPeers.peerTools, ComradeCraftDB.stations = nil, nil
         ns.ToolCategories, ns.ToolItems, ns.RecipeTools, ns.RecipeFocus, ns.FocusNames = oc, oi, ot, of, ofn
       end
+      -- A merchant selling a schematic (Forever: C_MerchantFrame only, no GetMerchantItemInfo).
+      do
+        local oldMap, o1, o2, o3, o4, o5, o6, o7 = C_Map, UnitGUID, UnitName, UnitFactionGroup, strsplit,
+          GetMerchantNumItems, GetMerchantItemLink, C_MerchantFrame
+        UnitGUID = function() return "Creature-0-13552-0-15040224-5175-7204E8B5A8" end
+        UnitName = function() return "Gearcutter Cogspinner" end
+        UnitFactionGroup = function(u) return "Alliance" end
+        strsplit = function(sep, s)
+          local t = {}
+          for part in (s .. sep):gmatch("([^" .. sep .. "]*)" .. sep) do t[#t + 1] = part end
+          return unpack(t)
+        end
+        C_Map = { GetBestMapForUnit = function() return 1455 end,
+          GetPlayerMapPosition = function() return { x = 0.68, y = 0.43 } end }
+        GetMerchantNumItems = function() return 1 end
+        GetMerchantItemLink = function() return "|Hitem:16042::::::::11:1491::14:::::::|h[Schematic: Thorium Widget]|h" end
+        C_MerchantFrame = { GetItemInfo = function() return { price = 12000 } end }
+        ns.ForeverDB.ObserveMerchant()
+        ns.ForeverDB.ObserveNpcFaction()
+        local v = ComradeCraftDB.foreverVendors[16042]
+        assert(v and v.cost == 12000 and v.npc == 5175 and v.fac == "A", "merchant: schematic recorded with its price")
+        assert(ComradeCraftDB.npcSpots[5175][1] == 1455, "merchant: npc spot recorded")
+        UnitGUID, UnitName, UnitFactionGroup, strsplit, GetMerchantNumItems, GetMerchantItemLink, C_MerchantFrame =
+          o1, o2, o3, o4, o5, o6, o7
+        C_Map = oldMap
+        ComradeCraftDB.foreverVendors[16042], ComradeCraftDB.npcSpots, ComradeCraftDB.npcFaction = nil, nil, nil
+      end
       -- Quest-reward recipe: offered as an alternative when it makes the route cheaper.
       do
         local lib = LibStub("LibProfessionDB-1.0")

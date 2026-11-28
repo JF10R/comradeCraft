@@ -95,7 +95,13 @@ function FDB.ObserveMerchant()
       local isRec = FDB.RecipeSpellForItem(itemID)
         or (ns.Loot and ns.Loot.RankBookInfo and ns.Loot.RankBookInfo(itemID))
       if isRec then
-        local _, _, price = GetMerchantItemInfo(i)
+        local price -- Forever has C_MerchantFrame only; GetMerchantItemInfo on older clients
+        if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+          local info = C_MerchantFrame.GetItemInfo(i)
+          price = info and info.price
+        elseif GetMerchantItemInfo then
+          price = select(3, GetMerchantItemInfo(i))
+        end
         db.foreverVendors[itemID] = {
           npc = npcID, name = npcName, map = map, x = x, y = y,
           cost = tonumber(Safe(price)) or 0, t = time(), fac = UnitFactionLetter("npc"),
