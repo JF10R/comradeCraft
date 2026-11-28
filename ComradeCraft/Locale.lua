@@ -942,12 +942,12 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["(your side only)"] = "(de ton côté seulement)",
     ["Target:"] = "Cible :",
     ["Target skill"] = "Niveau visé",
     ["Type a skill (up to 300) and press Enter. Mouse wheel: +/-5 (Shift: 25)."] = "Tape un niveau (300 max) puis Entrée. Molette : +/-5 (Maj : 25).",
     ["(cap) - click to change, Enter to apply"] = "(max) - clique pour changer, Entrée pour valider",
     ["click to change, Enter to apply"] = "clique pour changer, Entrée pour valider",
-    ["Target: %d"] = "Cible : %d",
     ["Target %d"] = "Viser %d",
     ["Cap"] = "Max",
     ["Level %d needed to learn this rank (now %d)."] = "Niveau %d requis pour apprendre ce rang (actuel : %d).",

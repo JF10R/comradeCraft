@@ -494,11 +494,12 @@ function ns.SetRouteMode(key, mode)
   ns.RequestRefresh()
 end
 
--- Skill to plan for in a profession: the character's own target (Plan tab, synced with its
--- record) while it is above the current rank, else the current cap. Max ns.MAX_SKILL.
+-- Skill to plan for in a profession: your local target for a friend (kit), else the character's
+-- own target (synced), while above the current rank; else the current cap. Max ns.MAX_SKILL.
 ns.MAX_SKILL = 300
 function ns.TargetFor(c, p)
-  local t = c and c.targets and p and p.skillLine and c.targets[p.skillLine]
+  local line = p and p.skillLine
+  local t = c and line and (c.localTargets and c.localTargets[line] or c.targets and c.targets[line])
   if t and p.rank and t > p.rank then return math.min(t, ns.MAX_SKILL) end
   return p and p.max
 end
@@ -512,9 +513,14 @@ function ns.RankCaps(cap, target)
   return out
 end
 
--- Sets the target of one of this account's characters (nil = back to the current cap).
+-- Sets a target (nil = back to the current cap). A friend's target stays on your side only.
 function ns.SetTarget(key, line, value)
   local c = ComradeCraftDB.chars and ComradeCraftDB.chars[key]
+  local field = "targets"
+  if not c then
+    c = ComradeCraftDB.remote and ComradeCraftDB.remote[key]
+    field = "localTargets"
+  end
   if not (c and line) then return end
   local p
   for _, x in pairs(c.professions or {}) do if x.skillLine == line then p = x end end
@@ -522,10 +528,10 @@ function ns.SetTarget(key, line, value)
   value = tonumber(value)
   value = value and math.min(math.floor(value), ns.MAX_SKILL)
   if value and value <= (p.rank or 0) then value = nil end
-  c.targets = c.targets or {}
-  c.targets[line] = value
-  if not next(c.targets) then c.targets = nil end
-  c.updated = time() -- peers pick up the change with the next sync
+  c[field] = c[field] or {}
+  c[field][line] = value
+  if not next(c[field]) then c[field] = nil end
+  if field == "targets" then c.updated = time() end -- peers pick up the change with the next sync
   ns.UpdateNeeds(c)
   ns.RequestRefresh()
 end
@@ -612,9 +618,12 @@ function ns.UpdateNeeds(c)
   for name, p in pairs(c.professions) do
     local known = p.skillLine and c.known[p.skillLine]
     -- A target the rank has caught up with goes back to the default (the cap).
-    if c.targets and p.skillLine and c.targets[p.skillLine] and p.rank and c.targets[p.skillLine] <= p.rank then
-      c.targets[p.skillLine] = nil
-      if not next(c.targets) then c.targets = nil end
+    for _, f in ipairs({ "targets", "localTargets" }) do
+      local t = c[f]
+      if t and p.skillLine and t[p.skillLine] and p.rank and t[p.skillLine] <= p.rank then
+        t[p.skillLine] = nil
+        if not next(t) then c[f] = nil end
+      end
     end
     local target = ns.TargetFor(c, p)
     if known and p.rank and target and p.rank < target and not ns.GATHERING[p.skillLine] then

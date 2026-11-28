@@ -841,6 +841,7 @@ function Sync.OnMessage(text, dist, sender)
         if not origId or not have or (have.updated or 0) < (rec.updated or 0) then
           rec.peer = ownerId
           if origId then rec.relayedBy = id end
+          rec.localTargets = have and have.localTargets -- your kit target survives their updates
           db.remote[key] = rec
           ns.UpdateNeeds(rec)
           if ns.Alerts then ns.Alerts.CheckUpgrades() end

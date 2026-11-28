@@ -69,30 +69,28 @@ local function LayoutProfession(y, name, p, c, own, key)
   r.top:SetText(table.concat(top, "\n"))
   local yy = 8 + (#top > 0 and (r.top:GetStringHeight() + 4) or 0)
 
-  -- Target skill: an editable box for any character of this account (like the route);
-  -- a peer's target is shown read-only.
+  -- Target skill: an editable box. On a friend's character it is your own plan (e.g. a
+  -- leveling kit to send), kept on your side only.
   if p.skillLine and not ns.GATHERING[p.skillLine] and (c.known and c.known[p.skillLine]) then
-    local editable = not c.peer
     r.tLabel:ClearAllPoints()
     r.tLabel:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -(yy + 3))
-    r.tLabel:SetText(editable and L["Target:"] or L["Target: %d"]:format(target))
+    r.tLabel:SetText(L["Target:"])
     r.tLabel:Show()
-    if editable then
-      local b = r.tBox
-      b:ClearAllPoints()
-      b:SetPoint("LEFT", r.tLabel, "RIGHT", 10, 0)
-      b.key, b.line, b.value = key, p.skillLine, target
-      if not b:HasFocus() then b:SetText(tostring(target)) end
-      b:Show()
-      local atCap = target == maxRank
-      r.tHint:SetText(atCap and L["(cap) - click to change, Enter to apply"]
-        or L["click to change, Enter to apply"])
-      r.tHint:Show()
-      r.tMax.key, r.tMax.line = key, p.skillLine
-      r.tMax:ClearAllPoints()
-      r.tMax:SetPoint("LEFT", r.tHint, "RIGHT", 8, 0)
-      r.tMax:SetShown(not atCap)
-    end
+    local b = r.tBox
+    b:ClearAllPoints()
+    b:SetPoint("LEFT", r.tLabel, "RIGHT", 10, 0)
+    b.key, b.line, b.value = key, p.skillLine, target
+    if not b:HasFocus() then b:SetText(tostring(target)) end
+    b:Show()
+    local atCap = target == maxRank
+    local hint = atCap and L["(cap) - click to change, Enter to apply"] or L["click to change, Enter to apply"]
+    if c.peer then hint = hint .. " " .. L["(your side only)"] end
+    r.tHint:SetText(hint)
+    r.tHint:Show()
+    r.tMax.key, r.tMax.line = key, p.skillLine
+    r.tMax:ClearAllPoints()
+    r.tMax:SetPoint("LEFT", r.tHint, "RIGHT", 8, 0)
+    r.tMax:SetShown(not atCap)
     yy = yy + 24
   end
 
@@ -557,7 +555,7 @@ function U.RenderPatterns(key, c, filter)
     -- Skill too low: one click sets the profession's target to the pattern's required skill.
     local rank
     for _, pr in pairs(c.professions or {}) do if pr.skillLine == p.line then rank = pr.rank end end
-    local canTarget = not c.peer and not p.canLearn and p.req and rank and p.req > rank
+    local canTarget = not p.canLearn and p.req and rank and p.req > rank
     row.line1:SetPoint("RIGHT", canTarget and -194 or -102, 0)
     row.line2:SetPoint("RIGHT", canTarget and -194 or -102, 0)
     if canTarget then

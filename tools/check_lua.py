@@ -404,6 +404,18 @@ def main():
       c.professions.Tailoring.rank = 1
       ns.SetTarget("Test-Realm", 197, nil)
       assert(c.targets == nil and c.needs[197].target == 75, "target: back to the cap")
+      -- A friend's character: the target is local (kit), never sent, and wins over theirs.
+      ComradeCraftDB.remote = ComradeCraftDB.remote or {}
+      local fr = { class = "MAGE", peer = "pvT", targets = { [197] = 60 }, updated = 5,
+        professions = { Tailoring = { skillLine = 197, rank = 45, max = 75 } },
+        known = { [197] = { [2963] = true } } }
+      ComradeCraftDB.remote["Friend-Realm"] = fr
+      ns.SetTarget("Friend-Realm", 197, 50)
+      assert(fr.localTargets[197] == 50 and fr.targets[197] == 60 and fr.updated == 5
+        and fr.needs[197].target == 50, "target: friend's target is local")
+      ns.SetTarget("Friend-Realm", 197, nil)
+      assert(fr.localTargets == nil and fr.needs[197].target == 60, "target: friend's own target back")
+      ComradeCraftDB.remote["Friend-Realm"] = nil
       local ct = ns.Sync.CleanRecord({ class = "MAGE", targets = { [197] = 175, [171] = 999, x = 5 } }).targets
       assert(ct and ct[197] == 175 and ct[171] == nil and ct.x == nil, "target: synced, validated")
       local _, _, pb = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, nil, nil, "cheap", nil, { [5] = true })

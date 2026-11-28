@@ -937,12 +937,12 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Lista completata: %s",
   ["measured"] = "misurato",
     -- Target skill (Plan tab)
+    ["(your side only)"] = "(solo dalla tua parte)",
     ["Target:"] = "Obiettivo:",
     ["Target skill"] = "Abilità obiettivo",
     ["Type a skill (up to 300) and press Enter. Mouse wheel: +/-5 (Shift: 25)."] = "Scrivi un'abilità (max 300) e premi Invio. Rotellina: +/-5 (Maiusc: 25).",
     ["(cap) - click to change, Enter to apply"] = "(max) - clicca per cambiare, Invio per applicare",
     ["click to change, Enter to apply"] = "clicca per cambiare, Invio per applicare",
-    ["Target: %d"] = "Obiettivo: %d",
     ["Target %d"] = "Punta a %d",
     ["Cap"] = "Max",
     ["Level %d needed to learn this rank (now %d)."] = "Serve il livello %d per imparare questo rango (ora %d).",
