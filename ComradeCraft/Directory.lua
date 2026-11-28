@@ -163,7 +163,9 @@ function Directory.OnEntry(id, msg, dist, sender)
         if ns.IsSameChar and ns.IsSameChar(key, oKey, { class = clean.cl }, oRec) then isOwn = true break end
       end
     end
-    if clean and not isOwn then
+    local held = clean and db[key] -- another account's entry: only that character may take it over
+    local taken = held and held.peer ~= id and not ns.IsSameChar(sender, key)
+    if clean and not isOwn and not taken then
       clean.peer, clean.name, clean.seen, clean.guild = id, sender, time(), g
       fresh[key] = clean
       n = n + 1

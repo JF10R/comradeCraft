@@ -711,6 +711,24 @@ end
 
 local function Self() return ns.UnitFullName and ns.UnitFullName("player") or (UnitName and UnitName("player")) end
 
+-- Account ids are public (guild pings), so a sender may speak for `id` only if it is a name
+-- bound to it, a character that id announced before, or a bound name that gained a surname.
+function Sync.SenderAllowed(db, id, peer, sender)
+  peer.names = peer.names or {}
+  if peer.name and not next(peer.names) then peer.names[peer.name] = true end -- pre-binding record
+  if not next(peer.names) or peer.names[sender] then return true end
+  local function Same(key) return ns.IsSameChar(sender, key) end
+  for name in pairs(peer.names) do
+    if Same(name) or Sync.UpgradedKey(name, { [sender] = true }, {}) then return true end
+  end
+  for key in pairs(peer.chars or {}) do if Same(key) then return true end end
+  for key, rec in pairs(db.remote or {}) do if rec.peer == id and Same(key) then return true end end
+  for key, e in pairs(db.directory or {}) do
+    if type(e) == "table" and e.peer == id and Same(key) then return true end
+  end
+  return false
+end
+
 function Sync.OnMessage(text, dist, sender)
   if not ComradeCraftDB then return end
   sender = Ambiguate and Ambiguate(sender or "", "none") or sender
@@ -725,6 +743,11 @@ function Sync.OnMessage(text, dist, sender)
     peer = { included = false, chars = {} }
     db.peers[id] = peer
   end
+  if not Sync.SenderAllowed(db, id, peer, sender) then
+    ns.Log(("sync: %s claims account %s bound to %s, ignored"):format(sender, id, tostring(peer.name)))
+    return
+  end
+  peer.names[sender] = true
   peer.name, peer.seen = sender, time()
   -- Craft requests: whatever they have not acknowledged yet goes out now that they are online.
   if peer.included and ns.Requests then ns.Requests.OnPeerSeen(id) end

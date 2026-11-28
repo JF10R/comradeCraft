@@ -2760,8 +2760,14 @@ def main():
           Sync.OnMessage(dBad, "WHISPER", "Alice")
           assert(not ComradeCraftDB.remote["Evil-Realm"], "mesh sync security: rejects relay for non-included origin")
           -- 3. Guild channel pulse: peerA switches to a new alt "AliceAlt" -> sends guild P -> we reply to AliceAlt!
+          --    Only an alt peerA announced (HELLO chars) may speak for it: account ids are public.
           sent = {}
           local gPulse = Sync.Encode({ t = "P", v = Sync.PROTO, id = "peerA", u = 900 })
+          Sync.OnMessage(gPulse, "GUILD", "Mallory")
+          assert(ComradeCraftDB.peers["peerA"].name == "Alice" and #sent == 0, "sync: unannounced name cannot claim an account id")
+          ComradeCraftDB.peers["peerA"].chars = { ["AliceAlt-Realm"] = { u = 1, p = {} } } -- announced earlier
+          Sync.OnMessage(Sync.Encode({ t = "H", v = Sync.PROTO, id = "peerA", r = true, c = {} }), "WHISPER", "Mallory")
+          assert(ComradeCraftDB.peers["peerA"].chars["AliceAlt-Realm"], "sync: spoofed HELLO ignored")
           Sync.OnMessage(gPulse, "GUILD", "AliceAlt")
           assert(ComradeCraftDB.peers["peerA"].name == "AliceAlt", "guild sync: updates peer name on alt switch")
           local repliedToNewAlt = false
@@ -3071,6 +3077,21 @@ def main():
             for i = 1, 6000 do noise[i] = math.random(1, 2 ^ 30) end
             local big = S.Encode({ t = "P", v = 1, pad = noise })
             assert(#big > S.MAX_WIRE and S.Decode(big) == nil, "sync: wire size capped")
+          end
+          do -- Sender binding: surname upgrade keeps the account; directory keys cannot be stolen.
+            local S, dir = ns.Sync, ComradeCraftDB.directory or {}
+            ComradeCraftDB.directory = dir
+            local function Msg(m, d, who) S.OnMessage(S.Encode(m), d, who) end
+            Msg({ t = "P", v = S.PROTO, id = "bindR", u = 1 }, "GUILD", "Rook-Realm")
+            Msg({ t = "P", v = S.PROTO, id = "bindR", u = 2 }, "GUILD", "Rook Stone-Realm")
+            assert(ComradeCraftDB.peers["bindR"].name == "Rook Stone-Realm", "sync: name gaining a surname keeps its account")
+            Msg({ t = "G", v = S.PROTO, id = "bindR", c = { ["Rook Stone-Realm"] = { cl = "MAGE", p = {} } } }, "GUILD", "Rook Stone-Realm")
+            Msg({ t = "G", v = S.PROTO, id = "bindX", c = { ["Rook Stone-Realm"] = { cl = "MAGE", p = {} } } }, "GUILD", "Thief-Realm")
+            assert(dir["Rook Stone-Realm"] and dir["Rook Stone-Realm"].peer == "bindR", "directory: another account cannot take an entry")
+            Msg({ t = "G", v = S.PROTO, id = "bindR", c = {} }, "GUILD", "Thief-Realm")
+            assert(dir["Rook Stone-Realm"], "directory: spoofed empty entry cannot wipe an account")
+            dir["Rook Stone-Realm"] = nil
+            ComradeCraftDB.peers["bindR"], ComradeCraftDB.peers["bindX"] = nil, nil
           end
           do -- ForeverDB shares only local observations and validates incoming bounds.
             local savedB, savedCR = ComradeCraftDB.recipeBounds, ComradeCraftDB.customRecipes
