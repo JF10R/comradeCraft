@@ -195,6 +195,7 @@ local function LayoutProfession(y, name, p, c, own, key)
   if d.cost and not d.totals then extra[#extra + 1] = "|cffffd100" .. d.cost .. "|r" end
   if d.used then extra[#extra + 1] = "|cff80c080" .. d.used .. "|r" end
   if d.knownOnly then extra[#extra + 1] = "|cff9d9d9d" .. d.knownOnly .. "|r" end
+  for _, a in ipairs(d.alternatives or {}) do extra[#extra + 1] = "|cff66ccff" .. a .. "|r" end
   r.mid:ClearAllPoints()
   r.mid:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -(yy + 4))
   r.mid:SetText(table.concat(extra, "\n"))

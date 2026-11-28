@@ -45,9 +45,28 @@ function ns.NpcFaction(npc)
       if v.npc == npc and v.fac then return v.fac end
     end
   end
+  for _, p in pairs(db and db.foreverPeers or {}) do
+    local n = p.npcs and p.npcs[npc]
+    if n and n.fac then return n.fac end
+  end
   for _, list in pairs(ns.EXTRA_VENDORS) do
     for _, e in ipairs(list) do if e[1] == npc then return e[2] end end
   end
+  local baked = ns.NpcData and ns.NpcData[npc]
+  return baked and baked[1] or nil
+end
+
+-- An npc's spot from our own data (seen in game, a peer, Data/Npcs.lua): { uiMap, x, y } or nil.
+function ns.NpcSpot(npc)
+  local db = ComradeCraftDB
+  local s = db and db.npcSpots and db.npcSpots[npc]
+  if s and s[1] then return { uiMap = s[1], x = s[2], y = s[3] } end
+  for _, p in pairs(db and db.foreverPeers or {}) do
+    local n = p.npcs and p.npcs[npc]
+    if n and n.map then return { uiMap = n.map, x = n.x, y = n.y } end
+  end
+  local baked = ns.NpcData and ns.NpcData[npc]
+  if baked and baked[2] then return { uiMap = baked[2], x = baked[3], y = baked[4] } end
 end
 
 -- Trainers and vendors must be friendly to the player; nil = unknown (kept).
@@ -102,7 +121,43 @@ local function Places(npc)
       if p[1] and p[1] >= 0 then out[#out + 1] = { areaId = areaId, uiMap = ui, x = p[1], y = p[2] } end
     end
   end
+  if #out == 0 then out[1] = ns.NpcSpot(npc) end -- our own data when Questie lacks it
   return out
+end
+
+-- Nearest known spot of a station: place, distance (nil when none is known).
+function ns.NearestStation(focus)
+  local map, px, py = PlayerPos()
+  local best, bd
+  for _, s in ipairs(ns.StationSpots(focus)) do
+    local d = Distance(s, map, px, py)
+    if not bd or d < bd then best, bd = s, d end
+  end
+  return best, bd
+end
+
+function ns.StationPlaceText(place)
+  local info = place and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(place.uiMap)
+  return ("%s %d, %d"):format(info and info.name or "?", place.x, place.y)
+end
+
+-- Waypoint to the nearest known station (TomTom), or the place in chat.
+function ns.WaypointStation(focus)
+  local place = ns.NearestStation(focus)
+  local name = ns.StationName(focus)
+  if not place then
+    ns.Print(L["No known location for %s."]:format(name))
+    return false
+  end
+  local where = ns.StationPlaceText(place)
+  if not (TomTom and TomTom.AddWaypoint) then
+    ns.Print(L["%s: %s. Install TomTom for a waypoint."]:format(name, where))
+    return false
+  end
+  local ok = pcall(TomTom.AddWaypoint, TomTom, place.uiMap, place.x / 100, place.y / 100,
+    { title = name, persistent = false, from = "ComradeCraft" })
+  if ok then ns.Print(L["Waypoint: %s"]:format(name .. " (" .. where .. ")")) end
+  return ok
 end
 
 local function CurrentSkillRank(line)

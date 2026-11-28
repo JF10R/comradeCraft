@@ -823,6 +823,61 @@ end
 -- Shared bank alts never reserve materials for leveling: all of their stock is group surplus.
 -- Deducts consumed stock across multiple professions on the same character so shared mats
 -- (e.g. Tailoring + First Aid cloth, Blacksmithing + Engineering bars) are never double-counted.
+-- Gold a route costs: mats at their value plus recipes to learn.
+local function RouteCost(gross, plan, known)
+  local v = 0
+  for item, k in pairs(gross or {}) do v = v + k * (ns.ItemValue(item) or 0) end
+  local seen = {}
+  for _, st in ipairs(plan or {}) do
+    local spells = { st.spell }
+    for x in pairs(st.subs or {}) do spells[#spells + 1] = x end
+    for _, s in ipairs(spells) do
+      if not known[s] and not seen[s] then
+        seen[s] = true
+        v = v + (ns.RecipeLearnCost and ns.RecipeLearnCost(s) or 0)
+      end
+    end
+  end
+  return v
+end
+
+-- Quest-reward recipes are never part of the route (the quest may be out of reach), but one
+-- that would make it clearly cheaper is offered as an alternative: { spell, quest, save }.
+local MAX_ALT_TRIES, MAX_ALTS = 4, 2
+function ns.QuestAlternatives(p, target, known, all, owned, learnable, mode, stock, breaks, base)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  if not (lib and lib.GetRecipeSources and ns.PriceSource) then return nil end
+  local cands = {}
+  for spell, r in pairs(ns.Recipes) do
+    if r[1] == p.skillLine and not known[spell] and not learnable[spell] and r[2] > p.rank then
+      local src = lib:GetRecipeSources(spell)
+      local q = src and src.quest and src.quest[1]
+      local req = ns.RequiredSkill(spell, lib.GetRequiredSkill and lib:GetRequiredSkill(p.skillLine, spell))
+      if q and (req or 0) < target then cands[#cands + 1] = { spell = spell, quest = q.id or q, req = req or 0 } end
+    end
+  end
+  table.sort(cands, function(a, b) return a.req < b.req end)
+  local out = {}
+  for i = 1, math.min(MAX_ALT_TRIES, #cands) do
+    local a = cands[i]
+    local l2 = {}
+    for s, rq in pairs(learnable) do l2[s] = rq end
+    l2[a.spell] = a.req
+    local g2, r2, p2 = ns.ComputeNeeds(p.rank, target, known, all, owned, l2, mode, stock, breaks)
+    local uses = false
+    for _, st in ipairs(p2) do if st.spell == a.spell or (st.subs and st.subs[a.spell]) then uses = true end end
+    if uses and r2 >= base.reached then
+      local save = base.cost - RouteCost(g2, p2, known)
+      if save >= math.max(10000, base.cost * 0.05) then
+        out[#out + 1] = { spell = a.spell, quest = a.quest, save = save }
+      end
+    end
+  end
+  table.sort(out, function(x, y) return x.save > y.save end)
+  while #out > MAX_ALTS do out[#out] = nil end
+  return #out > 0 and out or nil
+end
+
 function ns.UpdateNeeds(c)
   c.needs = {}
   if c.bankAlt then
@@ -911,6 +966,8 @@ function ns.UpdateNeeds(c)
       if #p2 > 0 then overPlan, overReached = p2, r2 end
     end
     local oGross, oReached, _, oInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, other, remStock, breaks)
+    local alternatives = ns.QuestAlternatives(p, target, known, all, remOwned, learnable, mode, remStock, breaks,
+      { reached = reached, cost = RouteCost(gross, plan, known) })
     -- Other route's missing mats, against what is left before this route takes its share
     -- (no Lesser/Greater conversion: close enough for the comparison).
     ns.resaleCtx = nil
@@ -966,7 +1023,7 @@ function ns.UpdateNeeds(c)
       bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
       knownOnly = { reached = kReached, reason = kInfo.reason },
       mode = mode, milestones = info.milestones, sales = info.sales, peak = info.peak, short = info.short,
-      overPlan = overPlan, overReached = overReached,
+      overPlan = overPlan, overReached = overReached, alternatives = alternatives,
       alt = { mode = other, reached = oReached, milestones = oInfo.milestones, gross = oGross, items = oItems } }
   end
   if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then

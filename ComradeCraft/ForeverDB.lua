@@ -8,6 +8,7 @@ local FDB = {}
 ns.ForeverDB = FDB
 
 local MAX_BOUNDS, MAX_DROPS, MAX_VENDORS, MAX_CUSTOM, MAX_DE = 60, 40, 40, 40, 30
+local MAX_STATION_SPOTS, MAX_NPCS = 60, 80
 local PEER_COOLDOWN = 300 -- seconds between P2P ForeverDB syncs to the same peer
 local lastSentPeer, guildSent = {}, false
 
@@ -69,6 +70,11 @@ function FDB.ObserveNpcFaction()
   if not (ComradeCraftDB and npcID) then return end
   ComradeCraftDB.npcFaction = ComradeCraftDB.npcFaction or {}
   ComradeCraftDB.npcFaction[npcID] = UnitFactionLetter("npc")
+  local map, x, y = PlayerPos() -- you stand next to the npc you talk to
+  if map and x and y then
+    ComradeCraftDB.npcSpots = ComradeCraftDB.npcSpots or {}
+    ComradeCraftDB.npcSpots[npcID] = { map, x, y }
+  end
 end
 
 -- Local observation: merchant selling a recipe scroll or skill rank book on WoW Forever.
@@ -251,10 +257,29 @@ function FDB.Payload()
       end
     end
   end
-  if nb == 0 and nd == 0 and nv == 0 and ncr == 0 and nde == 0 then return nil end
+  -- Station spots and npc faction/spot seen in game.
+  local st, nst, np, nnp = {}, 0, {}, 0
+  for focus, list in pairs(db.stations or {}) do
+    for _, s in ipairs(type(list) == "table" and list or {}) do
+      if nst < MAX_STATION_SPOTS then
+        st[focus] = st[focus] or {}
+        st[focus][#st[focus] + 1] = { s[1], s[2], s[3] }
+        nst = nst + 1
+      end
+    end
+  end
+  for npc, fac in pairs(db.npcFaction or {}) do
+    if nnp < MAX_NPCS then
+      local s = db.npcSpots and db.npcSpots[npc] or {}
+      np[npc] = { fac, s[1] or 0, s[2] or 0, s[3] or 0 }
+      nnp = nnp + 1
+    end
+  end
+  if nb == 0 and nd == 0 and nv == 0 and ncr == 0 and nde == 0 and nst == 0 and nnp == 0 then return nil end
   return { t = "F", v = ns.Sync and ns.Sync.PROTO or 1, id = db.accountId,
     b = nb > 0 and b or nil, d = nd > 0 and d or nil, ve = nv > 0 and v or nil,
-    cr = ncr > 0 and cr or nil, de = nde > 0 and de or nil }
+    cr = ncr > 0 and cr or nil, de = nde > 0 and de or nil,
+    st = nst > 0 and st or nil, np = nnp > 0 and np or nil }
 end
 
 -- Strict validation & merge of an incoming P2P ForeverDB packet.
@@ -379,6 +404,34 @@ function FDB.OnRemote(peerID, msg)
           added = added + 1
         end
       end
+    end
+  end
+  -- 5. Station spots ({ [focus] = { { uiMap, x, y } } }) and npcs ({ [npc] = { fac, uiMap, x, y } }).
+  local nst = 0
+  store.stations = {}
+  for focus, list in pairs(type(msg.st) == "table" and msg.st or {}) do
+    focus = Num(focus, 1, 2 ^ 24)
+    for _, s in ipairs(focus and type(list) == "table" and list or {}) do
+      local m = type(s) == "table" and Num(s[1], 1, 100000)
+      local x, y = m and Num(s[2], 0, 100), m and Num(s[3], 0, 100)
+      if m and x and y and nst < MAX_STATION_SPOTS then
+        store.stations[focus] = store.stations[focus] or {}
+        table.insert(store.stations[focus], { m, x, y })
+        nst = nst + 1
+        added = added + 1
+      end
+    end
+  end
+  local nnp = 0
+  store.npcs = {}
+  for npc, x in pairs(type(msg.np) == "table" and msg.np or {}) do
+    npc = Num(npc, 1, 2 ^ 24)
+    local fac = type(x) == "table" and (x[1] == "A" or x[1] == "H" or x[1] == "N") and x[1]
+    if npc and fac and nnp < MAX_NPCS then
+      local m = Num(x[2], 1, 100000)
+      store.npcs[npc] = { fac = fac, map = m, x = m and Num(x[3], 0, 100), y = m and Num(x[4], 0, 100) }
+      nnp = nnp + 1
+      added = added + 1
     end
   end
   db.foreverPeers[peerID] = store

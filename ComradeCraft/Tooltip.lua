@@ -594,6 +594,7 @@ function ns.DescribeNeed(p, c)
     for _, e in ipairs(adv.entries) do out.plan[#out.plan + 1] = "  " .. e.text end
     for _, n in ipairs(adv.notes) do out.plan[#out.plan + 1] = "  " .. n end
   end
+  local toolsHad, lastFocus = {}, {}
   local allSteps = {}
   for _, st in ipairs(need.plan or {}) do allSteps[#allSteps + 1] = st end
   for _, st in ipairs(need.overPlan or {}) do allSteps[#allSteps + 1] = st end
@@ -612,6 +613,41 @@ function ns.DescribeNeed(p, c)
     for _, e in ipairs(entries) do
       if e.copper then stepCost = stepCost + e.copper else stepComplete = false end
     end
+    -- Tools the character lacks (once per route), then the station(s) to craft at when they
+    -- change from the previous step.
+    local stepSpells = {}
+    for _, sub in ipairs(subSpells) do stepSpells[#stepSpells + 1] = sub end
+    stepSpells[#stepSpells + 1] = step.spell
+    for _, sp in ipairs(stepSpells) do
+      for _, req in ipairs(ns.MissingTools and ns.MissingTools(c, sp, toolsHad) or {}) do
+        toolsHad[req] = true
+        local item, how, x = ns.ToolSource(req)
+        if item then
+          local get = ns.L["Get a %s"]:format(ItemName(item))
+          local detail = how == "craft" and ns.L["Craft it first: %s."]:format(SpellName(x))
+            or x and ns.L["Sold by trade supplies vendors (%s)."]:format(ns.Money(x))
+            or ns.L["Sold by trade supplies vendors."]
+          if how == "vendor" and x then stepCost = stepCost + x end
+          entries[#entries + 1] = { kind = "tool", item = item, label = get, text = get .. " - " .. detail, detail = detail }
+        end
+      end
+    end
+    local focusNow = {}
+    for _, sp in ipairs(stepSpells) do
+      local focus = ns.RecipeFocus and ns.RecipeFocus[sp]
+      if focus and not focusNow[focus] then
+        focusNow[focus] = true
+        if not lastFocus[focus] then
+          local place = ns.NearestStation and ns.NearestStation(focus)
+          local at = ns.L["Craft at: %s"]:format(ns.StationName(focus))
+          local detail = place and ns.L["Nearest: %s"]:format(ns.StationPlaceText(place))
+            or ns.L["Location not known yet: saved the first time someone crafts there."]
+          entries[#entries + 1] = { kind = "station", focus = focus, spell = sp, label = at,
+            text = at .. " - " .. detail, detail = detail }
+        end
+      end
+    end
+    lastFocus = focusNow
     for _, sub in ipairs(subSpells) do
       local s = ns.Recipes[sub]
       local item, qty = s[5], math.max(1, s[6])
@@ -705,6 +741,19 @@ function ns.DescribeNeed(p, c)
       p.rank, need.reached, ns.TotalMoney(t.brut, t.brutOk), ns.TotalMoney(t.buy, t.buyOk),
       ns.Money(math.floor(t.resale)), ns.TotalMoney(trainer, trainerOk), ns.TotalMoney(t.net, t.netOk),
       ns.PriceSourceName)
+  end
+
+  -- Quest-reward recipes that would make the route cheaper (never in the route itself).
+  for _, a in ipairs(need.alternatives or {}) do
+    local q = a.quest
+    local qname = C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(q)
+    if not qname and LibQuestieDB and LibQuestieDB.Quest and LibQuestieDB.Quest.name then
+      local ok, nm = pcall(LibQuestieDB.Quest.name, q)
+      qname = ok and nm or nil
+    end
+    out.alternatives = out.alternatives or {}
+    out.alternatives[#out.alternatives + 1] = ns.L["Alternative: %s from the quest %s would save about %s."]:format(
+      SpellName(a.spell), qname or ("#" .. q), ns.Money(math.floor(a.save)))
   end
 
   local used = {}

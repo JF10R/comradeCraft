@@ -52,6 +52,7 @@ Locales\ruRU.lua
 Locale.lua
 Core.lua
 Data\Recipes.lua
+Data\Npcs.lua
 Data\DropRates.lua
 Pricing.lua
 Needs.lua
@@ -75,6 +76,7 @@ Directory.lua
 Alerts.lua
 Shopping.lua
 Sources.lua
+Tools.lua
 ForeverDB.lua
 Loot.lua
 Synergies.lua

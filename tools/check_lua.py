@@ -505,6 +505,79 @@ def main():
       assert(not c.needs[197].overPlan, "budget: removed = full route again")
       ComradeCraftDB.settings.groupObjective, c.bags, c.bank, c.mail = oldObj, oldB, oldK, oldM
       ns.UpdateNeeds(c)
+      -- Tools and stations: masks, held tools, entries in the steps, spots seen and shared.
+      do
+        local oc, oi, ot, of, ofn = ns.ToolCategories, ns.ToolItems, ns.RecipeTools, ns.RecipeFocus, ns.FocusNames
+        ns.ToolCategories = { [161] = { "Gnomish Army Knife", 24, 127 }, [162] = { "Blacksmith Hammer", 24, 4 },
+          [165] = { "Mining Pick", 24, 8 }, [375] = { "Runed Golden Rod", 3, 7 }, [377] = { "Runed Arcanite Rod", 3, 31 } }
+        ns.ToolItems = { [5956] = 162, [260811] = 161, [11130] = 375, [16207] = 377 }
+        assert(ns.ToolFits(161, 162) and not ns.ToolFits(162, 165) and ns.ToolFits(377, 375)
+          and not ns.ToolFits(375, 377), "tools: a knife is a hammer, a hammer no pick, arcanite rod fits golden")
+        assert(ns.HasTool({ bags = { [260811] = 1 } }, 162) and not ns.HasTool({ bags = {} }, 162)
+          and ns.HasTool({ bank = { [16207] = 1 } }, 375), "tools: held in bags or bank")
+        local ti, how = ns.ToolSource(162)
+        assert(ti == 5956 and how == "vendor", "tools: the hammer is bought")
+        local sp = c.needs[197].plan[1].spell
+        ns.RecipeTools, ns.RecipeFocus, ns.FocusNames = { [sp] = { 162 } }, { [sp] = 1 }, { [1] = "Anvil" }
+        ComradeCraftDB.stations = { [1] = { { 1453, 50, 50 } } }
+        local ob, obk, om = c.bags, c.bank, c.mail
+        c.bags, c.bank, c.mail = {}, {}, {}
+        local td = ns.DescribeNeed(c.professions.Tailoring, c)
+        c.bags, c.bank, c.mail = ob, obk, om
+        local kinds, nTool, nStation = {}, 0, 0
+        for _, st in ipairs(td.steps) do
+          for _, e in ipairs(st.entries) do
+            kinds[e.kind] = kinds[e.kind] or e
+            if e.kind == "tool" then nTool = nTool + 1 end
+            if e.kind == "station" then nStation = nStation + 1 end
+          end
+        end
+        assert(kinds.tool and kinds.tool.item == 5956 and nTool == 1, "tools: missing hammer listed once")
+        assert(kinds.station and kinds.station.focus == 1 and kinds.station.label:find(ns.L["Anvil"], 1, true)
+          and nStation >= 1, "stations: craft at an anvil, nearest spot shown")
+        local oldMap = C_Map
+        C_Map = { GetBestMapForUnit = function() return 1453 end,
+          GetPlayerMapPosition = function() return { x = 0.612, y = 0.704 } end }
+        ns.ObserveStation(sp)
+        ns.ObserveStation(sp)
+        C_Map = oldMap
+        assert(#ComradeCraftDB.stations[1] == 2 and ComradeCraftDB.stations[1][2][2] == 61.2, "stations: spot saved once")
+        local pay = ns.ForeverDB.Payload()
+        assert(pay and pay.st and #pay.st[1] == 2, "stations: shared with peers")
+        ns.ForeverDB.OnRemote("peerTools", { st = { [1] = { { 1454, 10, 20 }, { 1454, 300, 20 } } },
+          np = { [999901] = { "H", 1454, 40, 50 }, [999902] = { "X" } } })
+        assert(#ns.StationSpots(1) == 3, "stations: peer spot merged, bad one dropped")
+        local spot = ns.NpcSpot(999901)
+        assert(ns.NpcFaction(999901) == "H" and spot and spot.uiMap == 1454 and ns.NpcFaction(999902) == nil,
+          "npcs: peer faction and spot")
+        ns.NpcData = { [999903] = { "A", 1455, 30, 40 } }
+        assert(ns.NpcFaction(999903) == "A" and ns.NpcSpot(999903).uiMap == 1455, "npcs: baked Data/Npcs.lua")
+        ns.NpcData = nil
+        ComradeCraftDB.foreverPeers.peerTools, ComradeCraftDB.stations = nil, nil
+        ns.ToolCategories, ns.ToolItems, ns.RecipeTools, ns.RecipeFocus, ns.FocusNames = oc, oi, ot, of, ofn
+      end
+      -- Quest-reward recipe: offered as an alternative when it makes the route cheaper.
+      do
+        local lib = LibStub("LibProfessionDB-1.0")
+        local oldSrc, oldPS = lib.GetRecipeSources, ns.PriceSource
+        ns.Recipes[999821] = { 197, 20, 40, 1, 999822, 1, { 999823, 1 } }
+        ns.Recipes[999824] = { 197, 20, 40, 1, 999825, 1, { 2589, 1 } }
+        lib.GetRecipeSources = function(self, spell)
+          if spell == 999824 then return { quest = { { id = 123 } } } end
+          return oldSrc(self, spell)
+        end
+        ns.PriceSource = function(item) return ({ [2589] = 10, [999823] = 50000 })[item] end
+        local p = { skillLine = 197, rank = 1, max = 75 }
+        local known = { [999821] = true }
+        local g, r = ns.ComputeNeeds(1, 10, known, known, {}, {}, "cheap")
+        local cost = 0
+        for item, k in pairs(g) do cost = cost + k * ns.ItemValue(item) end
+        local alts = ns.QuestAlternatives(p, 10, known, known, {}, {}, "cheap", nil, nil, { reached = r, cost = cost })
+        assert(alts and alts[1].spell == 999824 and alts[1].quest == 123 and alts[1].save > 0,
+          "quest recipe: offered as a cheaper alternative")
+        lib.GetRecipeSources, ns.PriceSource = oldSrc, oldPS
+        ns.Recipes[999821], ns.Recipes[999824] = nil, nil
+      end
       -- A friend's character: the target is local (kit), never sent, and wins over theirs.
       ComradeCraftDB.remote = ComradeCraftDB.remote or {}
       local fr = { class = "MAGE", peer = "pvT", targets = { [197] = 60 }, updated = 5,

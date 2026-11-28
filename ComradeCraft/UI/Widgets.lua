@@ -342,11 +342,11 @@ local function CreateStep()
       return
     end
     if e.kind == "milestone" then return end
-    if e.kind == "quest" or e.kind == "trainer" then
+    if e.kind == "quest" or e.kind == "trainer" or e.kind == "station" then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:AddLine(e.label, 1, 0.82, 0)
       if e.detail ~= "" then GameTooltip:AddLine(e.detail, 1, 1, 1, true) end
-      GameTooltip:AddLine(e.kind == "trainer" and L["Click: waypoint to the nearest one."]
+      GameTooltip:AddLine(e.kind ~= "quest" and L["Click: waypoint to the nearest one."]
         or L["Click: waypoint to the quest giver."], 0.5, 0.8, 1)
       GameTooltip:Show()
       return
@@ -379,6 +379,7 @@ local function CreateStep()
       else ns.WaypointRecipe(e.spell) end
     end
     if e.kind == "quest" then ns.WaypointQuest(e.quest) end
+    if e.kind == "station" then ns.WaypointStation(e.focus) end
     if e.kind == "trainer" and ns.WaypointNpc then ns.WaypointNpc(e.npc, e.label, e.zone, e.fallbackPlace) end
   end)
   return b
