@@ -315,11 +315,18 @@ end
 local reminded = false
 -- Real deposits: recorded per item when you post (also through TSM or Auctionator, which use
 -- the same game functions). Others are estimated (ns.AuctionDeposit).
--- Stored on the 2 h basis (duration 1/2/3 = 2/8/24 h = x1/x4/x12), never below 1c.
+-- Stored on the 2 h faction-AH basis (duration 1/2/3 = 2/8/24 h = x1/x4/x12, confirmed in game;
+-- neutral AH x5), never below 1c.
 local DEPOSIT_MULT = { 1, 4, 12 }
-local function LearnDeposit(item, deposit, qty, duration)
+local neutralAH = false
+ns.On("AUCTION_HOUSE_SHOW", function()
+  local f = UnitFactionGroup and UnitFactionGroup("npc")
+  neutralAH = f ~= "Alliance" and f ~= "Horde" and UnitExists and UnitExists("npc") or false
+end)
+local function LearnDeposit(item, deposit, qty, duration, neutral)
   if not (ComradeCraftDB and item and deposit and deposit > 0 and qty and qty > 0) then return end
-  local per = math.max(1, math.floor(deposit / (DEPOSIT_MULT[duration] or 1) / qty))
+  if neutral == nil then neutral = neutralAH end
+  local per = math.max(1, math.floor(deposit / (DEPOSIT_MULT[duration] or 1) / (neutral and 5 or 1) / qty))
   ComradeCraftDB.deposits = ComradeCraftDB.deposits or {}
   ComradeCraftDB.deposits[item] = per
   local p = ns.ItemPrices and ns.ItemPrices[item]

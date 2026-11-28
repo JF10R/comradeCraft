@@ -1906,6 +1906,8 @@ def main():
         -- Deposits: never 0, and normalized to the 2 h basis.
         ns.LearnDeposit(2589, 5, 20)
         assert(ComradeCraftDB.deposits[2589] == 1 and ns.AuctionDeposit(2589) == 1, "deposit: floors to 1c, not 0")
+        ns.LearnDeposit(2589, 500, 1, 1, true)
+        assert(ComradeCraftDB.deposits[2589] == 100, "deposit: neutral AH (x5) normalized to faction AH")
         ComradeCraftDB.deposits[2589] = 0
         assert(ns.AuctionDeposit(2589) == math.max(ns.DEPOSIT_MIN, math.floor(ns.ItemPrices[2589][1] * ns.DEPOSIT_RATIO)),
           "deposit: stored 0 ignored, estimate used")
