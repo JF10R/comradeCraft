@@ -167,7 +167,7 @@ local function CurrentSkillRank(line)
   end
 end
 
-local function TrainerDisqualified(npc, spell, line)
+local function TrainerDisqualified(npc, spell, line, forRank)
   if not ComradeCraftDB then return false end
   -- Visited trainer whose services were scanned: exclude if they didn't offer this recipe.
   local spot = ComradeCraftDB.trainerSpots and ComradeCraftDB.trainerSpots[npc]
@@ -175,7 +175,7 @@ local function TrainerDisqualified(npc, spell, line)
   -- Trainer who refused us ("You'll need more training...") at or above our current rank.
   local ref = ComradeCraftDB.trainerRefused and ComradeCraftDB.trainerRefused[npc]
   if ref and ref.line == line then
-    local rank = CurrentSkillRank(line)
+    local rank = forRank or CurrentSkillRank(line)
     if rank and rank <= (ref.rank or 0) then return true end
   end
   return false
@@ -183,11 +183,12 @@ end
 
 -- True if at least one friendly trainer can teach `spell` right now; false if every known
 -- friendly trainer was refused at current rank or scanned without offering it; nil if unknown.
-function ns.HasEligibleTrainer(spell)
+-- rank (optional): skill of the character planned for, instead of the logged-in one.
+function ns.HasEligibleTrainer(spell, rank)
   local r = ns.Recipes[spell]
   if not r then return nil end
   for npc, t in pairs(ComradeCraftDB and ComradeCraftDB.trainerSpots or {}) do
-    if t.scanned and t.spells and t.spells[spell] and not TrainerDisqualified(npc, spell, r[1]) then
+    if t.scanned and t.spells and t.spells[spell] and not TrainerDisqualified(npc, spell, r[1], rank) then
       return true
     end
   end
@@ -199,7 +200,7 @@ function ns.HasEligibleTrainer(spell)
   for _, e in ipairs(list) do
     if Friendly(e.id) then
       friendlySeen = friendlySeen + 1
-      if not TrainerDisqualified(e.id, spell, r[1]) then return true end
+      if not TrainerDisqualified(e.id, spell, r[1], rank) then return true end
     end
   end
   if friendlySeen > 0 then return false end

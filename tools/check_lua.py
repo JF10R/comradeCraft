@@ -167,12 +167,19 @@ def main():
       assert(reached == 44 and #plan == 1, "needs: plan, reached " .. reached)
       assert(info.reason == "lowgain", "needs: reason")
       assert(needs[2589] == 117, "needs: expected 117 linen, got " .. tostring(needs[2589]))
-      -- Owned intermediates: 10 bolts owned while the plan crafts them -> 20 linen fewer.
-      local n2 = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, { [2996] = 10 })
+      -- Owned intermediates: at 1-10 the plan's bolt crafts give half the points (orange), so
+      -- owned bolts must not replace them (9 linen either way).
+      do
+      local n2, _, _, i2 = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true }, nil, { [2996] = 10 })
       local n1 = ns.ComputeNeeds(1, 10, { [2963] = true, [2385] = true })
-      -- plan: 4.5 vests + 4.5 bolts = 9 linen; 4 whole owned bolts replace 8 of them -> 1.
-      assert(n1[2589] == 9 and n2[2589] == 1, "owned bolts: expected 9 -> 1 linen, got "
+      assert(n1[2589] == 9 and n2[2589] == 9 and not i2.used[2996], "owned bolts: point-giving bolts kept, got "
         .. tostring(n1[2589]) .. " -> " .. tostring(n2[2589]))
+      -- Grey bolts (50+) give nothing: each owned one replaces 2 linen.
+      local g1, _, gp = ns.ComputeNeeds(50, 60, { [2963] = true, [2385] = true })
+      local g2, _, _, gi = ns.ComputeNeeds(50, 60, { [2963] = true, [2385] = true }, nil, { [2996] = 3 })
+      assert(gp[1].subs[2963] and gp[1].subs[2963] >= 3 and gi.used[2996] == 3 and g2[2589] == g1[2589] - 6,
+        "owned grey bolts: 3 used, 6 linen fewer, got " .. tostring(g1[2589]) .. " -> " .. tostring(g2[2589]))
+      end
       -- Vest (bolt + thread) with bolt known: bolt is expanded to 2 linen, vest costs 3.
       needs = ns.ComputeNeeds(50, 60, { [2963] = true, [2385] = true })
       assert(needs[2589] and needs[2320], "needs: vest expands bolt into linen + thread")
@@ -406,7 +413,26 @@ def main():
         local _, _, xPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, {}, nil, "cheap")
         local _, _, hPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, { [999803] = 5 }, nil, "cheap")
         assert(#xPlan == 0 and #hPlan == 1, "unobtainable mat: no route, unless you hold it")
+        -- A partial AH scan (no TSM/Auctionator) cannot judge a mat unobtainable: route kept.
+        local oldComplete = ns.PriceSourceIsComplete
+        ns.PriceSourceIsComplete = function() return false end
+        local _, _, pPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, {}, nil, "cheap")
+        ns.PriceSourceIsComplete = oldComplete
+        assert(#pPlan == 1, "unobtainable mat: partial price source keeps the route")
         ns.PriceSource, ns.Recipes[999801] = oldPSX, nil
+        -- Nested owned intermediates (A made from B): B under owned A is not removed twice.
+        ns.Recipes[999911] = { 164, 20, 40, 1, 999901, 1, { 999902, 1, 999904, 1 } } -- A, other line
+        ns.Recipes[999912] = { 164, 20, 40, 1, 999902, 1, { 999905, 2 } } -- B
+        ns.Recipes[999913] = { 197, 20, 40, 1, 999903, 1, { 999901, 1, 999905, 1 } }
+        local nk = { [999911] = true, [999912] = true, [999913] = true }
+        ns.PriceSource, ns.ItemPrices[999901], ns.ItemPrices[999902] = nil, { 100, 0 }, { 10, 0 }
+        local nn, _, _, ni = ns.ComputeNeeds(1, 10, { [999913] = true }, nk, { [999901] = 4, [999902] = 9 }, nil, "cheap")
+        ns.PriceSource = oldPSX
+        -- 9 crafts: 27 Y raw; 4 owned A cover 4 B (8 Y); the 5 B left come from owned B (10 Y) -> 9.
+        assert(ni.used[999901] == 4 and ni.used[999902] == 5 and nn[999905] == 9 and nn[999904] == 5,
+          "nested intermediates: B counted once, got used B " .. tostring(ni.used[999902]) .. ", Y " .. tostring(nn[999905]))
+        ns.Recipes[999911], ns.Recipes[999912], ns.Recipes[999913] = nil, nil, nil
+        ns.ItemPrices[999901], ns.ItemPrices[999902] = nil, nil
         local lib = LibStub("LibProfessionDB-1.0", true)
         local rid = lib:GetRecipeItem(7259)
         local lp, lseen = ns.RecipeBuyPrice(7259)
@@ -738,6 +764,12 @@ def main():
         ns.resaleCtx = { budget = 25, deBy = function() return nil end }
         local _, oReached = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, { [2589] = 100 }, nil, "cheap")
         assert(oReached == 10, "budget: mats you already hold cost nothing")
+        -- Group stock already includes your own bags: 5 owned + the same 5 in stock = 5 free.
+        ns.resaleCtx = { deBy = function() return nil end }
+        local _, _, _, si1 = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, { [2589] = 5 }, nil, "cheap")
+        local _, _, _, si2 = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, { [2589] = 5 }, nil, "cheap", { [2589] = 5 })
+        assert((si1.peak or 0) > 0 and math.abs((si1.peak or 0) - (si2.peak or 0)) < 1e-6,
+          "budget: own stock not counted twice, peak " .. tostring(si1.peak) .. " vs " .. tostring(si2.peak))
         ns.SaleCap, ns.resaleCtx, ns.PriceSource, ns.DisenchantEstimate = oldCap, oldCtx, oldPS3, oldDE
         ns.Recipes[999811], ns.ItemPrices[999812] = nil, nil
       end
@@ -1944,6 +1976,10 @@ def main():
       ComradeCraftDB.trainerRefused = { [1346] = { line = 197, rank = 115, name = "Georgio Bolero" } }
       local tr = ns.TrainerRecipes(197, 150, {})
       assert(tr[3848] == 125, "trainer deferral: req 110 deferred to 125 when refused at 115, got " .. tostring(tr[3848]))
+      -- A refusal at 115 (maybe an alt) says nothing for a character planned at 120.
+      local tr2 = ns.TrainerRecipes(197, 150, {}, 120)
+      assert(tr2[3848] and tr2[3848] < 125 and ns.TrainerRecipes(197, 150, {}, 100)[3848] == 125,
+        "trainer deferral: per planned rank, got " .. tostring(tr2[3848]))
       ComradeCraftDB.trainerRefused = nil
 
       -- 2. Group Upgrades Audit: small bags & missing enchants.

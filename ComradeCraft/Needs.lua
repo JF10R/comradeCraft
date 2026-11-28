@@ -217,8 +217,9 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     line = line or r[1]
     local a = { spell = spell, raw = {}, subs = {}, minRank = minRank or 0, learn = minRank ~= nil }
     Expand(spell, producers, 0, a.raw, a.subs, 1)
-    -- A mat you cannot get (no AH price, no merchant, none held): not a route, when prices exist.
-    if ns.PriceSource then
+    -- A mat you cannot get (no AH price, no merchant, none held): not a route, when prices are
+    -- complete (TSM/Auctionator); a partial AH scan lacks too many items to judge.
+    if ns.PriceSource and (not ns.PriceSourceIsComplete or ns.PriceSourceIsComplete()) then
       for item in pairs(a.raw) do
         if not ((owned and (owned[item] or 0) > 0) or (stock and (stock[item] or 0) > 0)
           or craftable[item] or ns.PriceSource(item) or ns.IsVendorItem(item)) then return end
@@ -265,8 +266,9 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   local spent, income, bought, short = 0, 0, {}, nil
   -- Mats already held (bags, bank, mail, group stock) cost nothing; used up along the route.
   local have = {}
+  -- Group stock already counts your own bags/bank/mail (GroupStock): take the larger, not the sum.
   for item, c in pairs(owned or {}) do have[item] = c end
-  for item, c in pairs(stock or {}) do have[item] = (have[item] or 0) + c end
+  for item, c in pairs(stock or {}) do have[item] = math.max(have[item] or 0, c) end
   local function Outlay(a, crafts, consume)
     local v = 0
     for item, c in pairs(a.raw) do
@@ -414,25 +416,50 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     cur = cur + 1
   end
 
-  -- Owned intermediates: each one used removes the raw mats of its own craft.
+  -- Owned intermediates replace the raw mats of their craft, only where that craft (and its own
+  -- subs) gives no point at that step; outer ones first so nested subs are not removed twice.
   if owned then
-    local inter = {}
+    local inter, tree = {}, {}
+    local function Points(sp, at) return ns.Recipes[sp][1] == line and ns.SkillUpChance(sp, at) > 0 end
     for _, step in ipairs(plan) do
       for sub, crafts in pairs(step.subs) do
         local s = ns.Recipes[sub]
-        inter[s[5]] = (inter[s[5]] or 0) + crafts * math.max(1, s[6])
+        if not tree[s[5]] then
+          tree[s[5]] = {}
+          Expand(sub, producers, 1, {}, tree[s[5]], 1 / math.max(1, s[6]))
+        end
+        local free = not Points(sub, step.from)
+        for x in pairs(tree[s[5]]) do if Points(x, step.from) then free = false end end
+        if free then inter[s[5]] = (inter[s[5]] or 0) + crafts * math.max(1, s[6]) end
       end
     end
-    for item, n in pairs(inter) do
-      local use = math.min(owned[item] or 0, math.floor(n + 1e-9))
-      if use > 0 then
-        info.used[item] = use
-        local raw, subs = {}, {}
-        local sub = producers[item]
-        Expand(sub, producers, 1, raw, subs, use / math.max(1, ns.Recipes[sub][6]))
-        for r, c in pairs(raw) do acc[r] = math.max(0, (acc[r] or 0) - c) end
+    local done = {}
+    repeat
+      local pick
+      for item in pairs(inter) do
+        if not done[item] then
+          pick = item
+          for o in pairs(inter) do
+            if not done[o] and o ~= item and tree[o][producers[item]] then pick = nil break end
+          end
+          if pick then break end
+        end
       end
-    end
+      if pick then
+        done[pick] = true
+        local use = math.min(owned[pick] or 0, math.floor(inter[pick] + 1e-9))
+        if use > 0 then
+          info.used[pick] = use
+          local raw, subs, sub = {}, {}, producers[pick]
+          Expand(sub, producers, 1, raw, subs, use / math.max(1, ns.Recipes[sub][6]))
+          for r, c in pairs(raw) do acc[r] = math.max(0, (acc[r] or 0) - c) end
+          for sp, c in pairs(subs) do
+            local it = ns.Recipes[sp][5]
+            if inter[it] then inter[it] = math.max(0, inter[it] - c * math.max(1, ns.Recipes[sp][6])) end
+          end
+        end
+      end
+    until not pick
   end
 
   local needs = {}
@@ -497,7 +524,8 @@ end
 -- Recipes seen at a real trainer win over LibProfessionDB (whose values are partly Classic's).
 -- Skips recipes the user skipped, recipes absent from a scanned trainer of that skill tier,
 -- or recipes with no eligible friendly trainer left (e.g. refused at current rank).
-function ns.TrainerRecipes(line, maxRank, known)
+-- rank (optional): the planned character's skill; refusals recorded below it are ignored.
+function ns.TrainerRecipes(line, maxRank, known, rank)
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
   local all = lib and lib.GetRecipes and lib:GetRecipes(line)
   local out = {}
@@ -529,7 +557,7 @@ function ns.TrainerRecipes(line, maxRank, known)
   -- Classic/Forever trainer tier (50, 125, 200, 275) so the planner levels us there with known crafts!
   local deferUntil = 0
   for _, rf in pairs(refused) do
-    if rf.line == line and (rf.rank or 0) > 0 then
+    if rf.line == line and (rf.rank or 0) > 0 and not (rank and rank > rf.rank) then
       local nextTier = (rf.rank < 50 and 50) or (rf.rank < 125 and 125)
         or (rf.rank < 200 and 200) or (rf.rank < 275 and 275) or (rf.rank + 10)
       if nextTier > deferUntil then deferUntil = nextTier end
@@ -541,7 +569,7 @@ function ns.TrainerRecipes(line, maxRank, known)
     elseif maxScannedReq >= req and not seenOnTrainer[spell] then
       -- A scanned trainer of this skill tier didn't offer it on Forever.
       out[spell] = nil
-    elseif ns.HasEligibleTrainer and ns.HasEligibleTrainer(spell) == false then
+    elseif ns.HasEligibleTrainer and ns.HasEligibleTrainer(spell, rank) == false then
       out[spell] = nil
     elseif deferUntil > 0 and not seenOnTrainer[spell] and req < deferUntil then
       if deferUntil <= maxRank then out[spell] = deferUntil else out[spell] = nil end
@@ -944,7 +972,7 @@ function ns.UpdateNeeds(c)
     local caps = ns.RankCaps(p.max, target)
     local breaks
     for _, cap in ipairs(caps) do breaks = breaks or {} breaks[cap] = true end
-    local learnable = ns.TrainerRecipes(p.skillLine, target, known)
+    local learnable = ns.TrainerRecipes(p.skillLine, target, known, p.rank)
     for spell, req in pairs(ns.VendorRecipes(p.skillLine, target, known, c)) do
       if not learnable[spell] then learnable[spell] = req end
     end
