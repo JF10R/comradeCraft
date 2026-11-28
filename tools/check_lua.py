@@ -3085,6 +3085,12 @@ def main():
             ComradeCraftDB.disenchants = { raw = {} }
             ns.InvalidateDECache()
           end
+          do -- Trainer name twins (Classic 12048 / SoD 439086 Black Mageweave Vest).
+            assert(ns.TrainerServiceSpells(1, { 439086, 12048 })[1] == 12048, "trainer: name twin -> lowest id")
+            GetTrainerServiceItemLink = function() return "|Hitem:217246::|h[Black Mageweave Vest]|h" end
+            assert(ns.TrainerServiceSpells(1, { 12048, 439086 })[1] == 439086, "trainer: name twin -> item it crafts")
+            GetTrainerServiceItemLink = nil
+          end
           do -- Sync.Decode caps the wire and inflated sizes.
             local S = ns.Sync
             assert(S.Decode(S.Encode({ t = "P", v = 1, id = "x" })).id == "x", "sync: normal message decodes")

@@ -25,6 +25,7 @@ local function SpellsByName(name)
   return nameIndex[name]
 end
 
+
 -- Pure: available services at the open trainer that match your leveling plan or a group BiS upgrade.
 -- Returns { { index, spell, item, name, cost, reason, prio }, ... }.
 function Trainer.Highlights()
@@ -56,7 +57,7 @@ function Trainer.Highlights()
       local skillName = GetTrainerServiceSkillReq and select(1, GetTrainerServiceSkillReq(i)) or nil
       local line = skillName and lines[skillName]
       local cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or 0
-      for _, spell in ipairs(SpellsByName(name) or {}) do
+      for _, spell in ipairs(ns.TrainerServiceSpells(i, SpellsByName(name))) do
         local rec = ns.Recipes[spell]
         if rec and (not line or rec[1] == line) and not seen[spell] then
           local reason, prio

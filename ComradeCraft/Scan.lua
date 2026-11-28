@@ -579,6 +579,21 @@ local function SpellIDsByName(name)
   return nameIndex[name]
 end
 
+-- Name twins (a Classic id and a later SoD/Forever one, e.g. Black Mageweave Vest 12048 / 439086):
+-- candidates for trainer service i, the one crafting the item it shows first, then lowest id.
+function ns.TrainerServiceSpells(i, list)
+  if not list or #list < 2 then return list or {} end
+  local link = GetTrainerServiceItemLink and GetTrainerServiceItemLink(i)
+  local item = type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
+  local out = { unpack(list) }
+  table.sort(out, function(a, b)
+    local ma, mb = item ~= nil and ns.Recipes[a][5] == item, item ~= nil and ns.Recipes[b][5] == item
+    if ma ~= mb then return ma end
+    return a < b
+  end)
+  return out
+end
+
 local scanningTrainer = false
 local function ScanTrainer()
   if scanningTrainer or not (ComradeCraftDB and GetNumTrainerServices and GetTrainerServiceInfo) then return end
@@ -606,9 +621,11 @@ local function ScanTrainer()
       if GetTrainerServiceSkillReq then skillName, req = GetTrainerServiceSkillReq(i) end
       local cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or nil
       local line = skillName and lines[skillName]
-      for _, spell in ipairs(SpellIDsByName(name) or {}) do
-        if not line or ns.Recipes[spell][1] == line then
-          local sl = ns.Recipes[spell][1]
+      local took = {} -- one spell per service and skill line: its best twin
+      for _, spell in ipairs(ns.TrainerServiceSpells(i, SpellIDsByName(name))) do
+        local sl = ns.Recipes[spell][1]
+        if (not line or sl == line) and not took[sl] then
+          took[sl] = true
           ComradeCraftDB.trainer[spell] = { cost = cost, req = req, t = time() }
           offered[spell] = true
           if req and req > (maxReqByLine[sl] or 0) then maxReqByLine[sl] = req end
