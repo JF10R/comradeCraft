@@ -172,11 +172,19 @@ end
 
 -- Records, for this character, when each known recipe with a long cooldown is ready again
 -- (server time), so alts' cooldowns can be announced from any character.
+-- Transmutes share one cooldown category with different lengths (10 min to 47 h): every member
+-- reports the cast one's lock, which is right for readyAt but not for the per-spell length.
+local castAt = {} -- [spell] = GetTime() of the player's own successful cast
+ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spell)
+  if unit == "player" and spell and GetTime then castAt[spell] = GetTime() end
+end)
+
 function Alerts.ScanCooldowns()
   if not (ComradeCraftDB and ComradeCraftDB.chars) then return end
   if InCombatLockdown and InCombatLockdown() then return end -- rescanned on PLAYER_REGEN_ENABLED
   local c = ns.CharData()
   c.cooldowns = c.cooldowns or {}
+  local long, shared = {}, {}
   for _, set in pairs(c.known or {}) do
     for spell in pairs(set) do
       local start, duration = Cooldown(spell)
@@ -184,14 +192,19 @@ function Alerts.ScanCooldowns()
         -- unknown now (secret value): keep what we had
       elseif duration > LONG_CD then
         c.cooldowns[spell] = math.floor(Now() + (start + duration - (GetTime and GetTime() or 0)))
-        -- Full length, as seen in game (Goldmaking: crafts per day of a cooldown recipe).
-        local len = ComradeCraftDB.cooldownLength or {}
-        ComradeCraftDB.cooldownLength = len
-        if duration > (len[spell] or 0) then len[spell] = math.floor(duration) end
+        local k = start .. ":" .. duration
+        long[spell], shared[k] = { start, duration, k }, (shared[k] or 0) + 1
       elseif duration == 0 and c.cooldowns[spell] and c.cooldowns[spell] > Now() + 60 then
         c.cooldowns[spell] = Now() -- reset early (a game change): ready
       end
     end
+  end
+  -- Full length per spell (Goldmaking: crafts per day): only when the lock is its own.
+  local len = ComradeCraftDB.cooldownLength or {}
+  ComradeCraftDB.cooldownLength = len
+  for spell, x in pairs(long) do
+    local own = shared[x[3]] == 1 or (castAt[spell] and math.abs(castAt[spell] - x[1]) < 5)
+    if own and x[2] > (len[spell] or 0) then len[spell] = math.floor(x[2]) end
   end
 end
 

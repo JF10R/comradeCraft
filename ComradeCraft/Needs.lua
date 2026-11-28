@@ -582,7 +582,7 @@ end
 -- any recipe the addon saw on a long cooldown on one of your characters (Alerts.ScanCooldowns).
 ns.COOLDOWN_RECIPES = { [11479] = true, [11480] = true, [17187] = true, [17559] = true, [17560] = true,
   [17561] = true, [17562] = true, [17563] = true, [17564] = true, [17565] = true, [17566] = true,
-  [25146] = true, [18560] = true }
+  [25146] = true, [18560] = true, [1317279] = true } -- 1317279 Legionite: category 310, 47 h
 function ns.IsCooldownRecipe(spell)
   if ns.COOLDOWN_RECIPES[spell] then return true end
   for _, c in pairs(ComradeCraftDB and ComradeCraftDB.chars or {}) do

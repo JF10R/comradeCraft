@@ -1115,6 +1115,23 @@ def main():
       issecretvalue = nil
       ns.Alerts.ScanCooldowns()
       assert(me.cooldowns[2963] == 900, "alerts: no cooldown scan in combat")
+      InCombatLockdown = nil
+      do -- Shared transmute category: Arcanite's 47 h lock must not become Elemental Fire's length.
+        local savedKnown, savedLen = me.known[171], ComradeCraftDB.cooldownLength
+        me.known[171], ComradeCraftDB.cooldownLength = { [17187] = true, [25146] = true }, nil
+        GetSpellCooldown = function(spell) if spell == 17187 or spell == 25146 then return 490, 169200 end return 0, 0 end
+        ns.Alerts.ScanCooldowns()
+        local len = ComradeCraftDB.cooldownLength
+        assert(me.cooldowns[25146] == me.cooldowns[17187] and not len[25146] and not len[17187],
+          "alerts: shared lock sets readyAt, not lengths")
+        GetTime = function() return 490 end
+        f.onEvent(f, "UNIT_SPELLCAST_SUCCEEDED", "player", "g", 17187)
+        GetTime = function() return 500 end
+        ns.Alerts.ScanCooldowns()
+        assert(len[17187] == 169200 and not len[25146], "alerts: length recorded for the cast spell only")
+        me.known[171], ComradeCraftDB.cooldownLength = savedKnown, savedLen
+        me.cooldowns[17187], me.cooldowns[25146] = nil, nil
+      end
       GetSpellCooldown, GetTime, InCombatLockdown = nil, nil, nil
       -- Keep: at a merchant, bag items another character needs; after a sale, a Buy back offer.
       local other = { needs = { [197] = { name = "Tailoring", items = { [2589] = 12 } } } }
