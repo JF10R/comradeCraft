@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,6 +81,10 @@ def main():
         items.update(r["reagents"][0::2])
         if r["item"]:
             items.add(r["item"])
+    # Recipe teaching items (LibProfessionDB): their merchant price feeds the route's recipe cost.
+    lib_items = os.path.join(ROOT, "ComradeCraft", "Libs", "LibProfessionDB-1.0", "Data", "RecipeItems.lua")
+    with open(lib_items, encoding="utf-8") as f:
+        items.update(int(m) for m in re.findall(r"^\[\d+\]=(\d+),", f.read(), re.M))
     prices = {}
     for r in table("ItemSparse", build):
         i = int(r["ID"])

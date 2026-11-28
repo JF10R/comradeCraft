@@ -197,7 +197,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   local actions = {}
   local function AddAction(spell, minRank)
     local r = ns.Recipes[spell]
-    if not r then return end
+    if not r or (ns.IsCooldownRecipe and ns.IsCooldownRecipe(spell)) then return end
     line = line or r[1]
     local a = { spell = spell, raw = {}, subs = {}, minRank = minRank or 0, learn = minRank ~= nil }
     Expand(spell, producers, 0, a.raw, a.subs, 1)
@@ -211,6 +211,9 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     a.back = { vendor = o.vendor * q, de = o.de and o.de * q, ah = o.ah and o.ah * q }
     a.resale = ns.BestResale(a.back)
     a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
+    -- A recipe bought from a merchant: its known price spread over its orange + yellow points.
+    local price = minRank and ns.RecipeBuyPrice and ns.RecipeBuyPrice(spell)
+    if price then a.cost = a.cost + price / math.max(5, (r[2] or minRank + 25) - minRank) end
     if stock then
       -- Flat arrays for the inner loop: raw item ids, counts and values.
       a.ids, a.cnt, a.val = {}, {}, {}
@@ -434,6 +437,56 @@ function ns.TrainerRecipes(line, maxRank, known)
   return out
 end
 
+-- Recipes on a long cooldown (transmutes, Mooncloth): never a leveling step. Classic ids, plus
+-- any recipe the addon saw on a long cooldown on one of your characters (Alerts.ScanCooldowns).
+ns.COOLDOWN_RECIPES = { [11479] = true, [11480] = true, [17187] = true, [17559] = true, [17560] = true,
+  [17561] = true, [17562] = true, [17563] = true, [17564] = true, [17565] = true, [17566] = true,
+  [25146] = true, [18560] = true }
+function ns.IsCooldownRecipe(spell)
+  if ns.COOLDOWN_RECIPES[spell] then return true end
+  for _, c in pairs(ComradeCraftDB and ComradeCraftDB.chars or {}) do
+    if type(c) == "table" and c.cooldowns and c.cooldowns[spell] then return true end
+  end
+  return false
+end
+
+-- Price of a recipe bought from a merchant: as seen on one (yours or a group member's), else the
+-- game data's list price (before reputation discounts). Second value: true when seen.
+function ns.RecipeBuyPrice(spell)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local item = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
+  local v = item and ns.ForeverDB and ns.ForeverDB.Vendor and ns.ForeverDB.Vendor(item)
+  if v and v.cost and v.cost > 0 then return v.cost, true end
+  local p = item and ns.ItemPrices and ns.ItemPrices[item]
+  if p and p[2] and p[2] > 0 then return p[2], false end
+  return nil
+end
+
+-- True for a recipe only merchants sell (no trainer teaches it).
+function ns.IsVendorRecipe(spell)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local kinds = lib and lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
+  return kinds and kinds.vendor and not kinds.trainer or false
+end
+
+-- Merchant-only recipes of `line` up to maxRank that a merchant of your faction sells:
+-- { [spell] = requiredSkill }, like TrainerRecipes.
+function ns.VendorRecipes(line, maxRank, known)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local out = {}
+  if not (lib and lib.GetRecipes and ns.HasFriendlyVendor) then return out end
+  local skipped = ComradeCraftDB and ComradeCraftDB.skippedLearn or {}
+  for spell, e in pairs(lib:GetRecipes(line) or {}) do
+    local req = e.requiredSkill
+    if req and req <= maxRank and not known[spell] and not skipped[spell] and ns.Recipes[spell]
+      and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)) and ns.IsVendorRecipe(spell)
+      and ns.HasFriendlyVendor(spell) then
+      out[spell] = req
+    end
+  end
+  return out
+end
+
 -- Up to 3 recipes to learn next, from LibProfessionDB: not known, not hidden, with a
 -- required skill, sorted learnable-now first (by grey rank, desc), then soonest.
 function ns.NextRecipes(line, rank, known)
@@ -640,6 +693,9 @@ function ns.UpdateNeeds(c)
     local breaks
     for _, cap in ipairs(caps) do breaks = breaks or {} breaks[cap] = true end
     local learnable = ns.TrainerRecipes(p.skillLine, target, known)
+    for spell, req in pairs(ns.VendorRecipes(p.skillLine, target, known)) do
+      if not learnable[spell] then learnable[spell] = req end
+    end
     local mode = ns.RouteMode(c)
     local other = mode == "profit" and "cheap" or "profit"
     local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, nil, mode, remStock, breaks)

@@ -387,6 +387,30 @@ def main():
       -- Target skill: rank caps crossed, stored target drives c.needs, auto-reset, sync, steps.
       do
       local rc = ns.RankCaps(150, 300)
+      -- Merchant recipes: in the plan, priced once seen on a merchant; cooldown recipes never.
+      do
+        local vr = ns.VendorRecipes(171, 300, {})
+        assert(vr[7259] == 190 and not vr[2329], "vendor recipes: Nature Protection Potion, not trainer ones")
+        assert(ns.IsCooldownRecipe(11479) and not ns.IsCooldownRecipe(7259), "cooldown recipes: transmute")
+        local _, _, cdPlan = ns.ComputeNeeds(225, 260, {}, {}, {}, { [11479] = 225 }, "cheap")
+        assert(#cdPlan == 0, "cooldown recipes: never planned")
+        local lib = LibStub("LibProfessionDB-1.0", true)
+        local rid = lib:GetRecipeItem(7259)
+        local lp, lseen = ns.RecipeBuyPrice(7259)
+        assert(lp == 2000 and not lseen, "vendor price: game data list price before a visit")
+        ComradeCraftDB.foreverVendors = ComradeCraftDB.foreverVendors or {}
+        ComradeCraftDB.foreverVendors[rid] = { npc = 8679, name = "Glyx Brewright", map = 1434, x = 28, y = 77, cost = 20000 }
+        assert(select(2, ns.RecipeBuyPrice(7259)) and ns.RecipeBuyPrice(7259) == 20000, "vendor price: seen on a merchant wins")
+        local vp = { skillLine = 171, rank = 190, max = 225 }
+        local vc = { level = 40, known = { [171] = { [2329] = true } }, needs = { [171] = { name = "Alchemy",
+          plan = { { spell = 7259, from = 190, to = 200, crafts = 10, subs = {}, learn = true } }, reached = 200,
+          target = 200, cap = 225, items = {}, vendor = {}, gross = {}, milestones = {} } } }
+        local vd = ns.DescribeNeed(vp, vc)
+        local ve = vd.steps[1].entries[1]
+        assert(ve.kind == "learn" and ve.buy and ve.copper == 20000 and ve.detail:find("Glyx Brewright", 1, true),
+          "vendor recipe step: buy from the merchant, with its price, got " .. tostring(ve.detail))
+        ComradeCraftDB.foreverVendors[rid] = nil
+      end
       assert(#ns.RankCaps(150, 175) == 1 and rc[1] == 150 and rc[2] == 225 and #rc == 2
         and #ns.RankCaps(75, 75) == 0, "target: rank caps")
       assert(ns.TargetFor(c, c.professions.Tailoring) == 75, "target: default = cap")

@@ -942,6 +942,13 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["Buy recipe: %s"] = "Acheter la recette : %s",
+    ["Buy %s from %s (skill %s, %s)"] = "Acheter %s chez %s (compétence %s, %s)",
+    ["Vendor: %s - skill %s - %s"] = "Marchand : %s - compétence %s - %s",
+    ["price unknown until you visit the vendor"] = "prix inconnu tant que tu n'as pas vu le marchand",
+    ["a vendor"] = "un marchand",
+    ["Trainer & recipes"] = "Formateur et recettes",
+    ["+ Trainer & recipes: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer & recipes."] = "+ Formateur et recettes : %s (dans le net). À acheter = compos manquants (HV + marchand) ; net = à acheter - revente + formateur et recettes.",
     ["(your side only)"] = "(de ton côté seulement)",
     ["Target:"] = "Cible :",
     ["Target skill"] = "Niveau visé",
@@ -958,11 +965,8 @@ translations.frFR = {
     ["To buy"] = "À acheter",
     ["Resale"] = "Revente",
     ["Net"] = "Net",
-    ["Trainer"] = "Formateur",
     ["not counted"] = "non compté",
     ["Stops at"] = "S'arrête à",
-    ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] =
-      "+ Formateur : %s (compris dans le net). À acheter = mats manquants (HV + marchand) ; net = à acheter - revente + formateur.",
     ["Other route: trainer not counted."] = "Autre route : formateur non compté.",
     ["> = some prices are unknown: a cost is a minimum, a profit (+<) a maximum."] = "> = certains prix sont inconnus : un coût est un minimum, un profit (+<) un maximum.",
 }

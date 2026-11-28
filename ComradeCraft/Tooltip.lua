@@ -547,6 +547,17 @@ function ns.DescribeNeed(p, c)
     local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
     local req = seen and seen.req or (lib and lib.GetRequiredSkill and lib:GetRequiredSkill(line, spell))
     local guessed = not (seen and seen.req) and lib and lib.IsBorrowed and lib:IsBorrowed(spell, "requiredSkill")
+    if not seen and ns.IsVendorRecipe(spell) then
+      local src = ns.RecipeSources and ns.RecipeSources(spell)
+      local v = src and src.vendor and src.vendor.list[1]
+      local where = v and ns.SourcePlaceText(v) or ns.L["a vendor"]
+      local price, seenPrice = ns.RecipeBuyPrice(spell)
+      local ptxt = price and ((seenPrice and "" or "~") .. ns.Money(price)) or ns.L["price unknown until you visit the vendor"]
+      local rq = (guessed and "~" or "") .. tostring(req or "?")
+      return { kind = "learn", buy = true, spell = spell, item = ns.Recipes[spell][5], copper = price,
+        text = ns.L["Buy %s from %s (skill %s, %s)"]:format(SpellName(spell), where, rq, ptxt),
+        label = SpellName(spell), detail = ns.L["Vendor: %s - skill %s - %s"]:format(where, rq, ptxt) }
+    end
     local cost = seen and seen.cost and ns.Money(seen.cost) or ns.L["cost unknown until you visit the trainer"]
     return { kind = "learn", spell = spell, item = ns.Recipes[spell][5], copper = seen and seen.cost,
       text = ns.L["Learn %s at the trainer (skill %s, %s)"]:format(SpellName(spell),

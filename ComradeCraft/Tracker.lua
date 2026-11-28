@@ -418,7 +418,8 @@ function ns.RefreshTracker()
           or (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(q.spell)) or 134400)
         local text
         if q.learn then
-          text = "|cff66ccff" .. L["Learn %s"]:format(q.label or "") .. "|r"
+          local buy = q.entry and q.entry.buy
+          text = "|cff66ccff" .. (buy and L["Buy recipe: %s"] or L["Learn %s"]):format(q.label or "") .. "|r"
         else
           local ready = q.other and ("|cff9d9d9d" .. L["other profession"] .. "|r")
             or q.enchant and ("|cff9d9d9d" .. L["by hand (needs a target)"] .. "|r")

@@ -386,3 +386,21 @@ function ns.WaypointQuest(q)
   return ok
 end
 ns.SourcePlaceText = PlaceText
+
+-- True when a merchant of your faction (or one seen on Forever) sells the recipe. Cached: the
+-- planner asks it on every refresh, and the answer only changes with the faction.
+local friendlyVendor = {}
+function ns.HasFriendlyVendor(spell)
+  local hit = friendlyVendor[spell]
+  if hit ~= nil then return hit end
+  hit = false
+  local lib = Lib()
+  local rid = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
+  if rid and ns.ForeverDB and ns.ForeverDB.Vendor and ns.ForeverDB.Vendor(rid) then hit = true end
+  local src = not hit and lib and lib.GetRecipeSources and lib:GetRecipeSources(spell)
+  for _, e in ipairs(src and src.vendor or {}) do
+    if Friendly(e.id) then hit = true break end
+  end
+  friendlyVendor[spell] = hit
+  return hit
+end

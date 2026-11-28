@@ -139,12 +139,12 @@ local function LayoutProfession(y, name, p, c, own, key)
         or TM(rt.net, rt.netOk)
       local tip = { { L["Gross"], TM(rt.brut, rt.brutOk) }, { L["To buy"], TM(rt.buy, rt.buyOk) },
         { L["Resale"], ShortMoney(rt.resale) },
-        { L["Trainer"], rt.noTrainer and L["not counted"] or TM(rt.trainer, t.trainerOk) }, { L["Net"], net } }
+        { L["Trainer & recipes"], rt.noTrainer and L["not counted"] or TM(rt.trainer, t.trainerOk) }, { L["Net"], net } }
       if (rt.reached or goal) < goal then tip[#tip + 1] = { L["Stops at"], tostring(rt.reached) } end
       yy = yy + PlaceStep(PROF_W, y - yy, RIGHT_W, { kind = "milestone", layout = lay, tip = tip, cols = {
         name, TM(rt.brut, rt.brutOk), TM(rt.buy, rt.buyOk), ShortMoney(rt.resale), net } }, own, i % 2 == 0)
     end
-    local note = L["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."]
+    local note = L["+ Trainer & recipes: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer & recipes."]
       :format(TM(t.trainer, t.trainerOk))
     if #t.routes > 1 then note = note .. " " .. L["Other route: trainer not counted."] end
     if not (t.routes[1].brutOk and t.routes[1].buyOk and t.trainerOk) then
