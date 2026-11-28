@@ -55,6 +55,7 @@ Data\Recipes.lua
 Data\Npcs.lua
 Data\DropRates.lua
 Pricing.lua
+Goldmaking.lua
 Needs.lua
 GroupNeeds.lua
 Reserve.lua

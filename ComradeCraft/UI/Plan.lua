@@ -15,6 +15,7 @@ local Collapsed, SetAllCollapsed, AllCollapsed, FoldTexture =
 local Label, ShortMoney, PlaceStep, CreateRow, PlaceMat, PlaceRecipe =
   U.Label, U.ShortMoney, U.PlaceStep, U.CreateRow, U.PlaceMat, U.PlaceRecipe
 local Toggle, Action, Head = U.Toggle, U.Action, U.Head
+local SectionBar = U.SectionBar
 
 local function LayoutProfession(y, name, p, c, own, key)
   local r = Acquire(rows, CreateRow)
@@ -516,6 +517,11 @@ local function CreatePatternRow()
   b:SetScript("OnClick", function(self)
     local p = self.pat
     if not p then return end
+    if p.gold then -- a known money maker: open it (own character), shift-click links it
+      if p.item and p.item ~= 0 and U.LinkOnShiftClick and U.LinkOnShiftClick(p.item) then return end
+      if p.own then ns.OpenRecipe(p.spell) end
+      return
+    end
     if p.recipeItem and U.LinkOnShiftClick and U.LinkOnShiftClick(p.recipeItem) then return end
     if p.item and p.item ~= 0 and U.LinkOnShiftClick and U.LinkOnShiftClick(p.item) then return end
     if ns.WaypointRecipe then ns.WaypointRecipe(p.spell) end
@@ -538,7 +544,9 @@ function U.RenderPatterns(key, c, filter)
   Toggle(70, y, L["All"], groupMode == "all", true, function() SetGroup("all") end):SetWidth(72)
   Toggle(146, y, L["Character"], groupMode == "char", true, function() SetGroup("char") end):SetWidth(94)
   Toggle(244, y, L["Slot"], groupMode == "slot", true, function() SetGroup("slot") end):SetWidth(76)
+  Toggle(324, y, L["Goldmaking"], groupMode == "gold", true, function() SetGroup("gold") end):SetWidth(104)
   y = y - 28
+  if groupMode == "gold" then return U.RenderGold(key, c, filter, y) end
 
   local list = ns.Audit and ns.Audit.PatternsForCrafter and ns.Audit.PatternsForCrafter(key) or {}
   local filtered = {}
@@ -659,3 +667,130 @@ function U.RenderPatterns(key, c, filter)
   return -y + 4
 end
 
+
+-- Goldmaking: per profession, the known crafts that earn the most per day at the AH's pace and
+-- the unlearned recipes worth buying (price, payback); what-if for a profession you lack.
+local CRAFT_LINES = { 171, 164, 185, 333, 202, 129, 165, 197 }
+local function GoldDetail(e)
+  local parts = { L["net %s per craft"]:format(ns.Money(math.floor(e.net))) }
+  if e.perDay then
+    parts[#parts + 1] = L["~%d sold per day"]:format(math.floor(e.perDay + 0.5))
+    parts[#parts + 1] = L["~%s per day"]:format(ns.Money(math.floor(e.daily or 0)))
+  else
+    parts[#parts + 1] = L["sales volume unknown"]
+  end
+  for _, s in ipairs(e.subs or {}) do
+    local name = ItemInfo(s.item) or ("#" .. s.item)
+    parts[#parts + 1] = (s.known and L["craft the %s yourself"] or L["craft the %s yourself (recipe to learn)"]):format(name)
+  end
+  return table.concat(parts, " - ")
+end
+
+function U.RenderGold(key, c, filter, y)
+  local own = key == ns.CharKey()
+  local _, ih = Label(0, y, "|cff9d9d9d" .. L["Crafts that earn the most at the auction house, at the pace it buys them (mats bought or crafted, whichever is cheaper; after the cut and deposit)."] .. "|r")
+  y = y - ih - 6
+  if not ns.PriceSource then
+    local _, h = Label(0, y, "|cff9d9d9d" .. L["No auction prices yet: scan the auction house or install TSM or Auctionator."] .. "|r")
+    return -(y - h) + 4
+  end
+  local shown = 0
+  local function Row(e, line1, line2, waypoint)
+    shown = shown + 1
+    local row = Acquire(P.patternRows, CreatePatternRow)
+    row.pat = { spell = e.spell, item = e.item, gold = not waypoint, own = own }
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", U.content, "TOPLEFT", 0, y)
+    local even = (shown % 2 == 0)
+    row.bg:SetColorTexture(even and 0.12 or 0.07, even and 0.12 or 0.07, even and 0.16 or 0.09, even and 0.44 or 0.24)
+    row.selfBar:Hide()
+    row.icon:SetTexture((e.item and e.item ~= 0 and select(3, ItemInfo(e.item))) or 134400)
+    if U.ApplyQualityBorder then U.ApplyQualityBorder(row, row.icon, e.item) end
+    row.line1:SetText(line1)
+    row.line2:SetText(line2)
+    row.line1:SetPoint("RIGHT", waypoint and -102 or -6, 0)
+    row.line2:SetPoint("RIGHT", waypoint and -102 or -6, 0)
+    if waypoint then
+      local spell = e.spell
+      local bw = Action(LIST_W - 94, y - 7, L["Waypoint"], function() ns.WaypointRecipe(spell) end)
+      bw:SetWidth(88)
+      if bw.SetFrameLevel and row.GetFrameLevel then bw:SetFrameLevel(row:GetFrameLevel() + 2) end
+    end
+    y = y - PAT_H - 2
+  end
+  local function Kind(e)
+    if e.stackable == nil then return "" end
+    return e.stackable and ("  |cff80c0ff" .. L["stackable"] .. "|r") or ("  |cffb0b0b0" .. L["one by one"] .. "|r")
+  end
+  local function Match(e)
+    local name = (ItemInfo(e.item) or ns.SpellName(e.spell) or ""):lower()
+    return filter == "" or name:find(filter, 1, true)
+  end
+  local have = {}
+  for pname, p in pairs(c.professions or {}) do
+    local line = p.skillLine
+    if line and not ns.GATHERING[line] and LineVisible(line) then
+      have[line] = true
+      local prof = ns.ProfName(line, pname)
+      y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["Repeat goldmakers"]) - 4
+      local n0 = shown
+      for _, e in ipairs(ns.Goldmakers(c, line)) do
+        if Match(e) then
+          Row(e, ("|cffffffff%s|r%s"):format(ItemInfo(e.item) or ns.SpellName(e.spell), Kind(e)), "|cffc8d8ff" .. GoldDetail(e) .. "|r")
+        end
+      end
+      if shown == n0 then
+        local _, h = Label(0, y, "|cff9d9d9d" .. L["No known recipe makes money at current prices."] .. "|r")
+        y = y - h - 4
+      end
+      local recipes = ns.ProfitableRecipes(c, line, p.rank)
+      if #recipes > 0 then
+        y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["Recipes worth buying"]) - 4
+        for _, e in ipairs(recipes) do
+          if Match(e) then
+            local tag = e.canLearn and ("|cff40ff40" .. L["can learn now"] .. "|r")
+              or ("|cffffd100" .. L["needs skill %d"]:format(e.req or 0) .. "|r")
+            Row(e, ("|cffffffff%s|r  |cff9d9d9d(%s)|r  %s"):format(ns.SpellName(e.spell), tag,
+              L["recipe %s, paid back in %d crafts"]:format(ns.Money(e.price), e.payback)),
+              "|cffc8d8ff" .. GoldDetail(e) .. "|r", true)
+          end
+        end
+      end
+      y = y - 6
+    end
+  end
+  -- What-if: a crafting profession this character does not have.
+  local ui = ComradeCraftDB.ui or {}
+  local x = 0
+  local _, wh = Label(0, y - 5, L["What if I learned:"], "GameFontNormalSmall", 120)
+  x = 124
+  for _, line in ipairs(CRAFT_LINES) do
+    if not have[line] then
+      local l = line
+      local b = Toggle(x, y, ns.ProfName(line, tostring(line)), ui.goldWhatIf == line, true, function()
+        ComradeCraftDB.ui = ComradeCraftDB.ui or {}
+        ComradeCraftDB.ui.goldWhatIf = ComradeCraftDB.ui.goldWhatIf ~= l and l or nil
+        ns.RefreshWindow()
+      end)
+      b:SetWidth(96)
+      x = x + 100
+      if x > LIST_W - 96 then x, y = 124, y - 26 end
+    end
+  end
+  y = y - math.max(wh, 26) - 4
+  local wi = ui.goldWhatIf
+  if wi and not have[wi] then
+    local n0 = shown
+    for _, e in ipairs(ns.Goldmakers(c, wi, true)) do
+      if Match(e) then
+        Row(e, ("|cffffffff%s|r%s  |cffffd100%s|r"):format(ItemInfo(e.item) or ns.SpellName(e.spell), Kind(e),
+          L["needs skill %d"]:format(e.req or 0)), "|cffc8d8ff" .. GoldDetail(e) .. "|r")
+      end
+    end
+    if shown == n0 then
+      local _, h = Label(0, y, "|cff9d9d9d" .. L["No known recipe makes money at current prices."] .. "|r")
+      y = y - h - 4
+    end
+  end
+  return -y + 4
+end

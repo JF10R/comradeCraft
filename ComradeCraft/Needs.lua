@@ -177,14 +177,22 @@ ns.MIN_GAIN = 0.25
 function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, stock, breaks)
   -- A recipe makes an intermediate only when its mats are worth no more than the item
   -- (Bolt of Woolen Cloth 100c <= 3 Wool 99c: craft it; Light Leather 15c < 3 Ruined
-  -- Leather Scraps 21c: gather or buy it instead). Values: ns.ItemValue.
+  -- Leather Scraps 21c: gather or buy it instead). Values: ns.ItemValue, or the mat's own craft
+  -- cost when cheaper (Fireproof Fuse 2s83 crafted vs 18s64 at the AH), recursively.
   local producers = {}
+  local can, costMemo = {}, {}
+  for _, set in ipairs({ allKnown or known, learnable or {} }) do for s in pairs(set) do can[s] = true end end
+  local function MatValue(item)
+    local v = ns.ItemValue(item)
+    local c = ns.UnitCost and ns.UnitCost(item, can, costMemo)
+    return c and c < v and c or v
+  end
   local function AddProducers(set)
     for spell in pairs(set) do
       local r = ns.Recipes[spell]
       if r and r[5] ~= 0 and not producers[r[5]] and not (ns.IsCooldownRecipe and ns.IsCooldownRecipe(spell)) then
         local mats = 0
-        for i = 1, #r[7], 2 do mats = mats + r[7][i + 1] * ns.ItemValue(r[7][i]) end
+        for i = 1, #r[7], 2 do mats = mats + r[7][i + 1] * MatValue(r[7][i]) end
         if mats / math.max(1, r[6]) <= ns.ItemValue(r[5]) then producers[r[5]] = spell end
       end
     end

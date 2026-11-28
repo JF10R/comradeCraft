@@ -583,6 +583,41 @@ def main():
         C_Map = oldMap
         ComradeCraftDB.foreverVendors[16042], ComradeCraftDB.npcSpots, ComradeCraftDB.npcFaction = nil, nil, nil
       end
+      -- Goldmaking: a sub-component crafted when cheaper (EZ-Thro Grenade's Fireproof Fuse), net per
+      -- craft after the AH cut and deposit, daily earnings from sales volume, recipes worth buying.
+      do
+        local oldPS, oldV, oldA, oldLC = ns.PriceSource, ns.VendorRecipes, ns.AuctionRecipes, ns.RecipeLearnCost
+        -- grenade 999831 <- fuse 999832 (AH 1864) + powder 999833; fuse <- 999834 + 999835 (283 together)
+        ns.Recipes[999841] = { 202, 100, 120, 1, 999831, 1, { 999832, 1, 999833, 1 } }
+        ns.Recipes[999842] = { 202, 100, 120, 1, 999832, 1, { 999834, 1, 999835, 1 } }
+        ns.Recipes[999843] = { 202, 100, 120, 1, 999836, 1, { 999833, 2 } }
+        ns.PriceSource = function(i)
+          return ({ [999831] = 3000, [999832] = 1864, [999833] = 100, [999834] = 183, [999835] = 100, [999836] = 900 })[i]
+        end
+        local can = { [999841] = true, [999842] = true }
+        local u, via = ns.UnitCost(999832, can, {})
+        assert(u == 283 and via == 999842, "goldmaking: fuse crafted (2s83) rather than bought (18s64)")
+        assert(ns.UnitCost(999832, { [999841] = true }, {}) == 1864, "goldmaking: fuse bought without its recipe")
+        local e = ns.CraftEconomics(999841, can, { [999842] = true }, {})
+        local dep = ns.AuctionDeposit(999831) * ns.DEPOSIT_LOSS
+        assert(e and math.abs(e.net - (3000 * 0.95 - dep - 383)) < 0.01 and e.subs[1].item == 999832
+          and e.subs[1].known, "goldmaking: net uses the crafted fuse, flagged")
+        ComradeCraftDB.saleRates = { [999831] = { perDay = 30, t = time() } }
+        local gc = { known = { [202] = { [999841] = true, [999842] = true } } }
+        local top = ns.Goldmakers(gc, 202)
+        assert(top[1] and top[1].spell == 999841 and math.abs(top[1].daily - top[1].net * 9) < 0.01,
+          "goldmaking: daily = net x 30% of 30 sales")
+        ns.VendorRecipes = function() return { [999843] = 110 } end
+        ns.AuctionRecipes = function() return {} end
+        ns.RecipeLearnCost = function(s) return s == 999843 and 10000 or nil end
+        local pr = ns.ProfitableRecipes({ known = { [202] = {} } }, 202, 105)
+        local pe = pr[1]
+        assert(pe and pe.spell == 999843 and not pe.canLearn and pe.payback == math.ceil(10000 / pe.net),
+          "goldmaking: schematic worth buying, payback in crafts")
+        ns.PriceSource, ns.VendorRecipes, ns.AuctionRecipes, ns.RecipeLearnCost = oldPS, oldV, oldA, oldLC
+        ComradeCraftDB.saleRates = nil
+        ns.Recipes[999841], ns.Recipes[999842], ns.Recipes[999843] = nil, nil, nil
+      end
       -- Quest-reward recipe: offered as an alternative when it makes the route cheaper.
       do
         local lib = LibStub("LibProfessionDB-1.0")
@@ -2603,6 +2638,13 @@ def main():
           assert(type(pList) == "table" and #pList >= 1, "patterns tab: surfaces unlearned valuable enchants/patterns")
           ComradeCraftDB.ui.sel, ComradeCraftDB.ui.tab = ns.CharKey(), "patterns"
           ns.RefreshWindow()
+          -- Every grouping renders (Goldmaking with a what-if profession too).
+          ComradeCraftDB.ui.goldWhatIf = 202
+          for _, gm in ipairs({ "all", "char", "slot", "gold" }) do
+            ComradeCraftDB.ui.patGroup = gm
+            assert(ns.UI.RenderPatterns(ns.CharKey(), me, "") > 0, "patterns tab: renders grouped by " .. gm)
+          end
+          ComradeCraftDB.ui.goldWhatIf, ComradeCraftDB.ui.patGroup = nil, nil
           me.professions.Enchanting = savedEnchRank
           -- Expert Cookbook (16072) rank-book status: known once max >= 225, unknown when max == 150!
           local savedCook = me.professions.Cooking
