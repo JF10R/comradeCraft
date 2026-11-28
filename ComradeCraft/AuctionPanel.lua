@@ -218,6 +218,57 @@ function AH.SearchItem(itemID)
   return false
 end
 
+-- Price mats stepper: one native AH search per click for plan mats without a fresh price.
+local priceTried, priceStepping = {}, false -- this AH visit: items queried; refresh owed
+
+-- Pure: needed non-vendor plan + Wishlist (line 0) mats; returns remaining (unpriced,
+-- not yet queried this visit, by item ID) and the total count.
+function AH.PriceQueue()
+  local c = ComradeCraftDB and ComradeCraftDB.chars and ComradeCraftDB.chars[ns.CharKey()]
+  local seen, left, total = {}, {}, 0
+  for _, need in pairs(c and c.needs or {}) do
+    for item, n in pairs(need.items or {}) do
+      if n > 0 and not seen[item] and not ns.IsVendorItem(item) then
+        seen[item], total = true, total + 1
+        if not ns.LiveAHPrice(item) and not priceTried[item] then left[#left + 1] = item end
+      end
+    end
+  end
+  table.sort(left)
+  return left, total
+end
+
+function AH.CanPriceMats()
+  return isOpen and not ns.PriceSourceIsComplete() and C_AuctionHouse ~= nil
+    and C_AuctionHouse.SendSearchQuery ~= nil
+end
+
+-- Click handler: sends at most ONE search (one hardware event = one action).
+function AH.PriceNext()
+  if not AH.CanPriceMats() then return false end
+  local C = C_AuctionHouse
+  if C.IsThrottledMessageSystemReady and not C.IsThrottledMessageSystemReady() then return false end
+  local item = AH.PriceQueue()[1]
+  if not item then return false end
+  local key = C.MakeItemKey and C.MakeItemKey(item) or { itemID = item }
+  local price = Enum and Enum.AuctionHouseSortOrder and Enum.AuctionHouseSortOrder.Price or 0
+  priceTried[item], priceStepping = true, true
+  pcall(C.SendSearchQuery, key, { { sortOrder = price, reverseSort = false } }, false)
+  AH.UpdatePanel()
+  return true
+end
+
+-- Search result (after Scan.lua recorded it): redraw; queue empty -> refresh the plans once.
+local function OnSearchResult()
+  if not isOpen then return end
+  if priceStepping and #AH.PriceQueue() == 0 then
+    priceStepping = false
+    ns.DetectPriceSource()
+    ns.RequestRefresh()
+  end
+  AH.UpdatePanel()
+end
+
 local panel, rows, dismissed = nil, nil, false
 local activeTab = "mats" -- "mats" | "patterns"
 
@@ -322,6 +373,15 @@ local function CreatePanel()
   panel.foot = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   panel.foot:SetWidth(PANEL_W - 20)
   panel.foot:SetJustifyH("LEFT")
+  panel.priceBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+  panel.priceBtn:SetSize(PANEL_W - 20, 20)
+  panel.priceBtn:SetScript("OnClick", function() AH.PriceNext() end)
+  panel.priceBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(L["Each click searches the next material without a price."], 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  panel.priceBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
   rows = {}
 end
 
@@ -387,6 +447,24 @@ function AH.UpdatePanel()
   panel.foot:SetText((activeTab == "mats" and total > 0)
     and L["Total: %s (you have %s)"]:format("|cff" .. col .. ns.Money(math.floor(total)) .. "|r", ns.Money(gold))
     or L["Gold: %s"]:format(ns.Money(gold)))
+  local pb = panel.priceBtn
+  if activeTab == "mats" and AH.CanPriceMats() then
+    local left, n = AH.PriceQueue()
+    pb:ClearAllPoints()
+    pb:SetPoint("TOPLEFT", 10, y - 24)
+    if #left > 0 then
+      pb:SetText(L["Price mats (%d/%d)"]:format(n - #left, n))
+    else
+      local priced = 0
+      for _, it in ipairs(items) do if ns.LiveAHPrice(it.item) then priced = priced + 1 end end
+      pb:SetText(L["Mats priced (%d/%d)"]:format(priced, n))
+    end
+    pb:SetEnabled(#left > 0)
+    pb:Show()
+    y = y - 26
+  else
+    pb:Hide()
+  end
   panel:SetHeight(-y + 30)
   panel:Show()
 end
@@ -398,9 +476,11 @@ ns.On("AUCTION_HOUSE_SHOW", function()
 end)
 ns.On("AUCTION_HOUSE_CLOSED", function()
   isOpen = false
-  liveSeen = {}
+  liveSeen, priceTried, priceStepping = {}, {}, false
   if panel then panel:Hide() end
 end)
+ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", OnSearchResult)
+ns.On("ITEM_SEARCH_RESULTS_UPDATED", OnSearchResult)
 ns.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", ScanBrowseResults)
 ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", ScanBrowseResults)
 ns.On("AUCTION_ITEM_LIST_UPDATE", ScanBrowseResults)

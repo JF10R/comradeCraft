@@ -937,6 +937,9 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Lista completata: %s",
   ["measured"] = "misurato",
     -- Target skill (Plan tab)
+    ["Price mats (%d/%d)"] = "Prezzi materiali (%d/%d)",
+    ["Mats priced (%d/%d)"] = "Materiali con prezzo (%d/%d)",
+    ["Each click searches the next material without a price."] = "Ogni clic cerca il prossimo materiale senza prezzo.",
     ["cost %s"] = "costo %s",
     ["resale %s"] = "rivendita %s",
     ["%s says it is a character of %s: accept or refuse it in Manage group."] = "%s dice di essere un personaggio di %s: accettalo o rifiutalo in Gestisci gruppo.",

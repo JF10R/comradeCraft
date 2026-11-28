@@ -1985,6 +1985,48 @@ def main():
         ComradeCraftDB.ahPrices, ComradeCraftDB.deposits, C_AuctionHouse = nil, nil, savedAH
         ns.DetectPriceSource()
       end
+      do -- Price mats stepper: one search per click, next = needed + unpriced + non-vendor, done refreshes.
+        local savedNeeds, savedAH, savedRR = ns.CharData().needs, C_AuctionHouse, ns.RequestRefresh
+        ns.CharData().needs = {
+          [197] = { items = { [77781] = 2, [77782] = 1, [2320] = 5, [77784] = 3 } },
+          [0] = { items = { [77783] = 1 } },
+        }
+        ComradeCraftDB.ahPrices = { [77784] = { price = 9, t = time() } }
+        local sends, ready, refreshes, lastSort, lastSep = {}, true, 0, nil, nil
+        ns.RequestRefresh = function() refreshes = refreshes + 1 end
+        C_AuctionHouse = {
+          SendSearchQuery = function(key, sorts, sep) sends[#sends + 1] = key.itemID lastSort, lastSep = sorts, sep end,
+          MakeItemKey = function(id) return { itemID = id } end,
+          IsThrottledMessageSystemReady = function() return ready end,
+          GetCommoditySearchResultInfo = function(id, i) return id == 77782 and i == 1 and { unitPrice = 50 } or nil end,
+        }
+        AuctionHouseFrame = MockWidget()
+        f.onEvent(f, "AUCTION_HOUSE_SHOW")
+        local btn = ComradeCraftAHPanel.priceBtn
+        assert(btn:IsShown() and btn.text == "Price mats (1/4)", "price mats: shown, vendor skipped, priced counted")
+        ready = false
+        btn.scripts.OnClick(btn)
+        assert(#sends == 0, "price mats: throttled click sends nothing")
+        ready = true
+        btn.scripts.OnClick(btn)
+        assert(#sends == 1 and sends[1] == 77781, "price mats: one search, next needed unpriced item")
+        assert(lastSort[1].sortOrder == 0 and lastSort[1].reverseSort == false and lastSep == false, "price mats: price sort, args")
+        f.onEvent(f, "COMMODITY_SEARCH_RESULTS_UPDATED", 77782)
+        btn.scripts.OnClick(btn)
+        assert(#sends == 2 and sends[2] == 77783, "price mats: item priced by a result skipped, Wishlist included")
+        assert(btn.text == "Mats priced (2/4)" and refreshes == 0, "price mats: done label, refresh waits for result")
+        f.onEvent(f, "COMMODITY_SEARCH_RESULTS_UPDATED", 77783)
+        btn.scripts.OnClick(btn)
+        assert(#sends == 2 and refreshes == 1, "price mats: done refreshes once, no extra search")
+        TSM_API = { GetCustomPriceValue = function() return nil end }
+        ns.AuctionPanel.UpdatePanel()
+        assert(not btn:IsShown(), "price mats: hidden when TSM prices everything")
+        TSM_API = nil
+        f.onEvent(f, "AUCTION_HOUSE_CLOSED")
+        ns.CharData().needs, C_AuctionHouse, AuctionHouseFrame = savedNeeds, savedAH, nil
+        ns.RequestRefresh, ComradeCraftDB.ahPrices = savedRR, nil
+        ns.DetectPriceSource()
+      end
 
       -- 3. Inbox mail counted in Surplus / owned.
       local me = ns.CharData()

@@ -942,6 +942,9 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["Price mats (%d/%d)"] = "Chiffrer les mats (%d/%d)",
+    ["Mats priced (%d/%d)"] = "Mats chiffrés (%d/%d)",
+    ["Each click searches the next material without a price."] = "Chaque clic cherche le prochain matériau sans prix.",
     ["cost %s"] = "coût %s",
     ["resale %s"] = "revente %s",
     ["%s says it is a character of %s: accept or refuse it in Manage group."] = "%s dit être un perso de %s : accepte-le ou refuse-le dans Gérer le groupe.",
