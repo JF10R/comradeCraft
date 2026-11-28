@@ -408,13 +408,13 @@ def main():
         assert(#cdPlan == 0, "cooldown recipes: never planned")
         -- A mat with no AH price, no merchant and none held (Fiery Core) rules the recipe out.
         ns.Recipes[999801] = { 197, 20, 40, 1, 999802, 1, { 999803, 1 } }
-        local oldPSX = ns.PriceSource
+        local oldPSX, oldComplete = ns.PriceSource, ns.PriceSourceIsComplete
         ns.PriceSource = function(item) return item == 2589 and 100 or nil end
+        ns.PriceSourceIsComplete = function() return true end
         local _, _, xPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, {}, nil, "cheap")
         local _, _, hPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, { [999803] = 5 }, nil, "cheap")
         assert(#xPlan == 0 and #hPlan == 1, "unobtainable mat: no route, unless you hold it")
         -- A partial AH scan (no TSM/Auctionator) cannot judge a mat unobtainable: route kept.
-        local oldComplete = ns.PriceSourceIsComplete
         ns.PriceSourceIsComplete = function() return false end
         local _, _, pPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, {}, nil, "cheap")
         ns.PriceSourceIsComplete = oldComplete
@@ -1976,10 +1976,18 @@ def main():
       ComradeCraftDB.trainerRefused = { [1346] = { line = 197, rank = 115, name = "Georgio Bolero" } }
       local tr = ns.TrainerRecipes(197, 150, {})
       assert(tr[3848] == 125, "trainer deferral: req 110 deferred to 125 when refused at 115, got " .. tostring(tr[3848]))
-      -- A refusal at 115 (maybe an alt) says nothing for a character planned at 120.
-      local tr2 = ns.TrainerRecipes(197, 150, {}, 120)
-      assert(tr2[3848] and tr2[3848] < 125 and ns.TrainerRecipes(197, 150, {}, 100)[3848] == 125,
-        "trainer deferral: per planned rank, got " .. tostring(tr2[3848]))
+      -- Eligibility uses the planned character's rank, not the logged-in one's (86 here).
+      do
+        local lib = LibStub("LibProfessionDB-1.0", true)
+        local oldSrc = lib.GetRecipeSources
+        lib.GetRecipeSources = function(self, s)
+          if s == 3848 then return { trainer = { { id = 1346 } } } end
+          return oldSrc(self, s)
+        end
+        local e0, e1 = ns.HasEligibleTrainer(3848), ns.HasEligibleTrainer(3848, 120)
+        lib.GetRecipeSources = oldSrc
+        assert(e0 == false and e1 == true, "trainer refusal: per planned rank, got " .. tostring(e0) .. ", " .. tostring(e1))
+      end
       ComradeCraftDB.trainerRefused = nil
 
       -- 2. Group Upgrades Audit: small bags & missing enchants.

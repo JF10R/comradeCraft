@@ -524,7 +524,7 @@ end
 -- Recipes seen at a real trainer win over LibProfessionDB (whose values are partly Classic's).
 -- Skips recipes the user skipped, recipes absent from a scanned trainer of that skill tier,
 -- or recipes with no eligible friendly trainer left (e.g. refused at current rank).
--- rank (optional): the planned character's skill; refusals recorded below it are ignored.
+-- rank (optional): the planned character's skill, for trainer refusals (else the logged-in one's).
 function ns.TrainerRecipes(line, maxRank, known, rank)
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
   local all = lib and lib.GetRecipes and lib:GetRecipes(line)
@@ -557,7 +557,7 @@ function ns.TrainerRecipes(line, maxRank, known, rank)
   -- Classic/Forever trainer tier (50, 125, 200, 275) so the planner levels us there with known crafts!
   local deferUntil = 0
   for _, rf in pairs(refused) do
-    if rf.line == line and (rf.rank or 0) > 0 and not (rank and rank > rf.rank) then
+    if rf.line == line and (rf.rank or 0) > 0 then
       local nextTier = (rf.rank < 50 and 50) or (rf.rank < 125 and 125)
         or (rf.rank < 200 and 200) or (rf.rank < 275 and 275) or (rf.rank + 10)
       if nextTier > deferUntil then deferUntil = nextTier end
