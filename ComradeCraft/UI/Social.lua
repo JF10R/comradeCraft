@@ -195,7 +195,15 @@ function U.RenderManage()
     Label(0, y - 4, "|cff80ff80" .. e.peer.name .. "|r  |cff9d9d9d" .. ns.Plural(CharCount(e.peer), "%d character", "%d characters")
       .. " - " .. L["seen %s"]:format(Ago(e.peer.seen)) .. "|r", "GameFontHighlight", LIST_W - 110)
     Action(LIST_W - 100, y, L["Remove"], function() Sync.Exclude(e.id) end)
+    Action(LIST_W - 214, y, L["Forget"], function() Sync.ForgetPeer(e.id) end):SetWidth(110)
     y = y - 28
+    if e.peer.pendingAlt then
+      Label(12, y - 4, "|cffffd100" .. L["%s says it is one of their characters."]:format(e.peer.pendingAlt) .. "|r",
+        "GameFontHighlightSmall", LIST_W - 230)
+      Action(LIST_W - 214, y, L["Accept"], function() Sync.AcceptAlt(e.id) end):SetWidth(110)
+      Action(LIST_W - 100, y, L["Refuse"], function() Sync.RefuseAlt(e.id) end)
+      y = y - 28
+    end
   end
   if #inGroup > 0 then
     -- Updates go out by themselves (debounced); this sends right away.

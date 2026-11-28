@@ -1063,6 +1063,10 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Lista concluída: %s",
   ["measured"] = "medido",
     -- Target skill (Plan tab)
+    ["%s says it is a character of %s: accept or refuse it in Manage group."] = "%s diz ser um personagem de %s: aceite ou recuse em Gerenciar grupo.",
+    ["Forget"] = "Esquecer",
+    ["%s says it is one of their characters."] = "%s diz ser um dos seus personagens.",
+    ["Refuse"] = "Recusar",
     ["auction house"] = "casa de leilões",
     ["Queued %dx %s: open the profession window and click Craft next."] = "%dx %s na fila: abra a janela da profissão e clique em Criar próximo.",
     ["Restock: %s"] = "Reabastecer: %s",

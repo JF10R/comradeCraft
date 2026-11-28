@@ -942,6 +942,10 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["%s says it is a character of %s: accept or refuse it in Manage group."] = "%s dit être un perso de %s : accepte-le ou refuse-le dans Gérer le groupe.",
+    ["Forget"] = "Oublier",
+    ["%s says it is one of their characters."] = "%s dit être un de ses persos.",
+    ["Refuse"] = "Refuser",
     ["auction house"] = "hôtel des ventes",
     ["Queued %dx %s: open the profession window and click Craft next."] = "%dx %s en file : ouvre la fenêtre du métier et clique sur Fabriquer la suite.",
     ["Restock: %s"] = "Réappro : %s",

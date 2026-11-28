@@ -749,6 +749,12 @@ function Sync.OnMessage(text, dist, sender)
   end
   if not Sync.SenderAllowed(db, id, peer, sender) then
     ns.Log(("sync: %s claims account %s bound to %s, ignored"):format(sender, id, tostring(peer.name)))
+    -- A player in your group on a new alt: you decide (Manage group), asked once per name.
+    if peer.included and not (peer.refusedAlts and peer.refusedAlts[sender]) and peer.pendingAlt ~= sender then
+      peer.pendingAlt = sender
+      ns.Print(ns.L["%s says it is a character of %s: accept or refuse it in Manage group."]:format(sender, tostring(peer.name)))
+      if ns.RefreshWindow then ns.RefreshWindow() end
+    end
     -- The directory answer is guild-public and goes to the server-given sender: id not needed.
     if msg.t == "P" and ns.Directory then ns.Directory.OnPing(sender, dist) end
     return
@@ -939,6 +945,31 @@ function Sync.Exclude(id)
   for key, rec in pairs(db.remote) do
     if rec.peer == id then db.remote[key] = nil end
   end
+  if ns.RefreshWindow then ns.RefreshWindow() end
+end
+
+-- New alt claimed by a player in your group (see OnMessage): accept binds it to the account.
+function Sync.AcceptAlt(id)
+  local peer = DB().peers[id]
+  if not (peer and peer.pendingAlt) then return end
+  peer.names = peer.names or {}
+  peer.names[peer.pendingAlt] = true
+  peer.pendingAlt = nil
+  if ns.RefreshWindow then ns.RefreshWindow() end
+end
+function Sync.RefuseAlt(id)
+  local peer = DB().peers[id]
+  if not (peer and peer.pendingAlt) then return end
+  peer.refusedAlts = peer.refusedAlts or {}
+  peer.refusedAlts[peer.pendingAlt] = true
+  peer.pendingAlt = nil
+  if ns.RefreshWindow then ns.RefreshWindow() end
+end
+-- Forget a player entirely (their characters and the names bound to their account): the next
+-- contact starts fresh, like a new player.
+function Sync.ForgetPeer(id)
+  Sync.Exclude(id)
+  DB().peers[id] = nil
   if ns.RefreshWindow then ns.RefreshWindow() end
 end
 

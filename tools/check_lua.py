@@ -2794,6 +2794,26 @@ def main():
           local repliedToNewAlt = false
           for _, s in ipairs(sent) do if s.msg and s.msg.t == "H" and s.target == "AliceAlt" then repliedToNewAlt = true end end
           assert(repliedToNewAlt, "guild sync: whispers HELLO to peer's new alt immediately")
+          -- A player in your group on a brand-new alt: you are asked, and decide.
+          do
+            local pa = ComradeCraftDB.peers["peerA"]
+            local wasIncluded = pa.included
+            pa.included = true
+            Sync.OnMessage(gPulse, "GUILD", "AliceNew")
+            assert(pa.pendingAlt == "AliceNew" and pa.name == "AliceAlt", "sync alt: unknown alt waits for your answer")
+            Sync.AcceptAlt("peerA")
+            Sync.OnMessage(gPulse, "GUILD", "AliceNew")
+            assert(pa.pendingAlt == nil and pa.name == "AliceNew", "sync alt: accepted alt speaks for the account")
+            Sync.OnMessage(gPulse, "GUILD", "Mallory")
+            Sync.RefuseAlt("peerA")
+            Sync.OnMessage(gPulse, "GUILD", "Mallory")
+            assert(pa.pendingAlt == nil and pa.name == "AliceNew" and pa.refusedAlts.Mallory,
+              "sync alt: refused name not asked again")
+            ComradeCraftDB.peers["forgetMe"] = { included = true, name = "Old", names = { Old = true }, chars = {} }
+            Sync.ForgetPeer("forgetMe")
+            assert(ComradeCraftDB.peers["forgetMe"] == nil, "sync: forget a peer")
+            pa.included = wasIncluded
+          end
           -- 4. Bank item request (spell = 0, item = 4306) to remote Shared bank alt -> wire Clean + accept!
           local itemReq = Req.CreateItem("BobBank-Realm", 4306, 20, "need silk")
           assert(itemReq and itemReq.spell == 0 and itemReq.item == 4306 and itemReq.qty == 20, "bank request: created")
