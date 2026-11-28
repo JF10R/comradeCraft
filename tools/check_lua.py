@@ -3537,6 +3537,12 @@ def main():
         ftt.AddLine = function() heads = heads + 1 end
         ns.TooltipHook(ftt, 424242)
         assert(heads == 5, "tooltip hook: forbidden tooltip skipped")
+        local stt = MockWidget()
+        stt.GetName = function() return "ShoppingTooltip1" end
+        stt.AddLine = function() heads = heads + 1 end
+        stt.AddDoubleLine = stt.AddLine
+        ns.TooltipHook(stt, 424242)
+        assert(heads == 5, "tooltip hook: compare (shift) tooltips left alone")
         ns.InTransitFor = oldT
 
         -- Observed Forever vendor without any lib source; container kind shown by item name.

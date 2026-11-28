@@ -385,6 +385,7 @@ local function CreatePanel()
   rows = {}
 end
 
+local panelItems = {} -- items on the panel rows: only their info loads trigger a redraw
 function AH.UpdatePanel()
   if not panel then return end
   if dismissed or not isOpen or (ns.PanelEnabled and not ns.PanelEnabled("ah")) then panel:Hide() return end
@@ -416,16 +417,19 @@ function AH.UpdatePanel()
   panel.sub:ClearAllPoints()
   panel.sub:SetPoint("TOPLEFT", 10, showTabs and -52 or -30)
   panel.sub:SetText(activeTab == "bargains" and L["Group needs spotted below market price."] or L["Click an item to search it."])
-  for _, r in ipairs(rows) do r:Hide() end
+  -- Rows stay shown across redraws: hiding the hovered row fires OnLeave and the tooltip flickers.
+  local count = math.min(#list, MAX_ROWS)
+  for i = count + 1, #rows do rows[i]:Hide() end
+  panelItems = {}
   local y = showTabs and -68 or -46
-  for i = 1, math.min(#list, MAX_ROWS) do
+  for i = 1, count do
     local it = list[i]
     local r = rows[i]
     if not r then r = CreateRow(panel) rows[i] = r end
     local name, icon = ItemInfo(it.item)
-    if not name and C_Item and C_Item.RequestLoadItemDataByID then
-      pcall(C_Item.RequestLoadItemDataByID, it.item)
-    end
+    if not name and ns.RequestItemData then ns.RequestItemData(it.item) end
+    panelItems[it.item] = true
+    local changed = r.itemID ~= it.item or r.forWho ~= it.forWho
     r.itemID, r.forWho = it.item, it.forWho
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", 10, y)
@@ -439,6 +443,7 @@ function AH.UpdatePanel()
       r.cost:SetText(it.cost and ("|cffffd100" .. ns.Money(math.floor(it.cost)) .. "|r") or "|cff9d9d9d?|r")
     end
     r:Show()
+    if changed and GameTooltip and GameTooltip:IsOwned(r) then r:GetScript("OnEnter")(r) end
     y = y - 24
   end
   local col = total > 0 and (gold >= total and "40ff40" or "ff8040") or "9d9d9d"
@@ -486,8 +491,8 @@ ns.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", ScanBrowseResults)
 ns.On("AUCTION_ITEM_LIST_UPDATE", ScanBrowseResults)
 ns.On("BAG_UPDATE_DELAYED", function() if isOpen then AH.UpdatePanel() end end)
 local infoRefreshPending = false
-ns.On("GET_ITEM_INFO_RECEIVED", function()
-  if not isOpen or infoRefreshPending then return end
+ns.On("GET_ITEM_INFO_RECEIVED", function(itemID)
+  if not isOpen or infoRefreshPending or not panelItems[itemID] then return end
   infoRefreshPending = true
   if C_Timer and C_Timer.After then
     C_Timer.After(0.15, function()

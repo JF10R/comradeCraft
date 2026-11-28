@@ -153,8 +153,15 @@ ns.OnItemTooltip = OnItem
 local shownOn = setmetatable({}, { __mode = "k" })
 local linesAfter = setmetatable({}, { __mode = "k" })
 local function Lines(t) return t.NumLines and t:NumLines() or 0 end
+-- Compare tooltips (shift) are rebuilt and re-anchored by the client each update: adding
+-- lines and calling Show() there makes them flicker, so they are left alone.
+local function IsCompare(t)
+  local name = t.GetName and t:GetName()
+  return type(name) == "string" and name:find("ShoppingTooltip", 1, true) ~= nil
+end
 local function Hooked(tooltip, id)
   if not (tooltip and id) or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
+  if IsCompare(tooltip) then return end
   if shownOn[tooltip] == nil then
     local function Clear(t) shownOn[t] = false end
     local ok = tooltip.HookScript and pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", Clear)
