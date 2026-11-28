@@ -632,6 +632,25 @@ def main():
         local wi = ns.Goldmakers({ known = {} }, 202, true)
         assert(wi[1] and wi[1].spell == 999843 and wi[1].req, "goldmaking: what-if includes recipes sold at the AH")
         ns.TrainerRecipes = oldT
+        -- Merchant shuffle: product sells to a merchant for more than its mats (no AH needed).
+        local oldIP = ns.ItemPrices[999836]
+        ns.ItemPrices[999836] = { 500, 0 }
+        local vs = ns.VendorShuffles({ known = { [202] = { [999843] = true } } }, 202)
+        assert(vs[1] and vs[1].spell == 999843 and vs[1].net == 300 and vs[1].vendor, "goldmaking: merchant shuffle")
+        ns.ItemPrices[999836] = oldIP
+        -- Restock: raw mats for a batch, fuse crafted (cheaper), what is held subtracted.
+        local rc = { known = { [202] = { [999841] = true, [999842] = true } }, bags = { [999834] = 2 } }
+        local need = {}
+        for _, x in ipairs(ns.RestockItems(rc, 999841, 5)) do need[x.item] = x.n end
+        assert(need[999834] == 3 and need[999835] == 5 and need[999833] == 5 and not need[999832],
+          "goldmaking: restock = raw mats of 5 crafts minus bags")
+        ns.ShopItems("Test", { { item = 999834, n = 3 } })
+        -- Queue: into the Wishlist (step panel Orders mode crafts the fuse first).
+        ns.QueueGoldCraft({ spell = 999841, stackable = true })
+        local we = ns.Wishlist.Find(999841)
+        assert(we and we.qty == 20 and ComradeCraftDB.settings.trackerMode == "orders", "goldmaking: queued 20 (stackable)")
+        ns.Wishlist.Remove(we.id)
+        ComradeCraftDB.settings.trackerMode = nil
         ns.PriceSource, ns.VendorRecipes, ns.AuctionRecipes, ns.RecipeLearnCost = oldPS, oldV, oldA, oldLC
         ComradeCraftDB.saleRates = nil
         ns.Recipes[999841], ns.Recipes[999842], ns.Recipes[999843] = nil, nil, nil

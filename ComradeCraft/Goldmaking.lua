@@ -177,3 +177,88 @@ function ns.ProfitableRecipes(c, line, rank)
   while #out > ns.GOLD_TOP do out[#out] = nil end
   return out
 end
+
+local function AllKnown(c)
+  local can = {}
+  for _, set in pairs(c and c.known or {}) do for s in pairs(set) do can[s] = true end end
+  return can
+end
+
+-- No-risk crafts: mats cost less than what a merchant pays for the product (no AH cut, no
+-- deposit, no market limit). Works without AH prices (merchant mats only then). Best first.
+function ns.VendorShuffles(c, line)
+  local can, memo, out = AllKnown(c), {}, {}
+  for spell in pairs(c and c.known and c.known[line] or {}) do
+    local r = ns.Recipes[spell]
+    local p = r and r[5] ~= 0 and ns.ItemPrices and ns.ItemPrices[r[5]]
+    if p and p[1] > 0 and not (ns.IsCooldownRecipe and ns.IsCooldownRecipe(spell)) then
+      local cost = ns.RecipeMatsCost(spell, can, memo)
+      local back = p[1] * math.max(1, r[6])
+      if cost and back > cost then
+        local e = { spell = spell, item = r[5], cost = cost, net = back - cost, vendor = true, subs = {} }
+        for i = 1, #r[7], 2 do
+          local _, via = ns.UnitCost(r[7][i], can, memo)
+          if via then e.subs[#e.subs + 1] = { item = r[7][i], spell = via, known = true } end
+        end
+        out[#out + 1] = e
+      end
+    end
+  end
+  table.sort(out, function(a, b) return a.net > b.net end)
+  while #out > ns.GOLD_TOP do out[#out] = nil end
+  return out
+end
+
+-- Raw mats to buy for `crafts` crafts of a recipe (sub-components crafted when cheaper), minus
+-- what the group already holds (ns.GroupStock); merchant mats left out. { { item, n } }, biggest first.
+function ns.RestockItems(c, spell, crafts)
+  local can, memo, raw = AllKnown(c), {}, {}
+  local function Walk(sp, mult, depth)
+    local r = ns.Recipes[sp]
+    for i = 1, #r[7], 2 do
+      local item, n = r[7][i], r[7][i + 1] * mult
+      local _, via = ns.UnitCost(item, can, memo)
+      if via and depth < 4 then Walk(via, n / math.max(1, ns.Recipes[via][6]), depth + 1)
+      else raw[item] = (raw[item] or 0) + n end
+    end
+  end
+  if not ns.Recipes[spell] then return {} end
+  Walk(spell, crafts, 0)
+  local stock = ns.GroupStock and ns.GroupStock(c) or {}
+  local out = {}
+  for item, n in pairs(raw) do
+    local miss = math.ceil(n - 1e-9) - (stock[item] or 0)
+    if miss > 0 and not ns.IsVendorItem(item) then out[#out + 1] = { item = item, n = miss } end
+  end
+  table.sort(out, function(a, b) return a.n ~= b.n and a.n > b.n or a.item < b.item end)
+  return out
+end
+
+-- Crafts per click of the Queue and Restock buttons: 20 for a stackable product, else 5.
+function ns.GoldBatch(e)
+  return e.stackable and 20 or 5
+end
+
+-- Queue button: the craft goes to the Wishlist; the step panel's Orders mode (beside the
+-- profession window) then crafts the sub-components first, one click per batch.
+function ns.QueueGoldCraft(e)
+  if not (ns.Wishlist and ns.Wishlist.Add) then return end
+  local n = ns.GoldBatch(e)
+  ns.Wishlist.Add(e.spell, n)
+  ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+  ComradeCraftDB.settings.trackerMode = "orders"
+  if ns.RefreshTracker then ns.RefreshTracker() end
+  ns.Print(ns.L["Queued %dx %s: open the profession window and click Craft next."]:format(n, ns.SpellName(e.spell)))
+end
+
+-- Restock button: what is missing for a batch, as a shopping list (Auctionator, TSM, or chat).
+function ns.RestockGoldCraft(key, e)
+  local c = ns.AllChars()[key]
+  if not c then return end
+  local items = ns.RestockItems(c, e.spell, ns.GoldBatch(e))
+  if #items == 0 then
+    ns.Print(ns.L["Nothing to buy."])
+    return
+  end
+  ns.ShopItems(ns.L["Restock: %s"]:format(ns.SpellName(e.spell)), items)
+end

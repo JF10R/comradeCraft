@@ -942,6 +942,13 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["Queued %dx %s: open the profession window and click Craft next."] = "%dx %s en file : ouvre la fenêtre du métier et clique sur Fabriquer la suite.",
+    ["Restock: %s"] = "Réappro : %s",
+    ["Restock"] = "Réappro",
+    ["Queue"] = "File",
+    ["No risk: sell to a merchant"] = "Sans risque : revendre au marchand",
+    ["net %s per craft at a merchant"] = "net %s par craft chez un marchand",
+    ["Auctionator shopping list ready: %s (%d items)."] = "Liste d'achat Auctionator prête : %s (%d objets).",
     ["once per cooldown"] = "une fois par temps de recharge",
     ["Cooldown goldmakers"] = "Crafts rentables à temps de recharge",
     ["ready in %s"] = "prêt dans %s",

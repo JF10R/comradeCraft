@@ -673,8 +673,11 @@ end
 local CRAFT_LINES = { 171, 164, 185, 333, 202, 129, 165, 197 }
 local function GoldDetail(e)
   local parts = { L["net %s per craft"]:format(ns.Money(math.floor(e.net))) }
-  if e.perDay then parts[#parts + 1] = L["~%d sold per day"]:format(math.floor(e.perDay + 0.5)) end
-  if e.daily then
+  if e.vendor then
+    parts[#parts] = L["net %s per craft at a merchant"]:format(ns.Money(math.floor(e.net)))
+  elseif e.perDay then parts[#parts + 1] = L["~%d sold per day"]:format(math.floor(e.perDay + 0.5)) end
+  if e.vendor then -- no market limit
+  elseif e.daily then
     parts[#parts + 1] = L["~%s per day"]:format(ns.Money(math.floor(e.daily)))
   elseif e.cooldown then
     parts[#parts + 1] = L["once per cooldown"]
@@ -694,10 +697,10 @@ function U.RenderGold(key, c, filter, y)
   y = y - ih - 6
   if not ns.PriceSource then
     local _, h = Label(0, y, "|cff9d9d9d" .. L["No auction prices yet: scan the auction house or install TSM or Auctionator."] .. "|r")
-    return -(y - h) + 4
+    y = y - h - 6
   end
   local shown = 0
-  local function Row(e, line1, line2, waypoint)
+  local function Row(e, line1, line2, waypoint, buttons)
     shown = shown + 1
     local row = Acquire(P.patternRows, CreatePatternRow)
     row.pat = { spell = e.spell, item = e.item, gold = not waypoint, own = own }
@@ -710,8 +713,19 @@ function U.RenderGold(key, c, filter, y)
     if U.ApplyQualityBorder then U.ApplyQualityBorder(row, row.icon, e.item) end
     row.line1:SetText(line1)
     row.line2:SetText(line2)
-    row.line1:SetPoint("RIGHT", waypoint and -102 or -6, 0)
-    row.line2:SetPoint("RIGHT", waypoint and -102 or -6, 0)
+    local right = waypoint and -102 or buttons and (own and -194 or -102) or -6
+    row.line1:SetPoint("RIGHT", right, 0)
+    row.line2:SetPoint("RIGHT", right, 0)
+    if buttons then
+      local br = Action(LIST_W - 94, y - 7, L["Restock"], function() ns.RestockGoldCraft(key, e) end)
+      br:SetWidth(88)
+      if br.SetFrameLevel and row.GetFrameLevel then br:SetFrameLevel(row:GetFrameLevel() + 2) end
+      if own then
+        local bq = Action(LIST_W - 186, y - 7, L["Queue"], function() ns.QueueGoldCraft(e) end)
+        bq:SetWidth(88)
+        if bq.SetFrameLevel and row.GetFrameLevel then bq:SetFrameLevel(row:GetFrameLevel() + 2) end
+      end
+    end
     if waypoint then
       local spell = e.spell
       local bw = Action(LIST_W - 94, y - 7, L["Waypoint"], function() ns.WaypointRecipe(spell) end)
@@ -734,18 +748,29 @@ function U.RenderGold(key, c, filter, y)
     if line and not ns.GATHERING[line] and LineVisible(line) then
       have[line] = true
       local prof = ns.ProfName(line, pname)
+      local shuffles = ns.VendorShuffles(c, line)
+      if #shuffles > 0 then
+        y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["No risk: sell to a merchant"]) - 4
+        for _, e in ipairs(shuffles) do
+          if Match(e) then
+            Row(e, ("|cffffffff%s|r"):format(ItemInfo(e.item) or ns.SpellName(e.spell)),
+              "|cffc8d8ff" .. GoldDetail(e) .. "|r", false, true)
+          end
+        end
+      end
       y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["Repeat goldmakers"]) - 4
       local n0 = shown
-      for _, e in ipairs(ns.Goldmakers(c, line)) do
+      for _, e in ipairs(ns.PriceSource and ns.Goldmakers(c, line) or {}) do
         if Match(e) then
-          Row(e, ("|cffffffff%s|r%s"):format(ItemInfo(e.item) or ns.SpellName(e.spell), Kind(e)), "|cffc8d8ff" .. GoldDetail(e) .. "|r")
+          Row(e, ("|cffffffff%s|r%s"):format(ItemInfo(e.item) or ns.SpellName(e.spell), Kind(e)),
+            "|cffc8d8ff" .. GoldDetail(e) .. "|r", false, true)
         end
       end
       if shown == n0 then
         local _, h = Label(0, y, "|cff9d9d9d" .. L["No known recipe makes money at current prices."] .. "|r")
         y = y - h - 4
       end
-      local cds = ns.Goldmakers(c, line, false, true)
+      local cds = ns.PriceSource and ns.Goldmakers(c, line, false, true) or {}
       if #cds > 0 then
         y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["Cooldown goldmakers"]) - 4
         for _, e in ipairs(cds) do
@@ -759,7 +784,7 @@ function U.RenderGold(key, c, filter, y)
           end
         end
       end
-      local recipes = ns.ProfitableRecipes(c, line, p.rank)
+      local recipes = ns.PriceSource and ns.ProfitableRecipes(c, line, p.rank) or {}
       if #recipes > 0 then
         y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["Recipes worth buying"]) - 4
         for _, e in ipairs(recipes) do
@@ -795,7 +820,7 @@ function U.RenderGold(key, c, filter, y)
   end
   y = y - math.max(wh, 26) - 4
   local wi = ui.goldWhatIf
-  if wi and not have[wi] then
+  if wi and not have[wi] and ns.PriceSource then
     local n0 = shown
     for _, e in ipairs(ns.Goldmakers(c, wi, true)) do
       if Match(e) then

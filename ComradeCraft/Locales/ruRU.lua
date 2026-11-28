@@ -937,6 +937,13 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Список выполнен: %s",
   ["measured"] = "измерено",
     -- Target skill (Plan tab)
+    ["Queued %dx %s: open the profession window and click Craft next."] = "%dx %s в очереди: откройте окно профессии и нажмите «Создать следующее».",
+    ["Restock: %s"] = "Пополнить: %s",
+    ["Restock"] = "Пополнить",
+    ["Queue"] = "В очередь",
+    ["No risk: sell to a merchant"] = "Без риска: продать торговцу",
+    ["net %s per craft at a merchant"] = "чистыми %s за изготовление у торговца",
+    ["Auctionator shopping list ready: %s (%d items)."] = "Список покупок Auctionator готов: %s (%d предм.).",
     ["once per cooldown"] = "раз за перезарядку",
     ["Cooldown goldmakers"] = "Выгодные изделия с перезарядкой",
     ["ready in %s"] = "готово через %s",

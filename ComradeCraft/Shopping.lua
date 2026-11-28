@@ -284,6 +284,33 @@ function ns.ShoppingAction(key, line)
   end
 end
 
+-- Any list of items to buy ({ { item, n } }): Auctionator list "ComradeCraft: <label>"
+-- (replaced each time), TSM search text, or the list in chat without either.
+function ns.ShopItems(label, items)
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  local api = Api()
+  if api then
+    local strings = {}
+    for _, e in ipairs(items) do
+      local name = get(e.item)
+      local ok, str = name and pcall(api.ConvertToSearchString, CALLER, { searchString = name, isExact = true, quantity = e.n })
+      if ok and type(str) == "string" then strings[#strings + 1] = str end
+    end
+    local listName = "ComradeCraft: " .. label
+    if #strings > 0 and api.DeleteShoppingList then pcall(api.DeleteShoppingList, CALLER, listName) end
+    local ok = #strings > 0 and pcall(api.CreateShoppingList, CALLER, listName, strings)
+    if ok then ns.Print(L["Auctionator shopping list ready: %s (%d items)."]:format(listName, #strings)) end
+  end
+  if ns.CanTSMShopping() then
+    local text = ns.TSMSearchString(items, function(id) return (get(id)) end)
+    ShowCopy(text, "", {})
+  elseif not api then
+    local parts = {}
+    for _, e in ipairs(items) do parts[#parts + 1] = ("%dx %s"):format(e.n, get(e.item) or ("#" .. e.item)) end
+    ns.Print(("%s: %s"):format(label, table.concat(parts, ", ")))
+  end
+end
+
 -- At the auction house: one reminder per session about ComradeCraft groups TSM still keeps.
 local reminded = false
 -- Real deposits: recorded per item when you post (also through TSM or Auctionator, which use
