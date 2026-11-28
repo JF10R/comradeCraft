@@ -1,14 +1,17 @@
 """Bake in-game sightings into ComradeCraft/Data/Npcs.lua (npc faction + spot, station spots).
 
-Usage: tools/.venv/Scripts/python -X utf8 tools/build_npcs.py <ComradeCraft.lua> [more ...]
+Usage: tools/.venv/Scripts/python -X utf8 tools/build_npcs.py [--out FILE] <ComradeCraft.lua> [more ...]
 Inputs are SavedVariables files (WTF/Account/<account>/SavedVariables/ComradeCraft.lua): yours and
 the ones friends send. The current Data/Npcs.lua is kept and merged; only our own observations go in.
 """
+import argparse
 import os
-import re
 import sys
 
-from lupa import LuaRuntime
+try:
+    from lupa.lua51 import LuaRuntime  # SavedVariables are Lua 5.1
+except ImportError:
+    from lupa import LuaRuntime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "ComradeCraft", "Data", "Npcs.lua")
@@ -19,8 +22,27 @@ def lua_tables(lua, t):
     return {k: t[k] for k in t} if t is not None and lua.eval("type")(t) == "table" else {}
 
 
-def main(paths):
+# Runs a chunk in an empty environment (no os/io/globals), refusing bytecode; returns that env.
+SANDBOX = """
+function(src, name, ns)
+  if src:byte(1) == 27 then error(name .. ": bytecode refused") end
+  local env, fn, err = {}
+  if setfenv then
+    fn, err = loadstring(src, "=" .. name)
+    if fn then setfenv(fn, env) end
+  else
+    fn, err = load(src, "=" .. name, "t", env)
+  end
+  if not fn then error(err) end
+  fn(nil, ns)
+  return env
+end
+"""
+
+
+def main(paths, out=OUT):
     lua = LuaRuntime(unpack_returned_tuples=True)
+    sandbox = lua.eval(SANDBOX)
     npcs, stations = {}, {}
 
     def add_npc(npc, fac, m, x, y):
@@ -41,10 +63,10 @@ def main(paths):
             lst.append([m, x, y])
 
     # Current baked data first (kept), then the sightings.
-    if os.path.exists(OUT):
-        env = lua.eval("function(src) local ns = {} local f = assert(loadstring(src)) f(nil, ns) return ns end")
-        with open(OUT, encoding="utf-8") as f:
-            ns = env(f.read())
+    if os.path.exists(out):
+        ns = lua.table()
+        with open(out, encoding="utf-8") as f:
+            sandbox(f.read(), os.path.basename(out), ns)
         for npc, r in lua_tables(lua, ns.NpcData).items():
             add_npc(npc, r[1], r[2], r[3], r[4])
         for focus, lst in lua_tables(lua, ns.StationData).items():
@@ -54,8 +76,7 @@ def main(paths):
     for path in paths:
         with open(path, encoding="utf-8") as f:
             src = f.read()
-        lua.execute(src)
-        db = lua.globals().ComradeCraftDB
+        db = sandbox(src, os.path.basename(path), None).ComradeCraftDB
         if db is None:
             print(f"{path}: no ComradeCraftDB, skipped")
             continue
@@ -83,7 +104,6 @@ def main(paths):
                 for s in lua_tables(lua, lst).values():
                     add_spot(focus, s[1], s[2], s[3])
         print(f"{path}: +{len(npcs) - n0} npcs, +{sum(map(len, stations.values())) - s0} station spots")
-        lua.execute("ComradeCraftDB = nil")
 
     def num(v):
         return "nil" if v is None else (str(int(v)) if float(v).is_integer() else str(v))
@@ -103,12 +123,16 @@ def main(paths):
         spots = ",".join(f"{{{s[0]},{num(s[1])},{num(s[2])}}}" for s in sorted(stations[focus]))
         lines.append(f"[{focus}]={{{spots}}},")
     lines.append("}")
-    with open(OUT, "w", encoding="utf-8", newline="\n") as f:
+    with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
-    print(f"{len(npcs)} npcs, {sum(map(len, stations.values()))} station spots -> {OUT}")
+    print(f"{len(npcs)} npcs, {sum(map(len, stations.values()))} station spots -> {out}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
-    main(sys.argv[1:])
+    ap = argparse.ArgumentParser(usage=__doc__)
+    ap.add_argument("--out", default=OUT)
+    ap.add_argument("paths", nargs="+")
+    a = ap.parse_args()
+    main(a.paths, a.out)
