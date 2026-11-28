@@ -518,6 +518,12 @@ def main():
         ns.resaleCtx = { deBy = function() return nil end }
         _, _, _, si = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
         assert(si.sales[999812].de == 0 and si.sales[999812].vendor > 0, "resale: no enchanter = merchant")
+        -- Sales volume: a fresh saleRates entry (any addon may fill it) wins, a stale one is ignored.
+        ns.SaleCap = oldCap
+        ComradeCraftDB.saleRates = { [999812] = { perDay = 2, t = time() }, [999813] = { perDay = 9, t = 1 } }
+        assert(ns.SaleCap(999812) == 2 * ns.SALE_DAYS and ns.SaleCap(999813) == ns.DEFAULT_SALE_CAP,
+          "sales volume: open saleRates slot, fresh only")
+        ComradeCraftDB.saleRates = nil
         -- Budget: the route stops when the gold at hand (budget + earlier sales) runs out.
         ns.PriceSource = function(item) return item == 2589 and 10 or nil end -- product barely sells
         ns.ItemPrices[999812] = { 1, 4 }
