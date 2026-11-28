@@ -425,7 +425,25 @@ ns.On("PLAYER_LOGIN", function()
   LoadCustomRecipes()
   LoadRecipeBounds()
 end)
-ns.On("PLAYER_ENTERING_WORLD", function() LoadCustomRecipes() ns.ScanAll() end)
+-- Standing with each faction a recipe needs (ns.ItemReputation): c.reps[factionID] = 1-8.
+function ns.ScanReputations()
+  if not (ComradeCraftDB and ComradeCraftDB.chars and GetFactionInfoByID and ns.ItemReputation) then return end
+  local c = ns.CharData()
+  local done = {}
+  for _, rep in pairs(ns.ItemReputation) do
+    local fid = rep[1]
+    if not done[fid] then
+      done[fid] = true
+      local ok, _, _, standing = pcall(GetFactionInfoByID, fid)
+      if ok and type(standing) == "number" and standing > 0 then
+        c.reps = c.reps or {}
+        c.reps[fid] = standing
+      end
+    end
+  end
+end
+ns.On("PLAYER_ENTERING_WORLD", function() LoadCustomRecipes() ns.ScanAll() ns.ScanReputations() end)
+ns.On("UPDATE_FACTION", function() ns.ScanReputations() end)
 ns.On("SKILL_LINES_CHANGED", ScanProfessionsOnly)
 ns.On("BAG_UPDATE_DELAYED", ScanBagsOnly)
 ns.On("CHAT_MSG_SKILL", ScanProfessionsOnly) -- "Your skill in X has increased to N"

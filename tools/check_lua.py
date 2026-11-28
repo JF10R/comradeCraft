@@ -390,10 +390,23 @@ def main():
       -- Merchant recipes: in the plan, priced once seen on a merchant; cooldown recipes never.
       do
         local vr = ns.VendorRecipes(171, 300, {})
+        -- Reputation recipes: only when the character's standing is high enough.
+        local girdle = ns.ForeverDB.RecipeSpellForItem(19203)
+        assert(girdle and ns.ItemReputation[19203][1] == 529 and not ns.RecipeRepOK(girdle, {})
+          and not ns.RecipeRepOK(girdle, { reps = { [529] = 4 } }) and ns.RecipeRepOK(girdle, { reps = { [529] = 5 } })
+          and ns.RecipeRepOK(7259, {}), "reputation recipes: need the standing")
         assert(vr[7259] == 190 and not vr[2329], "vendor recipes: Nature Protection Potion, not trainer ones")
         assert(ns.IsCooldownRecipe(11479) and not ns.IsCooldownRecipe(7259), "cooldown recipes: transmute")
         local _, _, cdPlan = ns.ComputeNeeds(225, 260, {}, {}, {}, { [11479] = 225 }, "cheap")
         assert(#cdPlan == 0, "cooldown recipes: never planned")
+        -- A mat with no AH price, no merchant and none held (Fiery Core) rules the recipe out.
+        ns.Recipes[999801] = { 197, 20, 40, 1, 999802, 1, { 999803, 1 } }
+        local oldPSX = ns.PriceSource
+        ns.PriceSource = function(item) return item == 2589 and 100 or nil end
+        local _, _, xPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, {}, nil, "cheap")
+        local _, _, hPlan = ns.ComputeNeeds(1, 10, { [999801] = true }, nil, { [999803] = 5 }, nil, "cheap")
+        assert(#xPlan == 0 and #hPlan == 1, "unobtainable mat: no route, unless you hold it")
+        ns.PriceSource, ns.Recipes[999801] = oldPSX, nil
         local lib = LibStub("LibProfessionDB-1.0", true)
         local rid = lib:GetRecipeItem(7259)
         local lp, lseen = ns.RecipeBuyPrice(7259)
@@ -413,6 +426,9 @@ def main():
         -- Teaching item = bought/looted on Forever: Thorium Widget leaves the trainer list and is
         -- sold by the vendor of your own faction (our own faction data, no Questie needed).
         assert(ns.ForeverDB.RecipeSpellForItem(16042) == 19791, "forever db: recipe item -> spell")
+        local rq, rqGuess = ns.RequiredSkill(18401, 250)
+        assert(rq == ns.Recipes[18401][2] and rqGuess and ns.RequiredSkill(7259, 190) == 190,
+          "required skill: a later-expansion value is capped at the Forever yellow rank")
         assert(ns.TaughtByItem(19791) and not ns.TrainerRecipes(202, 300, {})[19791], "thorium widget: not a trainer recipe")
         local oldUFG = UnitFactionGroup
         UnitFactionGroup = function() return "Alliance" end
@@ -1462,6 +1478,8 @@ def main():
       ComradeCraftDB.chars["Vez-Realm"] = { class = "DRUID", level = 20, professions = {},
         needs = { [197] = { name = "Tailoring", items = { [2592] = 10 }, when = { [2592] = 1 },
           plan = { { spell = 2963 } } } } }
+      local savedNeedsB = bMe.needs
+      bMe.needs = {} ns.ClearGiveCache() -- about Vez's needs: ours must not depend on earlier tests
       local stGive = ns.Bags.ItemState(2592)
       assert(stGive and stGive.mode == "give" and stGive.urgency == 1, "bags: spare item flagged for group")
       assert(ns.Bags.ItemState(99999) == nil, "bags: unneeded item not flagged")
@@ -1499,6 +1517,7 @@ def main():
       C_Container.GetContainerItemInfo = oldGetInfo
       ContainerFrameCombinedBags, MailFrame, SendMailFrame, SendMailNameEditBox, SendMailSubjectEditBox = nil, nil, nil, nil, nil
       bMe.bags = savedBags
+      bMe.needs = savedNeedsB ns.ClearGiveCache()
       ComradeCraftDB.chars["Vez-Realm"] = nil
       ComradeCraftDB.ui.sel = "group"
       ns.RefreshWindow()
@@ -1540,7 +1559,10 @@ def main():
       GetInboxNumItems = function() return 1 end
       GetInboxItem = function(i, a) if i == 1 and a == 1 then return "Wool", 2592, 134400, 12 end end
       f.onEvent(f, "MAIL_INBOX_UPDATE")
+      local oldNeedsM = me.needs
+      me.needs = {} -- surplus of the mail itself, whatever our own route needs
       assert(me.mail and me.mail[2592] == 12 and ns.Surplus(me, 2592) == 12, "mail inbox: counted as owned")
+      me.needs = oldNeedsM
       GetInboxNumItems, GetInboxItem = nil, nil
       me.mail = oldMail
 

@@ -182,7 +182,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   local function AddProducers(set)
     for spell in pairs(set) do
       local r = ns.Recipes[spell]
-      if r and r[5] ~= 0 and not producers[r[5]] then
+      if r and r[5] ~= 0 and not producers[r[5]] and not (ns.IsCooldownRecipe and ns.IsCooldownRecipe(spell)) then
         local mats = 0
         for i = 1, #r[7], 2 do mats = mats + r[7][i + 1] * ns.ItemValue(r[7][i]) end
         if mats / math.max(1, r[6]) <= ns.ItemValue(r[5]) then producers[r[5]] = spell end
@@ -193,6 +193,14 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   -- Learnable recipes can make intermediates too (Bolt of Silk Cloth), but only for items
   -- no known recipe makes; an action using one is available from its required skill on.
   AddProducers(learnable or {})
+  -- Items a known or learnable recipe can make: obtainable even without an AH price.
+  local craftable = {}
+  for _, set in ipairs({ allKnown or known, learnable or {} }) do
+    for spell in pairs(set) do
+      local r = ns.Recipes[spell]
+      if r and r[5] ~= 0 and not (ns.IsCooldownRecipe and ns.IsCooldownRecipe(spell)) then craftable[r[5]] = true end
+    end
+  end
   local line
   local actions = {}
   local function AddAction(spell, minRank)
@@ -201,6 +209,13 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     line = line or r[1]
     local a = { spell = spell, raw = {}, subs = {}, minRank = minRank or 0, learn = minRank ~= nil }
     Expand(spell, producers, 0, a.raw, a.subs, 1)
+    -- A mat you cannot get (no AH price, no merchant, none held): not a route, when prices exist.
+    if ns.PriceSource then
+      for item in pairs(a.raw) do
+        if not ((owned and (owned[item] or 0) > 0) or (stock and (stock[item] or 0) > 0)
+          or craftable[item] or ns.PriceSource(item) or ns.IsVendorItem(item)) then return end
+      end
+    end
     for sub in pairs(a.subs) do
       local req = learnable and learnable[sub]
       if req and not (allKnown or known)[sub] then a.minRank = math.max(a.minRank, req) end
@@ -380,6 +395,17 @@ function ns.TrainerSeen(spell)
   return ComradeCraftDB and ComradeCraftDB.trainer and ComradeCraftDB.trainer[spell]
 end
 
+-- Skill needed to learn a recipe: seen at a trainer, else LibProfessionDB's value capped at the
+-- Forever client's yellow rank (the lib carries later-expansion values: Bolt of Runecloth 250
+-- while it turns yellow at 210 on Forever). Second value: true when it is a guess.
+function ns.RequiredSkill(spell, libReq)
+  local seen = ns.TrainerSeen(spell)
+  if seen and seen.req then return seen.req, false end
+  local r = ns.Recipes[spell]
+  if libReq and r and r[2] and r[2] > 0 and libReq > r[2] then return r[2], true end
+  return libReq, false
+end
+
 -- True when a recipe comes from a teaching item (scroll, schematic...) and no trainer on Forever
 -- was seen teaching it. LibProfessionDB's trainer lists are Cata/Wrath, where many such recipes
 -- had become trainable (Thorium Widget, Superior Mana Potion...).
@@ -403,7 +429,7 @@ function ns.TrainerRecipes(line, maxRank, known)
   local all = lib and lib.GetRecipes and lib:GetRecipes(line)
   local out = {}
   for spell, e in pairs(all or {}) do
-    local req = e.requiredSkill
+    local req = ns.RequiredSkill(spell, e.requiredSkill)
     if req and not known[spell] and ns.Recipes[spell]
       and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)) then
       local kinds = lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
@@ -486,18 +512,29 @@ function ns.IsVendorRecipe(spell)
   return kinds and kinds.vendor and (not kinds.trainer or ns.TaughtByItem(spell)) or false
 end
 
--- Merchant-only recipes of `line` up to maxRank that a merchant of your faction sells:
--- { [spell] = requiredSkill }, like TrainerRecipes.
-function ns.VendorRecipes(line, maxRank, known)
+-- True when character `c` may buy the recipe: no reputation needed, or its saved standing
+-- (Scan.lua) is high enough. Unknown standing (a friend's character) = no.
+function ns.RecipeRepOK(spell, c)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local item = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
+  local rep = item and ns.ItemReputation and ns.ItemReputation[item]
+  if not rep then return true end
+  local have = c and c.reps and c.reps[rep[1]]
+  return have ~= nil and have >= rep[2]
+end
+
+-- Merchant-only recipes of `line` up to maxRank that a merchant of your faction sells and
+-- character `c` may buy (reputation): { [spell] = requiredSkill }, like TrainerRecipes.
+function ns.VendorRecipes(line, maxRank, known, c)
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
   local out = {}
   if not (lib and lib.GetRecipes and ns.HasFriendlyVendor) then return out end
   local skipped = ComradeCraftDB and ComradeCraftDB.skippedLearn or {}
   for spell, e in pairs(lib:GetRecipes(line) or {}) do
-    local req = e.requiredSkill
+    local req = ns.RequiredSkill(spell, e.requiredSkill)
     if req and req <= maxRank and not known[spell] and not skipped[spell] and ns.Recipes[spell]
       and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)) and ns.IsVendorRecipe(spell)
-      and ns.HasFriendlyVendor(spell) then
+      and ns.HasFriendlyVendor(spell) and ns.RecipeRepOK(spell, c) then
       out[spell] = req
     end
   end
@@ -512,13 +549,13 @@ function ns.NextRecipes(line, rank, known)
   if not all then return {} end
   local now, soon = {}, {}
   for spell, e in pairs(all) do
-    local req = e.requiredSkill
+    local req, capped = ns.RequiredSkill(spell, e.requiredSkill)
     local r = ns.Recipes[spell]
     local hidden = lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)
     if r and req and not known[spell] and not hidden and rank < r[3] then
       local kinds = lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell) or {}
       local x = { spell = spell, req = req, grey = r[3], kinds = kinds,
-        borrowed = lib.IsBorrowed and lib:IsBorrowed(spell, "requiredSkill") }
+        borrowed = capped or (lib.IsBorrowed and lib:IsBorrowed(spell, "requiredSkill")) }
       if req <= rank then
         if ns.FormulaChance(spell, rank) >= 0.5 then now[#now + 1] = x end
       elseif req <= rank + 25 then
@@ -710,7 +747,7 @@ function ns.UpdateNeeds(c)
     local breaks
     for _, cap in ipairs(caps) do breaks = breaks or {} breaks[cap] = true end
     local learnable = ns.TrainerRecipes(p.skillLine, target, known)
-    for spell, req in pairs(ns.VendorRecipes(p.skillLine, target, known)) do
+    for spell, req in pairs(ns.VendorRecipes(p.skillLine, target, known, c)) do
       if not learnable[spell] then learnable[spell] = req end
     end
     local mode = ns.RouteMode(c)

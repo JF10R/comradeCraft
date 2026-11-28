@@ -545,8 +545,8 @@ function ns.DescribeNeed(p, c)
     learned[spell] = true
     local seen = ns.TrainerSeen(spell)
     local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
-    local req = seen and seen.req or (lib and lib.GetRequiredSkill and lib:GetRequiredSkill(line, spell))
-    local guessed = not (seen and seen.req) and lib and lib.IsBorrowed and lib:IsBorrowed(spell, "requiredSkill")
+    local req, capped = ns.RequiredSkill(spell, lib and lib.GetRequiredSkill and lib:GetRequiredSkill(line, spell))
+    local guessed = capped or (not (seen and seen.req) and lib and lib.IsBorrowed and lib:IsBorrowed(spell, "requiredSkill"))
     if not seen and ns.IsVendorRecipe(spell) then
       local src = ns.RecipeSources and ns.RecipeSources(spell)
       local v = src and src.vendor and src.vendor.list[1]
