@@ -110,9 +110,9 @@ end
 -- DEPOSIT_LOSS: share counted as lost. Forever refunds it on sale (sale mail: 2s99 + 1s deposit
 -- - 14c cut = 3s85), so only expired auctions lose it; we assume a quarter expire once.
 ns.DEPOSIT_LOSS = 0.25
--- Forever, 2 h auctions: Lesser (merchant 1s10) and Greater Magic Wand (2s) both cost 1s
--- each, so a flat minimum; the % above it is Retail's 12 h rule, unconfirmed.
-ns.DEPOSIT_MIN, ns.DEPOSIT_RATIO = 100, 0.15
+-- Forever, 2 h auctions: 5% of the merchant sell price, at least 1c (about 40 deposits measured
+-- in game, e.g. Greater Magic Wand sell 2s -> 10c). Longer durations cost more; not modeled.
+ns.DEPOSIT_MIN, ns.DEPOSIT_RATIO = 1, 0.05
 ns.AH_MARGIN = 1.1 -- the AH must beat the merchant/disenchant by 10% (time, competition)
 
 -- How many of an item the AH absorbs over a leveling session: sales per day x SALE_DAYS, from
