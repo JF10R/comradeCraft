@@ -2060,6 +2060,20 @@ def main():
           ns.CharData()
           assert(ComradeCraftDB.chars["Jhf Nainsuline-CAMWOW US1 Realm 3 PvE"], "new alt: saved")
           ComradeCraftDB.chars["Jhf Nainsuline-CAMWOW US1 Realm 3 PvE"] = nil
+          -- Friend's DB with only first-name keys and no realm from the game: logging in on
+          -- "Naine Tincelle" upgrades the stale "Naine-<realm>" key instead of never saving.
+          local savedChars = ComradeCraftDB.chars
+          local RLM = "CAMWOW US1 Realm 3 PvE"
+          ComradeCraftDB.chars = { ["Naine-" .. RLM] = { class = "MAGE", shared = true, updated = 50, level = 20 },
+            ["Wo-" .. RLM] = { class = "PRIEST", shared = true, updated = 40 } }
+          UnitName = function() return "Naine", "Tincelle" end
+          ns.ResetRealmCache()
+          f.onEvent(f, "PLAYER_ENTERING_WORLD")
+          local nt = ComradeCraftDB.chars["Naine Tincelle-" .. RLM]
+          assert(nt and nt.shared and not ComradeCraftDB.chars["Naine-" .. RLM] and ComradeCraftDB.chars["Wo-" .. RLM],
+            "first-name keys: upgraded to the full name on login, others untouched")
+          assert(ns.CharKey() == "Naine Tincelle-" .. RLM and ns.CharData() == nt, "first-name keys: same record kept")
+          ComradeCraftDB.chars = savedChars
           GetCVar = savedCVar
           ns.ResetRealmCache()
           GetRealmName, UnitName = savedRealmFn, savedUnitFn
