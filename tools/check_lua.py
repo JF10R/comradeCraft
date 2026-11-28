@@ -1846,7 +1846,8 @@ def main():
         ns.LearnDeposit(2589, 5, 20)
         assert(ComradeCraftDB.deposits[2589] == 1 and ns.AuctionDeposit(2589) == 1, "deposit: floors to 1c, not 0")
         ComradeCraftDB.deposits[2589] = 0
-        assert(ns.AuctionDeposit(2589) == 100, "deposit: stored 0 ignored")
+        assert(ns.AuctionDeposit(2589) == math.max(ns.DEPOSIT_MIN, math.floor(ns.ItemPrices[2589][1] * ns.DEPOSIT_RATIO)),
+          "deposit: stored 0 ignored, estimate used")
         ns.LearnDeposit(2589, 1200, 1, 3)
         assert(ComradeCraftDB.deposits[2589] == 100, "deposit: 24 h normalized to 2 h")
         assert(ns.IsVendorItem(249409) and ns.IsVendorItem(18567) and ns.IsVendorItem(11291), "vendor: new reagents")
