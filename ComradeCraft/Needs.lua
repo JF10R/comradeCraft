@@ -227,7 +227,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     a.resale = ns.BestResale(a.back)
     a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
     -- A recipe bought from a merchant: its known price spread over its orange + yellow points.
-    local price = minRank and ns.RecipeBuyPrice and ns.RecipeBuyPrice(spell)
+    local price = minRank and ns.RecipeLearnCost and ns.RecipeLearnCost(spell)
     if price then a.cost = a.cost + price / math.max(5, (r[2] or minRank + 25) - minRank) end
     if stock then
       -- Flat arrays for the inner loop: raw item ids, counts and values.
@@ -502,6 +502,39 @@ function ns.RecipeBuyPrice(spell)
   return nil
 end
 
+-- AH price of a recipe's teaching item (a looted pattern someone sells); nil without one.
+function ns.AuctionRecipePrice(spell)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local item, isBook = nil, false
+  if lib and lib.GetRecipeItem then item, isBook = lib:GetRecipeItem(spell) end
+  local v = item and not isBook and ns.PriceSource and ns.PriceSource(item)
+  return v and v > 0 and v or nil
+end
+
+-- What learning a bought recipe costs: merchant price, else its AH price. nil if unknown.
+function ns.RecipeLearnCost(spell)
+  if ns.IsVendorRecipe(spell) then return ns.RecipeBuyPrice(spell) end
+  return ns.TaughtByItem(spell) and ns.AuctionRecipePrice(spell) or nil
+end
+
+-- Looted recipes (no merchant, no trainer) whose pattern is on the AH, up to maxRank:
+-- { [spell] = requiredSkill }. Its AH price counts in the route.
+function ns.AuctionRecipes(line, maxRank, known)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local out = {}
+  if not (lib and lib.GetRecipes and ns.PriceSource) then return out end
+  local skipped = ComradeCraftDB and ComradeCraftDB.skippedLearn or {}
+  for spell, e in pairs(lib:GetRecipes(line) or {}) do
+    local req = ns.RequiredSkill(spell, e.requiredSkill)
+    if req and req <= maxRank and not known[spell] and not skipped[spell] and ns.Recipes[spell]
+      and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)) and ns.TaughtByItem(spell)
+      and not ns.IsVendorRecipe(spell) and ns.AuctionRecipePrice(spell) then
+      out[spell] = req
+    end
+  end
+  return out
+end
+
 -- True for a recipe you buy from a merchant (no trainer teaches it on Forever).
 function ns.IsVendorRecipe(spell)
   if ns.EXTRA_VENDORS and ns.EXTRA_VENDORS[spell] then return true end
@@ -748,6 +781,9 @@ function ns.UpdateNeeds(c)
     for _, cap in ipairs(caps) do breaks = breaks or {} breaks[cap] = true end
     local learnable = ns.TrainerRecipes(p.skillLine, target, known)
     for spell, req in pairs(ns.VendorRecipes(p.skillLine, target, known, c)) do
+      if not learnable[spell] then learnable[spell] = req end
+    end
+    for spell, req in pairs(ns.AuctionRecipes(p.skillLine, target, known)) do
       if not learnable[spell] then learnable[spell] = req end
     end
     local mode = ns.RouteMode(c)

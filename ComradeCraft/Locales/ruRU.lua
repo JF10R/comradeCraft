@@ -937,6 +937,8 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Список выполнен: %s",
   ["measured"] = "измерено",
     -- Target skill (Plan tab)
+    ["Buy %s at the auction house (skill %s, %s)"] = "Купить %s на аукционе (навык %s, %s)",
+    ["Auction house - skill %s - %s"] = "Аукцион - навык %s - %s",
     ["Buy recipe: %s"] = "Купить рецепт: %s",
     ["Buy %s from %s (skill %s, %s)"] = "Купить %s у %s (навык %s, %s)",
     ["Vendor: %s - skill %s - %s"] = "Торговец: %s - навык %s - %s",

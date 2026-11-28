@@ -426,6 +426,14 @@ def main():
         -- Teaching item = bought/looted on Forever: Thorium Widget leaves the trainer list and is
         -- sold by the vendor of your own faction (our own faction data, no Questie needed).
         assert(ns.ForeverDB.RecipeSpellForItem(16042) == 19791, "forever db: recipe item -> spell")
+        -- Looted pattern on the AH (Radiant Boots, plans 12697): planned at its AH price.
+        local rb = ns.ForeverDB.RecipeSpellForItem(12697)
+        local oldPSA = ns.PriceSource
+        ns.PriceSource = function(item) return item == 12697 and 30000 or nil end
+        assert(rb and ns.AuctionRecipes(164, 300, {})[rb] and ns.RecipeLearnCost(rb) == 30000, "ah recipes: looted plans on the AH")
+        ns.PriceSource = function() return nil end
+        assert(not ns.AuctionRecipes(164, 300, {})[rb], "ah recipes: none without an AH price")
+        ns.PriceSource = oldPSA
         local rq, rqGuess = ns.RequiredSkill(18401, 250)
         assert(rq == ns.Recipes[18401][2] and rqGuess and ns.RequiredSkill(7259, 190) == 190,
           "required skill: a later-expansion value is capped at the Forever yellow rank")
