@@ -217,10 +217,10 @@ function FDB.Payload()
   local b, d, v, cr, de = {}, {}, {}, {}, {}
   local nb, nd, nv, ncr, nde = 0, 0, 0, 0, 0
   for spell, rec in pairs(db.recipeBounds or {}) do
-    if nb < MAX_BOUNDS and type(rec) == "table" then
+    if nb < MAX_BOUNDS and type(rec) == "table" and ns.BoundIsCurrent(rec) then
       local yv, gv = rec.y or rec[1], rec.g or rec[2]
       if (yv and yv > 0) or (gv and gv > 0) then
-        b[spell] = { yv or 0, gv or 0 }
+        b[spell] = { yv or 0, gv or 0, rec.b }
         nb = nb + 1
       end
     end
@@ -306,10 +306,12 @@ function FDB.OnRemote(peerID, msg)
     if spell and ns.Recipes and ns.Recipes[spell] and type(x) == "table" and nb < MAX_BOUNDS then
       local yv, gv = Num(x[1], 0, 500), Num(x[2], 0, 500)
       if (yv and yv > 0) or (gv and gv > 0) then
-        store.bounds[spell] = { y = yv and yv > 0 and yv or nil, g = gv and gv > 0 and gv or nil }
+        local bv = Num(x[3], 1, 2 ^ 31)
+        store.bounds[spell] = { y = yv and yv > 0 and yv or nil, g = gv and gv > 0 and gv or nil, b = bv }
         local loc = db.recipeBounds[spell]
+        if loc and not ns.BoundIsCurrent(loc) then loc = nil end -- an outdated local bound gives way
         if not loc then
-          db.recipeBounds[spell] = { y = store.bounds[spell].y, g = store.bounds[spell].g, peer = true }
+          db.recipeBounds[spell] = { y = store.bounds[spell].y, g = store.bounds[spell].g, b = bv, peer = true }
           boundsAdded = true
           added = added + 1
         else

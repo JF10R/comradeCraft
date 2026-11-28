@@ -218,11 +218,26 @@ local function DiscoverRecipe(id, info, line, rank)
 end
 
 -- Applies saved live-observed Forever recipe difficulty bounds ({ y, g } or legacy { [1], [2] }) on startup/sync.
+-- Client build number now, and the build Data/Recipes.lua was generated from.
+function ns.ClientBuild()
+  return GetBuildInfo and tonumber((select(2, GetBuildInfo()))) or nil
+end
+function ns.DataBuild()
+  return tonumber(tostring(ns.RecipesBuild or ""):match("(%d+)$"))
+end
+
+-- A bound seen in game counts only if seen on a build at least as new as our data: a hotfix
+-- (Coarse Grinding Stone grey 75 -> 90) must not be undone by an older observation.
+function ns.BoundIsCurrent(b)
+  local data = ns.DataBuild()
+  return not data or (type(b) == "table" and tonumber(b.b) and tonumber(b.b) >= data) or false
+end
+
 local function LoadRecipeBounds()
   if not (ComradeCraftDB and ComradeCraftDB.recipeBounds) then return end
   for id, b in pairs(ComradeCraftDB.recipeBounds) do
     local r = ns.Recipes and ns.Recipes[id]
-    if r and type(b) == "table" then
+    if r and type(b) == "table" and ns.BoundIsCurrent(b) then
       local y = b.y or b[1]
       local g = b.g or b[2]
       if y and y > 0 then r[2] = y end
@@ -251,7 +266,7 @@ local function ObserveRecipeBound(id, r, diff, rank)
   if ny ~= y or ng ~= g then
     r[2], r[3] = ny, ng
     ComradeCraftDB.recipeBounds = ComradeCraftDB.recipeBounds or {}
-    ComradeCraftDB.recipeBounds[id] = { y = ny, g = ng }
+    ComradeCraftDB.recipeBounds[id] = { y = ny, g = ng, b = ns.ClientBuild() }
   end
 end
 
