@@ -3231,7 +3231,11 @@ def main():
         local tt = MockWidget()
         tt.AddDoubleLine = function(_, l, r) tl[#tl + 1] = l .. " | " .. r end
         tt.AddLine = function(_, s) if s == "ComradeCraft" then heads = heads + 1 end end
-        tt.HookScript = function(_, ev, fn) if ev == "OnTooltipCleared" then cleared = fn end end
+        local hidden
+        tt.HookScript = function(_, ev, fn)
+          if ev == "OnTooltipCleared" then cleared = fn end
+          if ev == "OnHide" then hidden = fn end
+        end
         ns.AddNeeds(tt, 424242)
         assert(tl[1] and tl[1]:find("In transit", 1, true) and tl[1]:find("3x Aa", 1, true),
           "transit: second return of InTransitFor reaches the tooltip: " .. tostring(tl[1]))
@@ -3240,11 +3244,24 @@ def main():
         assert(heads == 1 and cleared, "tooltip hook: one block per item per tooltip")
         cleared(tt) ns.TooltipHook(tt, 424242)
         assert(heads == 2, "tooltip hook: shows again once the tooltip is cleared")
+        -- Client 16001: stack to stack of the same item rebuilds without OnTooltipCleared.
+        local nl = 10
+        tt.NumLines = function() return nl end
+        cleared(tt) ns.TooltipHook(tt, 424242)
+        ns.TooltipHook(tt, 424242)
+        assert(heads == 3, "tooltip hook: same tooltip, same lines: once")
+        nl = 4
+        ns.TooltipHook(tt, 424242)
+        assert(heads == 4, "tooltip hook: rebuilt (fewer lines) without a clear: shown again")
+        nl = 10
+        hidden(tt) ns.TooltipHook(tt, 424242)
+        assert(heads == 5, "tooltip hook: OnHide clears the mark")
+        tt.NumLines = nil
         local ftt = MockWidget()
         ftt.IsForbidden = function() return true end
         ftt.AddLine = function() heads = heads + 1 end
         ns.TooltipHook(ftt, 424242)
-        assert(heads == 2, "tooltip hook: forbidden tooltip skipped")
+        assert(heads == 5, "tooltip hook: forbidden tooltip skipped")
         ns.InTransitFor = oldT
 
         -- Observed Forever vendor without any lib source; container kind shown by item name.

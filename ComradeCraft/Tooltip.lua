@@ -151,16 +151,22 @@ ns.OnItemTooltip = OnItem
 -- Game hook entry: skips forbidden tooltips and repeats of the same item on one tooltip
 -- (recipe items fire the item hook more than once); the mark clears with the tooltip.
 local shownOn = setmetatable({}, { __mode = "k" })
+local linesAfter = setmetatable({}, { __mode = "k" })
+local function Lines(t) return t.NumLines and t:NumLines() or 0 end
 local function Hooked(tooltip, id)
   if not (tooltip and id) or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
   if shownOn[tooltip] == nil then
-    local ok = tooltip.HookScript and pcall(tooltip.HookScript, tooltip, "OnTooltipCleared",
-      function(t) shownOn[t] = false end)
+    local function Clear(t) shownOn[t] = false end
+    local ok = tooltip.HookScript and pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", Clear)
+    if ok then pcall(tooltip.HookScript, tooltip, "OnHide", Clear) end
     shownOn[tooltip] = (not ok) and "nodedupe" or false
   end
-  if shownOn[tooltip] == id then return end
+  -- Same item again: skip, unless the client rebuilt the tooltip without OnTooltipCleared
+  -- (client 16001, stack to stack of one item): fewer lines than after our block.
+  if shownOn[tooltip] == id and Lines(tooltip) >= (linesAfter[tooltip] or 0) then return end
   if shownOn[tooltip] ~= "nodedupe" then shownOn[tooltip] = id end
   OnItem(tooltip, id)
+  linesAfter[tooltip] = Lines(tooltip)
 end
 ns.TooltipHook = Hooked
 
