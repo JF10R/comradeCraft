@@ -647,7 +647,7 @@ local function ScanTrainer()
     if pos then
       local x, y
       if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
-      spot.map, spot.x, spot.y = map, math.floor(x * 10000) / 100, math.floor(y * 10000) / 100
+      if x and y then spot.map, spot.x, spot.y = map, math.floor(x * 10000) / 100, math.floor(y * 10000) / 100 end
     end
     ComradeCraftDB.trainerSpots[npc] = spot
   end
