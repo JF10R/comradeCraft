@@ -409,9 +409,18 @@ local function PlaceStep(x, y, w, e, own, zebra)
     s.accent:Show()
     s.text:ClearAllPoints()
     s.text:SetPoint("TOPLEFT", 8, -4)
-    s.text:SetWidth(w - 118)
+    s.text:SetWidth(e.net and 120 or (w - 118))
     s.text:SetText("|cffffd100" .. (e.header or L["Skill %d to %d"]:format(e.from, e.to)) .. "|r")
-    s.right:SetText(e.cost or "")
+    if e.net then -- cost, what the crafts sell back, and the step's profit or loss
+      local net = math.floor(e.net + 0.5)
+      local sign = net >= 0 and "+" or "-"
+      local netTxt = (net >= 0 and "|cff40ff40" or "|cffff6060") .. sign .. (e.costOk and "" or "<")
+        .. ShortMoney(math.abs(net)) .. "|r"
+      s.right:SetText(("|cff9d9d9d%s  ·  %s  ·|r  %s"):format(L["cost %s"]:format(e.cost or "?"),
+        L["resale %s"]:format(ShortMoney(e.back)), netTxt))
+    else
+      s.right:SetText(e.cost or "")
+    end
     s.line:Show()
     h = 22
   elseif e.kind == "milestone" then

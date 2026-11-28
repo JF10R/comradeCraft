@@ -412,6 +412,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       plan[#plan + 1] = last
     end
     last.to, last.crafts = cur + 1, last.crafts + bestN
+    last.back = (last.back or 0) + value -- what this step's crafts sell back (AH / disenchant / merchant)
     for sub, crafts in pairs(best.subs) do last.subs[sub] = (last.subs[sub] or 0) + crafts * bestN end
     cur = cur + 1
   end

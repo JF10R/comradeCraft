@@ -712,6 +712,7 @@ function ns.DescribeNeed(p, c)
     if step.over then for _, e in ipairs(entries) do e.dim = true end end
     out.steps[#out.steps + 1] = { range = range, entries = entries, from = step.from, to = step.to,
       over = step.over, copper = stepCost, copperOk = stepComplete,
+      back = priced and step.back or nil, net = priced and step.back and (step.back - stepCost) or nil,
       cost = priced and ((stepComplete and "~" or ">") .. ns.Money(math.floor(stepCost))) or nil }
     out.plan[#out.plan + 1] = range .. " :"
     for _, e in ipairs(entries) do out.plan[#out.plan + 1] = "  " .. e.text end

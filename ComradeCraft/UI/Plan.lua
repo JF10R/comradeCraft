@@ -124,7 +124,8 @@ local function LayoutProfession(y, name, p, c, own, key)
   for _, step in ipairs(d.steps or {}) do
     if step.over then BudgetBanner() end
     yy = yy + 4 + PlaceStep(PROF_W, y - yy - 2, RIGHT_W, { kind = "range", from = step.from, to = step.to,
-      cost = step.cost, header = step.header, dim = step.over }, own)
+      cost = step.cost, header = step.header, dim = step.over, back = step.back, net = step.net,
+      costOk = step.copperOk }, own)
     if step.warn then
       local _, wh = Label(PROF_W + 4, y - yy - 2, "|cffff9933" .. step.warn .. "|r", nil, RIGHT_W - 4)
       yy = yy + wh + 4

@@ -534,6 +534,23 @@ def main():
       assert(not c.needs[197].overPlan, "budget: removed = full route again")
       ComradeCraftDB.settings.groupObjective, c.bags, c.bank, c.mail = oldObj, oldB, oldK, oldM
       ns.UpdateNeeds(c)
+      -- Each step shows what its crafts sell back and its profit or loss.
+      do
+        local oldPS, oldPN, oldNames = ns.PriceSource, ns.PriceSourceName, ComradeCraftDB.itemNames
+        ComradeCraftDB.itemNames = nil -- names seen here must not leak into later cache tests
+        ns.PriceSource, ns.PriceSourceName = function() return 50 end, "Test"
+        ns.UpdateNeeds(c)
+        local sd, seen = ns.DescribeNeed(c.professions.Tailoring, c), false
+        for _, st in ipairs(sd.steps) do
+          if not st.rankCap then
+            assert(st.back and st.back > 0 and math.abs(st.net - (st.back - st.copper)) < 1e-6, "steps: resale and net")
+            seen = true
+          end
+        end
+        assert(seen, "steps: resale and net shown on a priced plan")
+        ns.PriceSource, ns.PriceSourceName, ComradeCraftDB.itemNames = oldPS, oldPN, oldNames
+        ns.UpdateNeeds(c)
+      end
       -- Tools and stations: masks, held tools, entries in the steps, spots seen and shared.
       do
         local oc, oi, ot, of, ofn = ns.ToolCategories, ns.ToolItems, ns.RecipeTools, ns.RecipeFocus, ns.FocusNames
