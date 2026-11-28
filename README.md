@@ -26,6 +26,9 @@ Static guides don't know what's in your bags. Economy addons don't coordinate yo
 |---|---|
 | You AH or vendor Silk Cloth, and your friend buys it an hour later | **Bag highlights, Keep alerts & 1-click Mail / Trade / Bank helpers** |
 | Static guides waste gold ignoring mats already in your group | **Live Cheapest / Profitable routes** using group stock + live AH prices |
+| No idea what leveling to 225 will really cost, or if you can afford it | **Target skill + Budget**: gross, to buy, resale & net per step, with sales reinvested |
+| Guessing which crafts actually make gold | **Goldmaking view**: best AH crafts at real sales pace, merchant flips, cooldowns & recipes worth buying |
+| Mail takes 1 hour, so friends double-farm or send twice | **In-transit tracking** across the group + 1-click **Next recipient** mailbox tour |
 | Alt-tabbing for Expert/Artisan trainers, drops, or craftable BiS | **All 12 Expert/Artisan trainers (Alliance & Horde) + Standalone BiS Engine (9 classes, 29 specs)** |
 | Friends play at different hours or switch alts constantly | **100% in-game Mesh Sync + Guild Channel Sync + Shared Bank Alts** |
 | Juggling Lesser & Greater enchanting essences by hand | **Automatic 3x Lesser <-> 1x Greater conversion** across plans, mail & bags |
@@ -39,7 +42,11 @@ Static guides don't know what's in your bags. Economy addons don't coordinate yo
 ## Key Features
 
 ### 1. Dynamic Leveling & Economy
-- **Cheapest vs Profitable routes**: Live cost per 75-point milestone, factoring vendor sell, disenchant value, and AH resale (after 5% cut & deposit risk).
+- **Cheapest vs Profitable routes**: Live cost per 75-point milestone, factoring vendor sell, disenchant value, and AH resale (after the AH cut & deposit). Routes include **merchant recipes** and **AH world-drop patterns** only when they pay for themselves, flag cheaper **quest recipes**, and skip recipes you can't learn yet (level, reputation, unobtainable mats).
+- **Target Skill & Budget**: Type the skill you want to reach and the gold you want to spend. Every step shows `cost · resale · net` in green or red, the plan reinvests the sales of earlier crafts, and greys out what your budget can't reach yet. Works on a friend's or alt's plan too.
+- **Realistic Resale**: Each step tells you what to do with your crafts (`12 at the AH`, `disenchant 8`, `5 to a merchant`), based on how many really sell per day when your price addon provides it.
+- **Tools & Crafting Stations**: Know which tool you need (`Get a Blacksmith Hammer`) and where to craft (`Craft at: Anvil`), with a 1-click waypoint to the nearest Anvil, Forge, Cooking Fire, Alchemy Lab and more.
+- **Goldmaking View**: Repeat goldmakers ranked by gold per day at the pace the AH buys them (sub-components bought or crafted, whichever is cheaper), risk-free merchant flips, daily cooldowns with timers, and recipes worth buying with their payback. **Queue** and **Restock** send a batch to your craft queue in 1 click.
 - **Zero-waste Essence Conversions**: Automatic `3x Lesser <-> 1x Greater` math across plans, surplus, mail, bags, and right-click conversion hints.
 - **All 12 Expert (150 to 225) & Artisan (225 to 300) Trainers**: Built-in Alliance & Horde trainers, rank-unlock books (Cooking, First Aid, Fishing), and Artisan quests with QuestieDB + TomTom waypoints.
 - **1-Click Shopping Export**: Instant Auctionator shopping lists or copy-ready TSM exact search strings & groups.
@@ -54,6 +61,11 @@ Static guides don't know what's in your bags. Economy addons don't coordinate yo
 - **Item Reservations (`Alt+Right-Click`)**: Lock and tag bag items for a specific friend with a violet lock badge, anti-sell warning, 1-click Bank & Mail queuing, and live sync so they see `"Reserved for you"` before you even hit Send.
 - **Bag Highlights, Auto-Sort Categories & Tooltips**: Crisp borders & mailbox badges light up spare mats, reserved items, unknown non-BoP patterns, and request reagents in your bags, focusing in gold on your active Mail or Trade target, plus native **`ComradeCraft` categories** in Baganator and BetterBags.
 - **Craft Requests, Shared Wishlist & Farming Banner**: Request crafts or bank items, pin shared goals in an on-screen tracker, see a live **"Farming for you"** banner on `Group -> Overview`, and share missing mats to `/g` or `/p` in 1 click.
+- **1-Hour Mail In-Transit Tracking**: Mailed items count right away across the group, with an **In transit** banner and live countdowns in tooltips and `Group plan`, so nobody double-farms or sends twice.
+- **Unified Group Search**: One search bar finds items in bags, bank, mail, Shared Bank Alts and in transit, who in your group can craft it, and guild directory matches, each with a 1-click **Request**, **Pin** or **Whisper**.
+- **Craft Chains & Craft Kits**: Multi-profession chains link their steps (`Step 1/3`), route intermediates to the next crafter (`Deliver to X`) and track partial shipments (`Sent 4/10`). Save your Wishlist as a reusable kit (*Raid Kit*, *Dungeon Kit*) and apply it x1 or x5; crafted Wishlist items complete themselves.
+- **Shared WoW Forever Knowledge**: Friends and guild automatically share newly discovered Forever recipes, real skill-up colors, disenchant yields, vendor and NPC locations, crafting stations, and mob drop rates. A friend's new alt joins only after you **Accept** it.
+- **Zone Radar**: Trainers, recipe vendors, rare drops and farmable mats useful to your group in your current zone, with 1-click waypoints.
 - **Favorites, Guild Directory & 100+ Guild Scaling**: Star favorite players and preferred crafters to pin them at the top of the Sidebar & Guild Directory (and prioritize them in `Upgrades`), quick-filter large rosters, search `/comrade directory`, and get live dungeon loot roll hints.
 
 <p align="center">
@@ -78,12 +90,12 @@ Static guides don't know what's in your bags. Economy addons don't coordinate yo
 </p>
 
 ### 4. Companion Panels Everywhere You Click
-- **Mailbox** (Blizzard, Postbox, Postal, ElvUI, TSM): 1-click attach for mats, patterns & requests, bank-only warnings, and WoW Forever First+Last name safety.
-- **Bank**: 1-click **Withdraw needed** for your current step, Wishlist, or queued group mail.
+- **Mailbox** (Blizzard, Postbox, Postal, ElvUI, TSM): 1-click attach for mats, patterns & requests, a **Next recipient** button to mail every friend in a row, bank-only warnings, and WoW Forever First+Last name safety.
+- **Bank**: 1-click **Withdraw needed** for your current step, Wishlist, queued group mail, or reagents for accepted craft requests, and **Deposit later mats** to store what you only need at later steps.
 - **Merchant**: Highlights plan reagents and learnable rank books/recipes **directly in Blizzard's vendor window**, plus a side panel to buy exact missing quantities or buried Page 3 books (like *Expert Cookbook* for a friend) in 1 click.
-- **Auction House**: 1-click search for missing mats and **BoE BiS patterns** with gold balance summary.
-- **Trainer & Trade**: Trainer BiS/plan highlighter and 1-click trade fill.
-- **Craft Queue**: Docked step panel beside your profession window with a **Craft next** button.
+- **Auction House**: 1-click search for missing mats and **BoE BiS patterns** with gold balance summary, a **Bargain Radar** for group needs listed 20%+ below market, and (without TSM or Auctionator) a **Price mats** button that prices your plan one search per click.
+- **Trainer & Trade**: Trainer BiS/plan highlighter, 1-click trade fill, and 1-click requested **Enchants** marked done once traded.
+- **Craft Queue (`Plan` | `Orders`)**: Docked panel beside your profession window with your next leveling step, accepted group requests, pinned Wishlist crafts and goldmaking batches, missing intermediates queued first, and a **Craft next** button.
 
 <p align="center">
   <img src="docs/images/merchant-demo.gif" alt="Merchant Native Slot Highlights &amp; 1-Click Page 3 Rank Books" width="760">
@@ -149,5 +161,5 @@ Static guides don't know what's in your bags. Economy addons don't coordinate yo
 ## For Developers & Feedback
 
 - Built & actively maintained for **WoW Forever 1.60.1** (Interface `16001`). Bug reports & ideas welcome in [GitHub Issues](https://github.com/JF10R/comradeCraft/issues).
-- Offline verification suite: `python tools/check_lua.py` (syntax, 6-locale parity, 18 unit test suites).
+- Offline verification suite: `python tools/check_lua.py` (syntax, locale parity, unit & smoke tests).
 - License: **MIT** ([LICENSE](LICENSE), embedded libraries in [THIRD_PARTY.md](THIRD_PARTY.md)).
