@@ -410,6 +410,29 @@ def main():
         assert(ve.kind == "learn" and ve.buy and ve.copper == 20000 and ve.detail:find("Glyx Brewright", 1, true),
           "vendor recipe step: buy from the merchant, with its price, got " .. tostring(ve.detail))
         ComradeCraftDB.foreverVendors[rid] = nil
+        -- Teaching item = bought/looted on Forever: Thorium Widget leaves the trainer list and is
+        -- sold by the vendor of your own faction (our own faction data, no Questie needed).
+        assert(ns.ForeverDB.RecipeSpellForItem(16042) == 19791, "forever db: recipe item -> spell")
+        assert(ns.TaughtByItem(19791) and not ns.TrainerRecipes(202, 300, {})[19791], "thorium widget: not a trainer recipe")
+        local oldUFG = UnitFactionGroup
+        UnitFactionGroup = function() return "Alliance" end
+        assert(ns.VendorRecipes(202, 300, {})[19791] and ns.NpcFaction(5175) == "A", "thorium widget: Alliance vendor")
+        local tw = ns.RecipeSources(19791).vendor.list
+        assert(#tw == 1 and tw[1].id == 5175, "thorium widget: only the Ironforge vendor for Alliance")
+        UnitFactionGroup = function(u) return u == "npc" and "Horde" or "Alliance" end
+        local oldGUID = UnitGUID
+        UnitGUID = function(u) return u == "npc" and "Creature-0-1-2-3-4242-0000" or nil end
+        local oldSplit = strsplit
+        strsplit = function(sep, str)
+          local out = {}
+          for part in (str .. sep):gmatch("(.-)" .. sep:gsub("%p", "%%%0")) do out[#out + 1] = part end
+          return unpack(out)
+        end
+        ns.ForeverDB.ObserveNpcFaction()
+        strsplit = oldSplit
+        assert(ComradeCraftDB.npcFaction[4242] == "H" and ns.NpcFaction(4242) == "H", "npc faction: seen in game")
+        UnitFactionGroup, UnitGUID = oldUFG, oldGUID
+        ComradeCraftDB.npcFaction = nil
       end
       assert(#ns.RankCaps(150, 175) == 1 and rc[1] == 150 and rc[2] == 225 and #rc == 2
         and #ns.RankCaps(75, 75) == 0, "target: rank caps")

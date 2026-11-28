@@ -20,8 +20,43 @@ local function ZoneName(areaId)
   return type(info) == "string" and info or nil
 end
 
+-- Recipe vendors LibProfessionDB misses on Forever (its data is Cata/Wrath, where these were
+-- trainer-taught). { npc, faction, uiMap }. Thorium Widget confirmed in game (1g20s); the
+-- others from the wow-professions.com Forever guides.
+ns.EXTRA_VENDORS = {
+  [19791] = { { 3413, "H", 1454 }, { 5175, "A", 1455 } }, -- Thorium Widget: Sovik (Orgrimmar), Gearcutter Cogspinner (Ironforge)
+  [19790] = { { 3413, "H", 1454 }, { 5175, "A", 1455 } }, -- Thorium Grenade: same vendors
+  [19795] = { { 11185, "N", 1452 } },                     -- Thorium Tube: Xizzer Fizzbolt (Winterspring)
+  [17553] = { { 4610, "H", 1458 }, { 4226, "A", 1457 } }, -- Superior Mana Potion: Algernon (Undercity), Ulthir (Darnassus)
+  [18417] = { { 11189, "N", 1452 } },                     -- Runecloth Gloves: Qia (Winterspring)
+}
+
+-- An npc's faction from our own data: seen in game ("A", "H", "N"), a shared vendor spot, or
+-- EXTRA_VENDORS. nil when unknown.
+function ns.NpcFaction(npc)
+  local db = ComradeCraftDB
+  local f = db and db.npcFaction and db.npcFaction[npc]
+  if f then return f end
+  for _, v in pairs(db and db.foreverVendors or {}) do
+    if v.npc == npc and v.fac then return v.fac end
+  end
+  for _, p in pairs(db and db.foreverPeers or {}) do
+    for _, v in pairs(p.vendors or {}) do
+      if v.npc == npc and v.fac then return v.fac end
+    end
+  end
+  for _, list in pairs(ns.EXTRA_VENDORS) do
+    for _, e in ipairs(list) do if e[1] == npc then return e[2] end end
+  end
+end
+
 -- Trainers and vendors must be friendly to the player; nil = unknown (kept).
 local function Friendly(npc)
+  local own = ns.NpcFaction(npc)
+  if own then
+    local mine = UnitFactionGroup and UnitFactionGroup("player")
+    return own == "N" or (own == "A" and mine == "Alliance") or (own == "H" and mine == "Horde")
+  end
   local db = NpcDB()
   if not (db and db.friendlyToFaction) then return true end
   if db.name and not db.name(npc) then return true end -- not in Questie: keep, unknown
@@ -133,8 +168,30 @@ function ns.RecipeSources(spell)
       end
     end
   end
-  if not src and #visited == 0 then return nil end
+  local extra = ns.EXTRA_VENDORS[spell]
+  if not src and #visited == 0 and not extra then return nil end
   src = src or {}
+  -- A recipe with a teaching item is bought or looted on Forever, not trained (unless a
+  -- trainer was seen teaching it); merge the extra vendors in.
+  if src.trainer and ns.TaughtByItem and ns.TaughtByItem(spell) then
+    local copy = {}
+    for k, v in pairs(src) do copy[k] = v end
+    copy.trainer = nil
+    src = copy
+  end
+  if extra then
+    local copy, list = {}, {}
+    for k, v in pairs(src) do copy[k] = v end
+    for _, e in ipairs(src.vendor or {}) do list[#list + 1] = e end
+    for _, e in ipairs(extra) do
+      local dup = false
+      for _, x in ipairs(list) do if x.id == e[1] then dup = true end end
+      if not dup then list[#list + 1] = { id = e[1], name = lib and lib.GetSourceName and lib:GetSourceName(e[1]), zoneMap = e[3] } end
+    end
+    list.total = #list
+    copy.vendor = list
+    src = copy
+  end
   local map, px, py = PlayerPos()
   local out = {}
   for _, kind in ipairs(KINDS) do
@@ -152,6 +209,7 @@ function ns.RecipeSources(spell)
               local d = Distance(p, map, px, py)
               if not best or d < bestD then best, bestD = p, d end
             end
+            if not best and e.zoneMap then best = { uiMap = e.zoneMap } end -- zone only
             x.place, x.dist = best, bestD or 2e9
           end
         else
@@ -192,6 +250,10 @@ end
 
 local function PlaceText(x)
   if not (x.place) then return x.name or ("#" .. x.id) end
+  if not x.place.x then -- zone known, not the spot
+    local info = x.place.uiMap and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(x.place.uiMap)
+    return info and info.name and ("%s (%s)"):format(x.name or ("#" .. x.id), info.name) or (x.name or ("#" .. x.id))
+  end
   local zone = x.place.areaId and ZoneName(x.place.areaId)
   if not zone and x.place.uiMap and C_Map and C_Map.GetMapInfo then
     local info = C_Map.GetMapInfo(x.place.uiMap)
@@ -400,6 +462,9 @@ function ns.HasFriendlyVendor(spell)
   local src = not hit and lib and lib.GetRecipeSources and lib:GetRecipeSources(spell)
   for _, e in ipairs(src and src.vendor or {}) do
     if Friendly(e.id) then hit = true break end
+  end
+  for _, e in ipairs(not hit and ns.EXTRA_VENDORS[spell] or {}) do
+    if Friendly(e[1]) then hit = true break end
   end
   friendlyVendor[spell] = hit
   return hit

@@ -380,6 +380,20 @@ function ns.TrainerSeen(spell)
   return ComradeCraftDB and ComradeCraftDB.trainer and ComradeCraftDB.trainer[spell]
 end
 
+-- True when a recipe comes from a teaching item (scroll, schematic...) and no trainer on Forever
+-- was seen teaching it. LibProfessionDB's trainer lists are Cata/Wrath, where many such recipes
+-- had become trainable (Thorium Widget, Superior Mana Potion...).
+function ns.TaughtByItem(spell)
+  local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local item, isBook = nil, false
+  if lib and lib.GetRecipeItem then item, isBook = lib:GetRecipeItem(spell) end
+  if not item or isBook or ns.TrainerSeen(spell) then return false end
+  for _, t in pairs(ComradeCraftDB and ComradeCraftDB.trainerSpots or {}) do
+    if t.spells and t.spells[spell] then return false end
+  end
+  return true
+end
+
 -- Trainer recipes of a skill line not known yet: { [spellID] = requiredSkill } up to maxRank.
 -- Recipes seen at a real trainer win over LibProfessionDB (whose values are partly Classic's).
 -- Skips recipes the user skipped, recipes absent from a scanned trainer of that skill tier,
@@ -393,7 +407,7 @@ function ns.TrainerRecipes(line, maxRank, known)
     if req and not known[spell] and ns.Recipes[spell]
       and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)) then
       local kinds = lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
-      if kinds and kinds.trainer then out[spell] = req end
+      if kinds and kinds.trainer and not ns.TaughtByItem(spell) then out[spell] = req end
     end
   end
   for spell, seen in pairs(ComradeCraftDB and ComradeCraftDB.trainer or {}) do
@@ -462,11 +476,14 @@ function ns.RecipeBuyPrice(spell)
   return nil
 end
 
--- True for a recipe only merchants sell (no trainer teaches it).
+-- True for a recipe you buy from a merchant (no trainer teaches it on Forever).
 function ns.IsVendorRecipe(spell)
+  if ns.EXTRA_VENDORS and ns.EXTRA_VENDORS[spell] then return true end
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  local item = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
+  if item and ns.ForeverDB and ns.ForeverDB.Vendor and ns.ForeverDB.Vendor(item) then return true end
   local kinds = lib and lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
-  return kinds and kinds.vendor and not kinds.trainer or false
+  return kinds and kinds.vendor and (not kinds.trainer or ns.TaughtByItem(spell)) or false
 end
 
 -- Merchant-only recipes of `line` up to maxRank that a merchant of your faction sells:

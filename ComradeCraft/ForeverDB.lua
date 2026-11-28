@@ -42,9 +42,33 @@ local function NpcIDFromGUID(guid)
   if kind == "Creature" or kind == "Vehicle" then return tonumber(id) end
 end
 
+-- Teaching item -> craft spell (LibProfessionDB only maps spell -> item), built once.
+local recipeSpellOf
 local function RecipeItemSet()
   local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
+  if lib and not recipeSpellOf and lib.GetRecipeItems then
+    recipeSpellOf = {}
+    for spell, item in pairs(lib:GetRecipeItems() or {}) do
+      if type(item) == "number" then recipeSpellOf[item] = spell end
+    end
+  end
   return lib
+end
+function FDB.RecipeSpellForItem(itemID)
+  RecipeItemSet()
+  return recipeSpellOf and recipeSpellOf[itemID]
+end
+
+-- Faction of an npc as seen in game: "A", "H" or "N" (both). Recorded when you talk to one.
+local function UnitFactionLetter(unit)
+  local f = Safe(UnitFactionGroup and UnitFactionGroup(unit))
+  return f == "Alliance" and "A" or f == "Horde" and "H" or "N"
+end
+function FDB.ObserveNpcFaction()
+  local npcID = NpcIDFromGUID(UnitGUID and UnitGUID("npc"))
+  if not (ComradeCraftDB and npcID) then return end
+  ComradeCraftDB.npcFaction = ComradeCraftDB.npcFaction or {}
+  ComradeCraftDB.npcFaction[npcID] = UnitFactionLetter("npc")
 end
 
 -- Local observation: merchant selling a recipe scroll or skill rank book on WoW Forever.
@@ -62,13 +86,13 @@ function FDB.ObserveMerchant()
     local link = Safe(GetMerchantItemLink(i))
     local itemID = type(link) == "string" and tonumber(link:match("item:(%d+)"))
     if itemID then
-      local isRec = (lib and lib.GetSpellForRecipeItem and lib:GetSpellForRecipeItem(itemID))
+      local isRec = FDB.RecipeSpellForItem(itemID)
         or (ns.Loot and ns.Loot.RankBookInfo and ns.Loot.RankBookInfo(itemID))
       if isRec then
         local _, _, price = GetMerchantItemInfo(i)
         db.foreverVendors[itemID] = {
           npc = npcID, name = npcName, map = map, x = x, y = y,
-          cost = tonumber(Safe(price)) or 0, t = time(),
+          cost = tonumber(Safe(price)) or 0, t = time(), fac = UnitFactionLetter("npc"),
         }
         changed = true
       end
@@ -104,7 +128,7 @@ function FDB.ObserveLoot()
     local link = Safe(GetLootSlotLink(slot))
     local itemID = type(link) == "string" and tonumber(link:match("item:(%d+)"))
     if itemID then
-      local isRec = (lib and lib.GetSpellForRecipeItem and lib:GetSpellForRecipeItem(itemID)) ~= nil
+      local isRec = FDB.RecipeSpellForItem(itemID) ~= nil
       local qual = (C_Item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(itemID)) or 0
       if isRec or (isRare and qual >= 2) then
         local d = db.foreverDrops[itemID]
@@ -209,7 +233,7 @@ function FDB.Payload()
   end
   for itemID, rec in pairs(db.foreverVendors or {}) do
     if nv < MAX_VENDORS and type(rec) == "table" and rec.map then
-      v[itemID] = { rec.npc or 0, rec.name or "", rec.map, rec.x or 0, rec.y or 0, rec.cost or 0 }
+      v[itemID] = { rec.npc or 0, rec.name or "", rec.map, rec.x or 0, rec.y or 0, rec.cost or 0, rec.fac }
       nv = nv + 1
     end
   end
@@ -328,6 +352,7 @@ function FDB.OnRemote(peerID, msg)
           npc = Num(x[1], 0, 2 ^ 24) or 0, name = name, map = map,
           x = Num(x[4], 0, 100) or 0, y = Num(x[5], 0, 100) or 0,
           cost = Num(x[6], 0, 1e9) or 0,
+          fac = (x[7] == "A" or x[7] == "H" or x[7] == "N") and x[7] or nil,
         }
         nv = nv + 1
         added = added + 1
@@ -404,7 +429,9 @@ function FDB.Stats()
   return nb, nv, nd, np, ncr, nde
 end
 
-ns.On("MERCHANT_SHOW", function() FDB.ObserveMerchant() end)
+ns.On("MERCHANT_SHOW", function() FDB.ObserveNpcFaction() FDB.ObserveMerchant() end)
+ns.On("TRAINER_SHOW", function() FDB.ObserveNpcFaction() end)
+ns.On("GOSSIP_SHOW", function() FDB.ObserveNpcFaction() end)
 ns.On("LOOT_READY", function() FDB.ObserveLoot() end)
 ns.On("PLAYER_LOGIN", function()
   if C_Timer and C_Timer.After then C_Timer.After(25, FDB.BroadcastGuild) end
