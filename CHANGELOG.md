@@ -1,5 +1,39 @@
 # ComradeCraft
 
+## v0.5.0
+
+### Highlights
+- **Target Skill & True Cost of Leveling**: Type the skill you want to reach in the `Plan` tab (or scroll the mouse wheel: +/-5, Shift: +/-25). The plan stops there and shows the full bill: **gross**, **to buy** (missing mats from the AH and merchants), **resale**, **trainer & recipes**, and the **net** cost or profit. Every step now shows its own `cost · resale · net` line, in green for profit and red for loss. You can also set a target on a friend's or an alt's plan; that target stays on your side only.
+- **Leveling Budget**: Enter the gold you want to spend in **Budget (g)**. The plan reinvests the sales of your earlier crafts, tells you how far your budget gets you (`With your budget you can reach 215`), greys out the steps you can't afford yet, and shows the most gold you'll need at any one moment.
+- **Smarter, Cheaper Leveling Routes**:
+  - Routes now include **recipes sold by merchants** (with faction and location) and **world-drop patterns listed at the Auction House**, and only pick a bought recipe when it actually pays for itself. A recipe bought for just a few points is dropped if leveling without it is cheaper.
+  - When a quest gives a cheaper recipe, the plan tells you (`Alternative: X from the quest Y would save about 3g`).
+  - Recipes that need a higher character level, a reputation you don't have, or materials you can't get on WoW Forever are no longer suggested.
+  - Recipes with a cooldown (Transmutes, Mooncloth…) stay out of leveling routes, and their real WoW Forever cooldowns are now used everywhere.
+- **Realistic Resale**: For each step, the plan suggests what to do with your crafts: `12 at the AH`, `disenchant 8 with Enchanting`, `5 to a merchant`. It accounts for how many actually sell per day (when your price addon provides that data), the AH cut, and the real deposit (5% of the merchant price per 2h; the neutral AH deposit is handled too).
+- **Tools & Crafting Stations**: Steps now tell you which tool you need (`Get a Blacksmith Hammer`, `Sold by trade supplies vendors`) and where to craft (`Craft at: Anvil`, `Nearest: …`), with a 1-click TomTom waypoint to the nearest Anvil, Forge, Cooking Fire, Alchemy Lab, Black Anvil and more. New station locations are saved the first time someone in your group crafts there.
+- **New `Goldmaking` View** (in the `Plan` tab):
+  - **Repeat goldmakers**: The crafts you know that earn the most at the AH, at the pace the AH actually buys them, after the cut and deposit. Sub-components are bought or crafted, whichever is cheaper (`craft the Bronze Bar yourself`). **Queue** sends a batch to your profession's craft queue in 1 click, and **Restock** tops up what's missing.
+  - **No risk: sell to a merchant**: Crafts that turn a profit straight at a vendor.
+  - **Cooldown goldmakers**: Your best daily cooldowns, with `ready in 3h` timers.
+  - **Recipes worth buying**: Unlearned recipes that pay for themselves (`recipe 4g, paid back in 6 crafts`), with waypoints. **What if I learned** shows how a recipe would change your list before you buy it.
+- **Auction House Helpers**:
+  - Without TSM or Auctionator, the new **Price mats** button searches the next unpriced material from your plan in 1 click (`Price mats (3/12)`), and your plans update as prices come in.
+  - Shopping lists for Auctionator are ready in 1 click.
+- **Bank: Deposit Later Mats**: 1 click stores the materials you only need for later steps (`Needed at skill 175`). Mats for your current step, your Wishlist, friends' requests and reserved items stay in your bags.
+
+### Quality of Life & Bug Fixes
+- **More Accurate WoW Forever Data**: Recipes now include the latest WoW Forever server hotfixes. 4 recipes that listed outdated reagents are fixed. Merchant prices and NPC locations come from what you and your friends actually see in game.
+- **Faster Tooltips After Login**: Item details (bound or not, stackable, bag size, disenchant results) are now built into the addon, so plans and tooltips are right even before the game has loaded the item.
+- **Friends' New Alts Need Your OK**: When a friend says a new character is theirs, you get a message to **Accept** or **Refuse** it in `Manage group`. A new **Forget** button removes a player you no longer play with.
+- **Character Renames & Surnames**: Your data, requests and reservations now follow a renamed character, and nothing is lost when a friend's character gets its WoW Forever surname. New alts are saved correctly even when WoW Forever doesn't give a realm.
+- **Fixed Tooltip Flickering at the Auction House**: Shift-comparing an item, or hovering the ComradeCraft AH panel, no longer makes the tooltip flash.
+- **Fixed Repeated Tooltip Lines**: The ComradeCraft block no longer disappears or doubles when you move between two stacks of the same item.
+- **Fixed Merchant Error**: Opening certain WoW Forever vendors (e.g. *Gearcutter Cogspinner*) no longer throws a Lua error.
+- **Bags, Bank & Mail**: The bank is rescanned while open, Cash-on-Delivery mail is no longer counted as yours, special profession bags are no longer counted as free space, and the mail queue no longer skips items.
+- **Sharper Planning**: Unknown prices no longer turn a loss into a profit (a `<` means "at most"). Materials you already own are used first, and trainer choices are correct when two trainers share a name.
+- **Safer Sharing**: The shared WoW Forever database now only shares what you saw yourself, rejects bad values, and calculates drop rates and disenchant results more accurately.
+
 ## v0.4.0
 
 ### Highlights
