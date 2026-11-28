@@ -1652,6 +1652,10 @@ def main():
       FromD({ t = "P", v = 1, id = "gPing" }, "Pinger")
       FromD({ t = "P", v = 1, id = "gPing2" }, "Pinger2", "WHISPER")
       assert(#Dir() == 1 and Dir()[1].dist == "WHISPER" and Dir()[1].target == "Pinger", "directory: one whispered answer to a guild ping")
+      sent = {} -- an alt not bound to gPing still gets the guild-public directory answer
+      FromD({ t = "P", v = 1, id = "gPing" }, "PingerAlt")
+      assert(ComradeCraftDB.peers.gPing.name == "Pinger" and #Dir() == 1 and Dir()[1].target == "PingerAlt",
+        "directory: refused sender keeps the binding but gets the directory answer")
       -- Search, tooltip, whisper, view and commands.
       local bolt2 = ns.Recipes[2963][5]
       local found = ns.Directory.Search("item" .. bolt2)
@@ -3108,6 +3112,8 @@ def main():
             Msg({ t = "P", v = S.PROTO, id = "bindR", u = 1 }, "GUILD", "Rook-Realm")
             Msg({ t = "P", v = S.PROTO, id = "bindR", u = 2 }, "GUILD", "Rook Stone-Realm")
             assert(ComradeCraftDB.peers["bindR"].name == "Rook Stone-Realm", "sync: name gaining a surname keeps its account")
+            Msg({ t = "P", v = S.PROTO, id = "bindR", u = 3 }, "GUILD", "Rook Thief-Realm")
+            assert(ComradeCraftDB.peers["bindR"].name == "Rook Stone-Realm", "sync: surname upgrade is one-shot")
             Msg({ t = "G", v = S.PROTO, id = "bindR", c = { ["Rook Stone-Realm"] = { cl = "MAGE", p = {} } } }, "GUILD", "Rook Stone-Realm")
             Msg({ t = "G", v = S.PROTO, id = "bindX", c = { ["Rook Stone-Realm"] = { cl = "MAGE", p = {} } } }, "GUILD", "Thief-Realm")
             assert(dir["Rook Stone-Realm"] and dir["Rook Stone-Realm"].peer == "bindR", "directory: another account cannot take an entry")

@@ -719,7 +719,11 @@ function Sync.SenderAllowed(db, id, peer, sender)
   if not next(peer.names) or peer.names[sender] then return true end
   local function Same(key) return ns.IsSameChar(sender, key) end
   for name in pairs(peer.names) do
-    if Same(name) or Sync.UpgradedKey(name, { [sender] = true }, {}) then return true end
+    if Same(name) then return true end
+    if Sync.UpgradedKey(name, { [sender] = true }, {}) then
+      peer.names[name] = nil -- one-shot: the bare name cannot gain a second surname
+      return true
+    end
   end
   for key in pairs(peer.chars or {}) do if Same(key) then return true end end
   for key, rec in pairs(db.remote or {}) do if rec.peer == id and Same(key) then return true end end
@@ -745,6 +749,8 @@ function Sync.OnMessage(text, dist, sender)
   end
   if not Sync.SenderAllowed(db, id, peer, sender) then
     ns.Log(("sync: %s claims account %s bound to %s, ignored"):format(sender, id, tostring(peer.name)))
+    -- The directory answer is guild-public and goes to the server-given sender: id not needed.
+    if msg.t == "P" and ns.Directory then ns.Directory.OnPing(sender, dist) end
     return
   end
   peer.names[sender] = true
