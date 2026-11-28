@@ -2795,6 +2795,46 @@ def main():
           assert(bMap[2589] and bMap[2589].n == 10, "bank: withdraws 10 Linen for own step-1 plan")
           assert(bMap[2318] and bMap[2318].n == 5, "bank: withdraws 5 Light Leather to send to Vez")
           me.bank, me.bags, me.needs = savedBank, savedBags, savedNeeds
+          do -- Bank deposit: bag mats needed only at a later plan step, never now/reserved.
+            local sBags, sBank, sNeeds, sRes, sCC, sReq = me.bags, me.bank, me.needs, me.reserved, C_Container, ComradeCraftDB.requests
+            ComradeCraftDB.requests = {}
+            me.bank = {}
+            me.bags = { [2589] = 20, [2592] = 7, [2996] = 4, [4306] = 3 }
+            me.needs = { [197] = { name = "Tailoring", gross = { [2589] = 10, [2592] = 7, [2996] = 4, [4306] = 3 },
+              items = {}, when = { [2589] = 1, [2592] = 3, [2996] = 2, [4306] = 4 },
+              plan = { { from = 1 }, { from = 45 }, { from = 75 }, { from = 125 } } } }
+            me.reserved = { [2996] = { to = "Vez-Realm", qty = 4, t = 0 } }
+            ns.ClearGiveCache()
+            local dl = {}
+            for _, it in ipairs(ns.Bank.DepositItems()) do dl[it.item] = it end
+            assert(dl[2592] and dl[2592].n == 7 and dl[2592].skill == 75, "bank deposit: later-step item listed at its skill")
+            assert(not dl[2589], "bank deposit: item needed at the current step is kept")
+            assert(not dl[2996], "bank deposit: reserved item is kept")
+            local slots = { { itemID = 2592, stackCount = 7 }, { itemID = 2589, stackCount = 20 }, { itemID = 4306, stackCount = 3 } }
+            local used, bankFree = {}, 5
+            C_Container = {
+              GetContainerNumSlots = function(bag) return bag == 0 and 3 or 0 end,
+              GetContainerItemInfo = function(bag, slot) if bag == 0 then return slots[slot] end end,
+              GetContainerNumFreeSlots = function(bag)
+                if bag == -1 then return bankFree, 0 elseif bag == 5 then return 9, 8 end
+                return 0, 0
+              end,
+              UseContainerItem = function(bag, slot) used[#used + 1] = bag .. ":" .. slot end,
+            }
+            local ef = __frame
+            ef.onEvent(ef, "BANKFRAME_OPENED")
+            ns.Bank.DepositLater()
+            assert(table.concat(used, ",") == "0:1,0:3", "bank deposit: uses only the listed slots, got " .. table.concat(used, ","))
+            used, bankFree = {}, 1
+            ns.Bank.DepositLater()
+            assert(table.concat(used, ",") == "0:1", "bank deposit: capped to free generic bank slots (special bag ignored)")
+            ef.onEvent(ef, "BANKFRAME_CLOSED")
+            used = {}
+            ns.Bank.DepositLater()
+            assert(#used == 0, "bank deposit: nothing once the bank is closed")
+            me.bags, me.bank, me.needs, me.reserved, C_Container, ComradeCraftDB.requests = sBags, sBank, sNeeds, sRes, sCC, sReq
+            ns.ClearGiveCache()
+          end
           -- ConversionHints: 3x Lesser -> 1x Greater and 1x Greater -> 3x Lesser.
           ns.Recipes[999301] = { 333, 50, 100, 1, 0, 1, { 10939, 1 } }
           ns.Recipes[999302] = { 333, 50, 100, 1, 0, 1, { 10938, 2 } }

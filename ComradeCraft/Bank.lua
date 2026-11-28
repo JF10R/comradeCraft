@@ -1,6 +1,7 @@
 -- Bank: compact Blizzard side panel docked beside the bank window.
 -- Lists items stored in your bank needed right now (for your current plan step, Wishlist,
--- or to mail to group members) and withdraws them into your bags in 1 click.
+-- or to mail to group members) and withdraws them into your bags in 1 click; also deposits
+-- bag mats needed only at a later plan step.
 local _, ns = ...
 local L = ns.L
 
@@ -153,6 +154,49 @@ function Bank.Items()
   return out
 end
 
+-- Pure: bag items the plans need only at a later step (never now, Wishlist, group sends,
+-- requests or reserves): { { item, n, step, skill? } }, soonest first. Banking them frees bags.
+function Bank.DepositItems()
+  local out = {}
+  if not (ComradeCraftDB and ComradeCraftDB.chars) then return out end
+  local me = ns.CharKey()
+  local c = ComradeCraftDB.chars[me]
+  if not (c and c.bags) then return out end
+  local now, first = {}, {}
+  for line, need in pairs(c.needs or {}) do
+    for item in pairs(need.gross or {}) do
+      local step = need.when and need.when[item]
+      if line == 0 or step == 1 then
+        now[item] = true
+      elseif step and (not first[item] or step < first[item].step) then
+        local p = need.plan and need.plan[step]
+        first[item] = { step = step, skill = p and p.from }
+      end
+    end
+  end
+  for item in pairs(ns.Bags and ns.Bags.BuildIndex and ns.Bags.BuildIndex() or {}) do now[item] = true end
+  for _, g in ipairs(ns.GiveList and ns.GiveList(me) or {}) do now[g.item] = true end
+  for item in pairs(c.reserved or {}) do now[item] = true end
+  for _, r in pairs(ComradeCraftDB.requests or {}) do
+    if (r.status == "accepted" or r.status == "crafting") and r.to == me then
+      if r.item then now[r.item] = true end
+      local reag = r.spell and ns.Recipes and ns.Recipes[r.spell] and ns.Recipes[r.spell][7] or {}
+      for i = 1, #reag, 2 do now[reag[i]] = true end
+    end
+  end
+  for item, f in pairs(first) do
+    local t = ns.ITEM_TRANSFORMS and ns.ITEM_TRANSFORMS[item]
+    if (c.bags[item] or 0) > 0 and not now[item] and not (t and now[t.other]) then
+      out[#out + 1] = { item = item, n = c.bags[item], step = f.step, skill = f.skill }
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.step ~= b.step then return a.step < b.step end
+    return a.item < b.item
+  end)
+  return out
+end
+
 local function FindInBank(item)
   if not (C_Container and C_Container.GetContainerItemInfo) then return nil end
   for _, bag in ipairs(BankBagIndexes()) do
@@ -236,9 +280,70 @@ function Bank.WithdrawAll()
   end
 end
 
+-- Free slots in generic bank space (bank + family-0 bank bags): caps how many stacks we deposit.
+local function FreeGenericBankSlots()
+  if not (C_Container and C_Container.GetContainerNumFreeSlots) then return 0 end
+  local n = 0
+  for _, bag in ipairs(BankBagIndexes()) do
+    local free, family = C_Container.GetContainerNumFreeSlots(bag)
+    if (family or 0) == 0 then n = n + (free or 0) end
+  end
+  return n
+end
+
+local depQueue, depRunning = {}, false
+local function DepositStep()
+  local job = table.remove(depQueue, 1)
+  if not (job and isOpen) or (InCombatLockdown and InCombatLockdown()) then
+    depQueue, depRunning = {}, false
+    if Bank.UpdatePanel then Bank.UpdatePanel() end
+    return
+  end
+  -- Re-check the slot: a moved stack must never be "used" (eaten, equipped) by mistake.
+  local info = C_Container.GetContainerItemInfo(job.bag, job.slot)
+  if info and info.itemID == job.item and not info.isLocked then
+    C_Container.UseContainerItem(job.bag, job.slot)
+  end
+  if #depQueue > 0 and C_Timer and C_Timer.After then
+    C_Timer.After(STEP_DELAY, DepositStep)
+  else
+    depRunning = false
+    if Bank.UpdatePanel then Bank.UpdatePanel() end
+  end
+end
+
+-- Deposits every bag stack of the later-step items (or only `onlyItem`), paced, never in combat.
+function Bank.DepositLater(onlyItem)
+  if not isOpen or depRunning or (InCombatLockdown and InCombatLockdown()) then return end
+  if not (C_Container and C_Container.UseContainerItem and C_Container.GetContainerItemInfo) then return end
+  local want = {}
+  for _, it in ipairs(Bank.DepositItems()) do
+    if not onlyItem or it.item == onlyItem then want[it.item] = true end
+  end
+  local room, full = FreeGenericBankSlots(), false
+  for _, bag in ipairs(PlayerBagIndexes()) do
+    for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+      local info = C_Container.GetContainerItemInfo(bag, slot)
+      if info and want[info.itemID] and not info.isLocked then
+        if room > 0 then
+          depQueue[#depQueue + 1] = { bag = bag, slot = slot, item = info.itemID }
+          room = room - 1
+        else
+          full = true
+        end
+      end
+    end
+  end
+  if full then ns.Print(L["Your bank is full."]) end
+  if #depQueue > 0 then
+    depRunning = true
+    DepositStep()
+  end
+end
+
 -- Side panel docked to the bank window (Blizzard BankFrame or Bagnon/BagBrother bank) -----
 
-local panel, button, rows
+local panel, button, depButton, rows
 
 local function BankAnchor()
   for _, name in ipairs({ "BagnonBankFrame1", "BagnonFramebank", "ElvUI_BankContainerFrame", "BankFrame" }) do
@@ -288,7 +393,9 @@ local function CreateRow(parent)
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   b:SetScript("OnClick", function(self)
-    if self.itemID and (self.qtyNum or 0) > 0 then
+    if self.itemID and self.deposit then
+      Bank.DepositLater(self.itemID)
+    elseif self.itemID and (self.qtyNum or 0) > 0 then
       Bank.WithdrawItem(self.itemID, self.qtyNum)
     end
   end)
@@ -341,6 +448,10 @@ local function CreatePanel()
   button:SetSize(PANEL_W - 20, 22)
   button:SetText(L["Withdraw needed"])
   button:SetScript("OnClick", Bank.WithdrawAll)
+  depButton = CreateFrame("Button", "ComradeCraftBankDepositButton", panel, "UIPanelButtonTemplate")
+  depButton:SetSize(PANEL_W - 20, 22)
+  depButton:SetText(L["Deposit later mats"])
+  depButton:SetScript("OnClick", function() Bank.DepositLater() end)
   rows = {}
 end
 
@@ -350,34 +461,52 @@ function Bank.UpdatePanel()
     panel:Hide()
     return
   end
-  local items = Bank.Items()
-  if #items == 0 then
+  local items, later = Bank.Items(), Bank.DepositItems()
+  if #items == 0 and #later == 0 then
     panel:Hide()
     return
   end
   AnchorPanel()
-  panel.sub:SetText(L["Click an item to withdraw it."])
+  panel.title:SetText(#items > 0 and L["Withdraw from bank"] or L["Deposit later mats"])
+  panel.sub:SetText(#items > 0 and L["Click an item to withdraw it."] or "")
   for _, r in ipairs(rows) do r:Hide() end
-  local y = -46
-  for i = 1, math.min(#items, MAX_ROWS) do
-    local it = items[i]
-    local r = rows[i]
-    if not r then r = CreateRow(panel) rows[i] = r end
+  button:Hide()
+  depButton:Hide()
+  local y, n = -46, 0
+  local function Row(it, deposit, sub)
+    n = n + 1
+    local r = rows[n]
+    if not r then r = CreateRow(panel) rows[n] = r end
     local name, icon = ItemInfo(it.item)
-    r.itemID, r.qtyNum = it.item, it.n
+    r.itemID, r.qtyNum, r.deposit = it.item, it.n, deposit
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", 10, y)
     r.icon:SetTexture(icon)
     r.name:SetText(name or ("item:" .. it.item))
     r.qty:SetText("|cffffd100x" .. it.n .. "|r")
-    r.sub:SetText(it.reason or "")
+    r.sub:SetText(sub or "")
     r:Show()
     y = y - 30
   end
-  button:ClearAllPoints()
-  button:SetPoint("TOPLEFT", 10, y - 4)
-  button:Show()
-  panel:SetHeight(-y + 34)
+  local function Button(b)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", 10, y - 4)
+    b:Show()
+    y = y - 30
+  end
+  if #items > 0 then
+    for i = 1, math.min(#items, MAX_ROWS) do Row(items[i], false, items[i].reason) end
+    Button(button)
+  end
+  if #later > 0 then
+    if #items > 0 then y = y - 6 end
+    for i = 1, math.min(#later, MAX_ROWS) do
+      local it = later[i]
+      Row(it, true, it.skill and L["Needed at skill %d"]:format(it.skill) or L["Needed later"])
+    end
+    Button(depButton)
+  end
+  panel:SetHeight(-y + 4)
   panel:Show()
 end
 
@@ -388,7 +517,7 @@ ns.On("BANKFRAME_OPENED", function()
   if C_Timer and C_Timer.After then C_Timer.After(0.1, Bank.UpdatePanel) end
 end)
 ns.On("BANKFRAME_CLOSED", function()
-  isOpen, queue, running = false, {}, false
+  isOpen, queue, running, depQueue, depRunning = false, {}, false, {}, false
   if panel then panel:Hide() end
 end)
 ns.On("PLAYERBANKSLOTS_CHANGED", function() if isOpen then Bank.UpdatePanel() end end)
