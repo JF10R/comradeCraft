@@ -594,7 +594,10 @@ function ns.DescribeNeed(p, c)
     for _, e in ipairs(adv.entries) do out.plan[#out.plan + 1] = "  " .. e.text end
     for _, n in ipairs(adv.notes) do out.plan[#out.plan + 1] = "  " .. n end
   end
-  for _, step in ipairs(need.plan or {}) do
+  local allSteps = {}
+  for _, st in ipairs(need.plan or {}) do allSteps[#allSteps + 1] = st end
+  for _, st in ipairs(need.overPlan or {}) do allSteps[#allSteps + 1] = st end
+  for _, step in ipairs(allSteps) do
     while caps[capIdx] and step.from >= caps[capIdx] do
       AddRankStep(caps[capIdx])
       capIdx = capIdx + 1
@@ -646,7 +649,9 @@ function ns.DescribeNeed(p, c)
     if priced then
       range = range .. "  |cffb0b0b0" .. (stepComplete and "~" or ">") .. ns.Money(math.floor(stepCost)) .. "|r"
     end
+    if step.over then for _, e in ipairs(entries) do e.dim = true end end
     out.steps[#out.steps + 1] = { range = range, entries = entries, from = step.from, to = step.to,
+      over = step.over, copper = stepCost, copperOk = stepComplete,
       cost = priced and ((stepComplete and "~" or ">") .. ns.Money(math.floor(stepCost))) or nil }
     out.plan[#out.plan + 1] = range .. " :"
     for _, e in ipairs(entries) do out.plan[#out.plan + 1] = "  " .. e.text end
@@ -664,7 +669,7 @@ function ns.DescribeNeed(p, c)
   if priced then
     local trainer, trainerOk = rankCost, rankComplete
     for _, step in ipairs(out.steps) do
-      if not step.rankCap then
+      if not step.rankCap and not step.over then
         for _, e in ipairs(step.entries) do
           if e.kind == "learn" then
             if e.copper then trainer = trainer + e.copper else trainerOk = false end
@@ -712,8 +717,16 @@ function ns.DescribeNeed(p, c)
   if #vendor > 0 then out.vendor = ns.L["Buy from a vendor: %s."]:format(table.concat(vendor, ", ")) end
 
   if need.reason == "budget" then
-    out.blocked = ns.L["Budget reached at %d: %s more needed (sales of earlier crafts included)."]:format(
-      need.reached, ns.Money(math.ceil(need.short or 0)))
+    -- Shown as a banner before the greyed steps (UI/Plan.lua).
+    local more, ok = 0, true
+    for _, st in ipairs(out.steps) do
+      if st.over then
+        if st.copper then more = more + st.copper end
+        ok = ok and st.copperOk
+      end
+    end
+    out.budgetStop = { reached = need.reached, target = need.target or p.max,
+      more = more > 0 and ns.TotalMoney(more, ok) or ns.Money(math.ceil(need.short or 0)) }
   elseif need.reason then
     local why = need.reason == "grey"
       and ns.L["Stuck at %d: all your known recipes are grey (no more points)."]:format(need.reached)

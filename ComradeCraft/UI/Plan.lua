@@ -107,9 +107,23 @@ local function LayoutProfession(y, name, p, c, own, key)
     yy = yy + 24
   end
 
+  -- Budget banner: how far the budget goes, then the greyed rest and a way to drop the budget.
+  local bannerDone = false
+  local function BudgetBanner()
+    if bannerDone or not d.budgetStop then return end
+    bannerDone = true
+    local bs = d.budgetStop
+    local _, bh = Label(PROF_W, y - yy - 4, "|cffffd100" .. L["With your budget you can reach %d (target %d)."]:format(bs.reached, bs.target)
+      .. "|r\n|cffb0b0b0" .. L["Filtered by the budget: the greyed steps need about %s more."]:format(bs.more) .. "|r",
+      "GameFontNormal", RIGHT_W - 130)
+    local lineKey = key
+    Action(PROF_W + RIGHT_W - 124, y - yy - 2, L["Remove budget"], function() ns.SetBudget(lineKey, nil) end):SetWidth(122)
+    yy = yy + math.max(bh, 24) + 10
+  end
   for _, step in ipairs(d.steps or {}) do
+    if step.over then BudgetBanner() end
     yy = yy + 4 + PlaceStep(PROF_W, y - yy - 2, RIGHT_W, { kind = "range", from = step.from, to = step.to,
-      cost = step.cost, header = step.header }, own)
+      cost = step.cost, header = step.header, dim = step.over }, own)
     if step.warn then
       local _, wh = Label(PROF_W + 4, y - yy - 2, "|cffff9933" .. step.warn .. "|r", nil, RIGHT_W - 4)
       yy = yy + wh + 4
@@ -124,13 +138,14 @@ local function LayoutProfession(y, name, p, c, own, key)
         if deTo then
           local hint = "|cff80ff80" .. (deTo == key and L["Disenchant for your enchanting plan"]
             or L["Send to %s to disenchant"]:format(ShortName(deTo))) .. "|r"
-          e = { kind = e.kind, spell = e.spell, item = e.item, n = e.n, label = e.label, text = e.text,
+          e = { kind = e.kind, spell = e.spell, item = e.item, n = e.n, label = e.label, text = e.text, dim = e.dim,
             detail = (e.detail and e.detail ~= "" and (e.detail .. "  -  ") or "") .. hint }
         end
       end
       yy = yy + PlaceStep(PROF_W + 4, y - yy, RIGHT_W - 4, e, own, idx % 2 == 0)
     end
   end
+  BudgetBanner() -- no greyed step to put it before: at the end
 
   -- Totals to the target, both routes: gross | to buy | resale | net (hover: details).
   if d.totals then

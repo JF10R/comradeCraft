@@ -475,6 +475,36 @@ def main():
       c.professions.Tailoring.rank = 1
       ns.SetTarget("Test-Realm", 197, nil)
       assert(c.targets == nil and c.needs[197].target == 75, "target: back to the cap")
+      -- A difficulty bound seen before the data's build (pre-hotfix) is ignored.
+      do
+        local g0 = ns.Recipes[3326][3]
+        ComradeCraftDB.recipeBounds = ComradeCraftDB.recipeBounds or {}
+        ComradeCraftDB.recipeBounds[3326] = { y = 50, g = 75 }
+        ns.ApplyRecipeBounds()
+        assert(ns.Recipes[3326][3] == g0, "recipe bounds: an old observation does not undo a hotfix")
+        ComradeCraftDB.recipeBounds[3326] = { y = 50, g = 95, b = ns.DataBuild() }
+        ns.ApplyRecipeBounds()
+        assert(ns.Recipes[3326][3] == 95, "recipe bounds: a current observation applies")
+        ns.Recipes[3326][3], ComradeCraftDB.recipeBounds[3326] = g0, nil
+      end
+      -- Budget too small: the route stops, the rest is shown greyed with a banner.
+      ComradeCraftDB.settings = ComradeCraftDB.settings or {}
+      local oldObj, oldB, oldK, oldM = ComradeCraftDB.settings.groupObjective, c.bags, c.bank, c.mail
+      ComradeCraftDB.settings.groupObjective, c.bags, c.bank, c.mail = "solo", {}, {}, {} -- nothing free
+      ComradeCraftDB.budgets = { ["Test-Realm"] = 1 }
+      ns.UpdateNeeds(c)
+      local bn = c.needs[197]
+      assert(bn and bn.reason == "budget" and bn.overPlan and #bn.overPlan > 0 and bn.overPlan[1].over,
+        "budget: greyed rest of the way computed")
+      local bd = ns.DescribeNeed(c.professions.Tailoring, c)
+      local sawDim = false
+      for _, st in ipairs(bd.steps) do if st.over and st.entries[1].dim then sawDim = true end end
+      assert(bd.budgetStop and bd.budgetStop.reached == bn.reached and sawDim, "budget: banner + greyed steps")
+      ComradeCraftDB.budgets = nil
+      ns.UpdateNeeds(c)
+      assert(not c.needs[197].overPlan, "budget: removed = full route again")
+      ComradeCraftDB.settings.groupObjective, c.bags, c.bank, c.mail = oldObj, oldB, oldK, oldM
+      ns.UpdateNeeds(c)
       -- A friend's character: the target is local (kit), never sent, and wins over theirs.
       ComradeCraftDB.remote = ComradeCraftDB.remote or {}
       local fr = { class = "MAGE", peer = "pvT", targets = { [197] = 60 }, updated = 5,
@@ -533,6 +563,9 @@ def main():
         local _, fReached, _, fi = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
         assert(fReached == 10 and fi.reason == nil and (fi.peak or 0) > 0, "budget: no limit reaches the target, peak known")
         assert(bReached < 10 and bi.reason == "budget" and bi.short > 0, "budget: stops when the gold runs out")
+        ns.resaleCtx = { budget = 25, deBy = function() return nil end }
+        local _, oReached = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, { [2589] = 100 }, nil, "cheap")
+        assert(oReached == 10, "budget: mats you already hold cost nothing")
         ns.SaleCap, ns.resaleCtx, ns.PriceSource, ns.DisenchantEstimate = oldCap, oldCtx, oldPS3, oldDE
         ns.Recipes[999811], ns.ItemPrices[999812] = nil, nil
       end
@@ -2502,7 +2535,7 @@ def main():
           ComradeCraftDB.recipeBounds = ComradeCraftDB.recipeBounds or {}
           ComradeCraftDB.foreverDrops = ComradeCraftDB.foreverDrops or {}
           ComradeCraftDB.foreverVendors = ComradeCraftDB.foreverVendors or {}
-          ComradeCraftDB.recipeBounds[2963] = { y = 25, g = 45 }
+          ComradeCraftDB.recipeBounds[2963] = { y = 25, g = 45, b = ns.DataBuild() }
           ComradeCraftDB.foreverDrops[88881] = { d = 3, k = 30, npc = 5555, name = "Rare Wolf", map = 1440, x = 42, y = 61, rare = true }
           ComradeCraftDB.foreverVendors[16072] = { npc = 3413, name = "Shandrina", map = 1440, x = 49, y = 67, cost = 10000 }
           local fp = ns.ForeverDB.Payload()
@@ -2571,7 +2604,7 @@ def main():
           local FDB = ns.ForeverDB
           -- 20a. ForeverDB recipeBounds round-trip + customRecipes P2P sync + calibrated DE.
           local origY, origG = ns.Recipes[2963][2], ns.Recipes[2963][3]
-          ComradeCraftDB.recipeBounds[2963] = { y = origY + 7, g = origG + 11 }
+          ComradeCraftDB.recipeBounds[2963] = { y = origY + 7, g = origG + 11, b = ns.DataBuild() }
           ComradeCraftDB.customRecipes[999501] = { 197, 55, 80, 1, 2996, 1, { 2589, 3 } }
           ComradeCraftDB.disenchants = { raw = {} }
           for i = 1, 5 do

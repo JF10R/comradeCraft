@@ -255,8 +255,18 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   -- With a budget, a recipe is only taken when the gold at hand covers its next point.
   local budget = ctx and ctx.budget
   local spent, income, bought, short = 0, 0, {}, nil
-  local function Outlay(a, crafts)
-    local v = a.mats * crafts
+  -- Mats already held (bags, bank, mail, group stock) cost nothing; used up along the route.
+  local have = {}
+  for item, c in pairs(owned or {}) do have[item] = c end
+  for item, c in pairs(stock or {}) do have[item] = (have[item] or 0) + c end
+  local function Outlay(a, crafts, consume)
+    local v = 0
+    for item, c in pairs(a.raw) do
+      local need, h = c * crafts, have[item] or 0
+      local use = need < h and need or h
+      v = v + (need - use) * ns.ItemValue(item)
+      if consume then have[item] = h - use end
+    end
     if a.learn and not bought[a.spell] then v = v + (ns.RecipeLearnCost and ns.RecipeLearnCost(a.spell) or 0) end
     return v
   end
@@ -347,7 +357,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       break
     end
     short = nil
-    spent = spent + Outlay(best, bestN)
+    spent = spent + Outlay(best, bestN, true)
     bought[best.spell] = true
     for item, c in pairs(best.raw) do
       local need = c * bestN
@@ -883,6 +893,23 @@ function ns.UpdateNeeds(c)
     ns.resaleCtx = ns.ResaleContext(c, foundKey)
     local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, nil, mode, remStock, breaks)
     local gross, reached, plan, info = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, mode, remStock, breaks)
+    -- Budget too small: the rest of the way without a limit, shown greyed (recipes the budget
+    -- route learns count as known).
+    local overPlan, overReached
+    if info.reason == "budget" and ns.resaleCtx then
+      local saved = ns.resaleCtx
+      ns.resaleCtx = { deBy = saved.deBy }
+      local kp = {}
+      for s in pairs(known) do kp[s] = true end
+      for _, st in ipairs(plan) do
+        kp[st.spell] = true
+        for sub in pairs(st.subs or {}) do kp[sub] = true end
+      end
+      local _, r2, p2 = ns.ComputeNeeds(reached, target, kp, all, {}, learnable, mode, nil, breaks)
+      ns.resaleCtx = saved
+      for _, st in ipairs(p2) do st.over = true end
+      if #p2 > 0 then overPlan, overReached = p2, r2 end
+    end
     local oGross, oReached, _, oInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, other, remStock, breaks)
     -- Other route's missing mats, against what is left before this route takes its share
     -- (no Lesser/Greater conversion: close enough for the comparison).
@@ -939,6 +966,7 @@ function ns.UpdateNeeds(c)
       bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
       knownOnly = { reached = kReached, reason = kInfo.reason },
       mode = mode, milestones = info.milestones, sales = info.sales, peak = info.peak, short = info.short,
+      overPlan = overPlan, overReached = overReached,
       alt = { mode = other, reached = oReached, milestones = oInfo.milestones, gross = oGross, items = oItems } }
   end
   if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then

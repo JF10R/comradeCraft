@@ -388,6 +388,7 @@ end
 local function PlaceStep(x, y, w, e, own, zebra)
   local s = Acquire(steps, CreateStep)
   s.entry, s.own = e, own
+  s:SetAlpha(e.dim and 0.45 or 1) -- steps past the budget are greyed
   s:ClearAllPoints()
   s:SetPoint("TOPLEFT", U.content, "TOPLEFT", x, y)
   s:SetWidth(w)
