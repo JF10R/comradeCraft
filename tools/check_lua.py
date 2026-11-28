@@ -500,6 +500,27 @@ def main():
         alt = { mode = "profit", reached = 40, gross = { [2589] = 12 }, items = { [2589] = 6 }, milestones = { [0] = { best = 500 } } } },
         30, true)
       local a1, a2 = tt.routes[1], tt.routes[2]
+      -- Resale unit by unit: SaleCap units at the AH, the rest at the merchant or disenchanted
+      -- by a character of yours with enough Enchanting.
+      do
+        local oldCap, oldCtx = ns.SaleCap, ns.resaleCtx
+        ns.Recipes[999811] = { 197, 20, 40, 1, 999812, 1, { 2589, 1 } }
+        ns.ItemPrices[999812] = { 50, 200 }
+        local oldPS3, oldDE = ns.PriceSource, ns.DisenchantEstimate
+        ns.PriceSource = function(item) return ({ [2589] = 10, [999812] = 10000 })[item] end
+        ns.DisenchantEstimate = function(item) return item == 999812 and 300 or nil end
+        ns.SaleCap = function() return 3 end
+        ns.resaleCtx = { deBy = function() return "Ench-Realm" end }
+        local _, _, _, si = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
+        local s = si.sales[999812]
+        assert(s and math.floor(s.ah + 0.5) == 3 and s.de > 0 and s.vendor == 0 and s.deBy == "Ench-Realm",
+          "resale: 3 at the AH, the rest disenchanted")
+        ns.resaleCtx = { deBy = function() return nil end }
+        _, _, _, si = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
+        assert(si.sales[999812].de == 0 and si.sales[999812].vendor > 0, "resale: no enchanter = merchant")
+        ns.SaleCap, ns.resaleCtx, ns.PriceSource, ns.DisenchantEstimate = oldCap, oldCtx, oldPS3, oldDE
+        ns.Recipes[999811], ns.ItemPrices[999812] = nil, nil
+      end
       assert(a1.brut == 1000 and a1.buy == 400 and a1.resale == 50 and a1.net == 380 and a1.netOk,
         "totals: net = to buy - resale + trainer, got " .. a1.net)
       assert(a2.brut == 1200 and a2.buy == 600 and a2.net == 100 and a2.noTrainer, "totals: other route")

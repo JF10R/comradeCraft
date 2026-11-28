@@ -115,6 +115,18 @@ ns.DEPOSIT_LOSS = 0.25
 ns.DEPOSIT_MIN, ns.DEPOSIT_RATIO = 100, 0.15
 ns.AH_MARGIN = 1.1 -- the AH must beat the merchant/disenchant by 10% (time, competition)
 
+-- How many of an item the AH absorbs over a leveling session: TSM's sales per day x SALE_DAYS,
+-- else DEFAULT_SALE_CAP. Units past that count at the merchant or disenchant value.
+ns.SALE_DAYS = 3
+ns.DEFAULT_SALE_CAP = 5
+function ns.SaleCap(item)
+  if TSM_API and TSM_API.GetCustomPriceValue then
+    local ok, v = pcall(TSM_API.GetCustomPriceValue, "DBRegionSoldPerDay*1000", "i:" .. item)
+    if ok and type(v) == "number" then return math.floor(v / 1000 * ns.SALE_DAYS) end
+  end
+  return ns.DEFAULT_SALE_CAP
+end
+
 function ns.AuctionDeposit(item)
   local db = ComradeCraftDB
   local d = db and db.deposits and db.deposits[item]

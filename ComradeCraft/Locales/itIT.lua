@@ -937,6 +937,11 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Lista completata: %s",
   ["measured"] = "misurato",
     -- Target skill (Plan tab)
+    ["Sell the crafts:"] = "Cosa fare con i manufatti:",
+    ["%s: %s"] = "%s: %s",
+    ["%d at the AH"] = "%d all'asta",
+    ["disenchant %d with %s"] = "disincantare %d con %s",
+    ["%d to a merchant"] = "%d al mercante",
     ["Buy %s at the auction house (skill %s, %s)"] = "Compra %s alla casa d'aste (abilità %s, %s)",
     ["Auction house - skill %s - %s"] = "Casa d'aste - abilità %s - %s",
     ["Buy recipe: %s"] = "Compra ricetta: %s",

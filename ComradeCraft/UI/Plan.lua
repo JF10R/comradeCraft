@@ -152,6 +152,11 @@ local function LayoutProfession(y, name, p, c, own, key)
     end
     local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. note .. "|r", "GameFontDisableSmall", RIGHT_W)
     yy = yy + nh + 8
+    if d.sales and #d.sales > 0 then
+      local _, sh = Label(PROF_W, y - yy, "|cffffd100" .. L["Sell the crafts:"] .. "|r\n" .. table.concat(d.sales, "\n"),
+        "GameFontHighlightSmall", RIGHT_W)
+      yy = yy + sh + 8
+    end
   end
 
   local extra = {}

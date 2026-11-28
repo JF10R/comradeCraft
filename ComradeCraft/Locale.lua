@@ -942,6 +942,11 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["Sell the crafts:"] = "Que faire des crafts :",
+    ["%s: %s"] = "%s : %s",
+    ["%d at the AH"] = "%d à l'HV",
+    ["disenchant %d with %s"] = "désenchanter %d avec %s",
+    ["%d to a merchant"] = "%d au marchand",
     ["Buy %s at the auction house (skill %s, %s)"] = "Acheter %s à l'hôtel des ventes (compétence %s, %s)",
     ["Auction house - skill %s - %s"] = "Hôtel des ventes - compétence %s - %s",
     ["Buy recipe: %s"] = "Acheter la recette : %s",

@@ -673,6 +673,24 @@ function ns.DescribeNeed(p, c)
       end
     end
     out.totals = ns.TargetTotals(need, trainer, trainerOk)
+    -- What to do with the crafts: "Item: 5 at the AH, disenchant 12 with X, 3 to a merchant".
+    local sales = {}
+    for item, s in pairs(need.sales or {}) do
+      local parts = {}
+      local function R(x) return math.floor(x + 0.5) end
+      if R(s.ah) > 0 then parts[#parts + 1] = ns.L["%d at the AH"]:format(R(s.ah)) end
+      if R(s.de) > 0 then
+        parts[#parts + 1] = ns.L["disenchant %d with %s"]:format(R(s.de), (s.deBy or "?"):match("^[^-]+") or s.deBy)
+      end
+      if R(s.vendor) > 0 then parts[#parts + 1] = ns.L["%d to a merchant"]:format(R(s.vendor)) end
+      if #parts > 0 then
+        local name = ItemName(item)
+        sales[#sales + 1] = { name = name, text = ns.L["%s: %s"]:format(name, table.concat(parts, ", ")) }
+      end
+    end
+    table.sort(sales, function(a, b) return a.name < b.name end)
+    out.sales = {}
+    for _, s in ipairs(sales) do out.sales[#out.sales + 1] = s.text end
     local t = out.totals.routes[1]
     out.cost = ns.L["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."]:format(
       p.rank, need.reached, ns.TotalMoney(t.brut, t.brutOk), ns.TotalMoney(t.buy, t.buyOk),

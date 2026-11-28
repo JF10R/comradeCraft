@@ -117,6 +117,19 @@ function ns.DisenchantYield(item)
   return out, false, st and st.n or 0
 end
 
+-- Enchanting skill needed to disenchant an item (Classic table, keyed by required level as on
+-- Forever; approximate). nil until the client has the item cached.
+local DE_SKILL = { { 15, 1 }, { 20, 25 }, { 25, 50 }, { 30, 75 }, { 35, 100 }, { 40, 125 },
+  { 45, 150 }, { 50, 175 }, { 55, 200 } }
+function ns.DisenchantSkill(item)
+  local f = Facts(item)
+  if not f then return nil end
+  for _, b in ipairs(DE_SKILL) do
+    if f.reqLevel <= b[1] then return b[2] end
+  end
+  return 225
+end
+
 -- AH value of an item's expected disenchant mats (our yield table), or nil without prices
 -- or when the item cannot be disenchanted.
 function ns.DisenchantEstimate(item)

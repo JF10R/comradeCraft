@@ -224,11 +224,12 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     local q = math.max(1, r[6])
     local o = ns.ResaleOptions(r[5])
     a.back = { vendor = o.vendor * q, de = o.de and o.de * q, ah = o.ah and o.ah * q }
+    a.unit = { item = r[5], q = q, vendor = o.vendor, de = o.de, ah = o.ah }
     a.resale = ns.BestResale(a.back)
-    a.cost = mode == "profit" and (a.mats - a.resale) or a.mats
-    -- A recipe bought from a merchant: its known price spread over its orange + yellow points.
+    -- A recipe bought from a merchant or the AH: its price spread over its orange + yellow points.
     local price = minRank and ns.RecipeLearnCost and ns.RecipeLearnCost(spell)
-    if price then a.cost = a.cost + price / math.max(5, (r[2] or minRank + 25) - minRank) end
+    a.fixed = price and price / math.max(5, (r[2] or minRank + 25) - minRank) or 0
+    a.cost = (mode == "profit" and (a.mats - a.resale) or a.mats) + a.fixed
     if stock then
       -- Flat arrays for the inner loop: raw item ids, counts and values.
       a.ids, a.cnt, a.val = {}, {}, {}
@@ -246,7 +247,29 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   local acc, plan = {}, {}
   -- milestones[start] = { mats, points, vendor, de, ah, deMissing, ahMissing }: expected copper
   -- per bracket of the route; *Missing = some products had no such value (sum is partial).
-  local info = { used = {}, milestones = {} }
+  local info = { used = {}, milestones = {}, sales = {} }
+  -- Resale unit by unit: the AH takes SaleCap units of an item over the whole route; the rest
+  -- goes to the merchant or, when one of your characters can (ns.resaleCtx), the disenchanter.
+  local ctx, soldAH, capOf = ns.resaleCtx, {}, {}
+  local function Marginal(a, crafts)
+    local u = a.unit
+    if not (u and u.item and u.item ~= 0) then return 0, 0, 0, 0 end
+    local units = crafts * u.q
+    local de, deBy = nil, nil
+    if u.de then
+      if ctx then deBy = ctx.deBy(u.item) if deBy then de = u.de end else de = u.de end
+    end
+    local other = math.max(u.vendor or 0, de or 0)
+    local useDE = de ~= nil and de > (u.vendor or 0)
+    local ahUnits = 0
+    if u.ah and u.ah > other * ns.AH_MARGIN then
+      local cap = capOf[u.item]
+      if cap == nil then cap = ns.SaleCap(u.item) capOf[u.item] = cap end
+      ahUnits = math.min(units, math.max(0, cap - (soldAH[u.item] or 0)))
+    end
+    local rest = units - ahUnits
+    return ahUnits * (u.ah or 0) + rest * other, ahUnits, useDE and rest or 0, useDE and 0 or rest, deBy
+  end
   local left -- stock not used yet by earlier points
   if stock then
     left = {}
@@ -268,6 +291,7 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       if gain >= floor then
         local n = 1 / gain -- actions for one expected point
         local cost = a.cost * n
+        if mode == "profit" then cost = (a.mats + a.fixed) * n - (Marginal(a, n)) end
         if left then
           for j = 1, #a.ids do
             local id = a.ids[j]
@@ -325,7 +349,15 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     local b = math.floor(cur / ns.MILESTONE) * ns.MILESTONE
     local m = info.milestones[b] or { mats = 0, points = 0, vendor = 0, de = 0, ah = 0, best = 0 }
     info.milestones[b] = m
-    m.mats, m.points, m.best = m.mats + best.mats * bestN, m.points + 1, m.best + best.resale * bestN
+    local value, ahU, deU, venU, deBy = Marginal(best, bestN)
+    local pItem = best.unit and best.unit.item
+    if pItem and pItem ~= 0 then
+      soldAH[pItem] = (soldAH[pItem] or 0) + ahU
+      local s = info.sales[pItem] or { ah = 0, de = 0, vendor = 0 }
+      s.ah, s.de, s.vendor, s.deBy = s.ah + ahU, s.de + deU, s.vendor + venU, s.deBy or deBy
+      info.sales[pItem] = s
+    end
+    m.mats, m.points, m.best = m.mats + best.mats * bestN, m.points + 1, m.best + value
     m.vendor = m.vendor + best.back.vendor * bestN
     for _, k in ipairs({ "de", "ah" }) do
       if best.back[k] then m[k] = m[k] + best.back[k] * bestN else m[k .. "Missing"] = true end
@@ -717,6 +749,28 @@ function ns.GroupStock(c)
   return stock
 end
 
+-- Who can disenchant for character `c`: itself or a character of the same account (yours, or
+-- the friend's own synced alts), the one with the most Enchanting. { deBy(item) -> key|nil }.
+function ns.ResaleContext(c)
+  local pool, list = {}, {}
+  if c.peer then
+    for k, x in pairs(ns.AllChars and ns.AllChars() or {}) do if x.peer == c.peer then pool[k] = x end end
+  else
+    for k, x in pairs(ComradeCraftDB and ComradeCraftDB.chars or {}) do pool[k] = x end
+  end
+  for k, x in pairs(pool) do
+    for _, p in pairs(x.professions or {}) do
+      if p.skillLine == ns.ENCHANTING and p.rank then list[#list + 1] = { key = k, rank = p.rank } end
+    end
+  end
+  table.sort(list, function(a, b) return a.rank > b.rank end)
+  return { deBy = function(item)
+    local req = ns.DisenchantSkill and ns.DisenchantSkill(item)
+    if not req then return nil end
+    for _, e in ipairs(list) do if e.rank >= req then return e.key end end
+  end }
+end
+
 -- Recomputes c.needs[skillLine] for one character record (rank -> target, minus owned).
 -- Shared bank alts never reserve materials for leveling: all of their stock is group surplus.
 -- Deducts consumed stock across multiple professions on the same character so shared mats
@@ -788,11 +842,13 @@ function ns.UpdateNeeds(c)
     end
     local mode = ns.RouteMode(c)
     local other = mode == "profit" and "cheap" or "profit"
+    ns.resaleCtx = ns.ResaleContext(c)
     local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, nil, mode, remStock, breaks)
     local gross, reached, plan, info = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, mode, remStock, breaks)
     local oGross, oReached, _, oInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, other, remStock, breaks)
     -- Other route's missing mats, against what is left before this route takes its share
     -- (no Lesser/Greater conversion: close enough for the comparison).
+    ns.resaleCtx = nil
     local oItems = {}
     for item, n in pairs(oGross) do
       local m = n - (remOwned[item] or 0)
@@ -844,7 +900,7 @@ function ns.UpdateNeeds(c)
       reached = reached, target = target, cap = p.max, rankCaps = caps, plan = plan, reason = info.reason,
       bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
       knownOnly = { reached = kReached, reason = kInfo.reason },
-      mode = mode, milestones = info.milestones,
+      mode = mode, milestones = info.milestones, sales = info.sales,
       alt = { mode = other, reached = oReached, milestones = oInfo.milestones, gross = oGross, items = oItems } }
   end
   if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then
