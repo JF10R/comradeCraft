@@ -5,7 +5,8 @@ description: Before a ComradeCraft release (or when someone reports wrong mats, 
 
 # Refresh Forever client data
 
-`ComradeCraft/Data/Recipes.lua` (recipes, reagents, difficulty, merchant prices, reputation)
+`ComradeCraft/Data/Recipes.lua` (recipes, reagents, difficulty, merchant prices, reputation, tools,
+stations, cooldowns) and `Data/ItemMeta.lua` (bind, quality, levels, stack, bag slots)
 is generated from the Forever client tables published by wago.tools. Blizzard hotfixes change
 them (Nov 2026: five bags +1 bolt, Iron Grenade sell price). A release must ship the latest build.
 
