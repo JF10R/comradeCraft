@@ -12,12 +12,16 @@ them (Nov 2026: five bags +1 bolt, Iron Grenade sell price). A release must ship
 1. Latest build: `curl -s https://wago.tools/api/builds` -> `wowf[0].version`. Compare with
    `ns.RecipesBuild` in `ComradeCraft/Data/Recipes.lua`. Same build -> nothing to do.
 2. Regenerate: `python -X utf8 tools/gen_recipes.py --build <version>` (downloads into the
-   gitignored `tools/.cache/`).
-3. Review `git diff --stat ComradeCraft/Data/Recipes.lua` and the changed lines: reagent counts,
+   gitignored `tools/.cache/`; ~20 min the first time). The CSV export lacks server hotfixes:
+   the script reads them from wago.tools/hotfixes and applies them (e.g. SAF-T Tabs: Linen Cloth,
+   not Linen Cloak). ItemSparse hotfixes (~100k rows) are not fetched.
+3. Bake in-game sightings: `tools/.venv/Scripts/python -X utf8 tools/build_npcs.py <ComradeCraft.lua ...>`
+   with your SavedVariables and the ones friends send (npc faction/spot, station spots -> `Data/Npcs.lua`).
+4. Review `git diff --stat ComradeCraft/Data/Recipes.lua` and the changed lines: reagent counts,
    difficulty ranks, prices. Name the changed recipes from `tools/.cache/SpellName.csv`.
-4. Run `tools/.venv/Scripts/python tools/check_lua.py` (must print `OK`).
-5. Commit as `chore(data): regenerate recipes from Forever build <version>` listing the notable
+5. Run `tools/.venv/Scripts/python tools/check_lua.py` (must print `OK`).
+6. Commit as `chore(data): regenerate recipes from Forever build <version>` listing the notable
    changes. Push and tags still need the user's explicit consent (a `v*` tag publishes to CurseForge).
 
 Not covered by this data: LibProfessionDB (recipe sources, required skill; Vanilla values,
-capped at the client's yellow rank in `ns.RequiredSkill`), required tools (SpellTotems).
+capped at the client's yellow rank in `ns.RequiredSkill`).
