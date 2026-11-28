@@ -38,7 +38,10 @@ local BAG_SLOTS = {
 
 local function BagSize(item)
   local known = BAG_SLOTS[item]
-  if known ~= nil then return known or nil end
+  if known == false then return nil end -- reagent bag: ItemSparse cannot tell it from a plain bag
+  local meta = ns.ItemMeta and ns.ItemMeta[item]
+  if meta then return (meta[6] or 0) > 0 and meta[7] == 0 and meta[6] or nil end -- plain bags only
+  if known ~= nil then return known end
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   if not get then return nil end
   local _, _, _, ilvl, _, _, _, _, _, _, _, classID, subClassID = get(item)
@@ -692,7 +695,7 @@ function Audit.PatternsForCrafter(crafterKey)
             local item = r[5] or 0
             local recipeItem = RecipeItemOf(lib, spell, e)
             local forList, helpsSelf, bestScore, cat, slotGroup = {}, false, 0, nil, "Other"
-            local bagSz = item ~= 0 and BAG_SLOTS[item]
+            local bagSz = item ~= 0 and BagSize(item)
             if bagSz and bagSz >= 12 then
               for tkey, tc in pairs(chars) do
                 local mb = minBagOf[tkey]

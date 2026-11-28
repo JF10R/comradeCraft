@@ -52,6 +52,7 @@ Locales\ruRU.lua
 Locale.lua
 Core.lua
 Data\Recipes.lua
+Data\ItemMeta.lua
 Data\Npcs.lua
 Data\DropRates.lua
 Pricing.lua

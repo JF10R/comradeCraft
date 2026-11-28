@@ -178,6 +178,8 @@ function ns.IsBoP(item)
   if not item or item == 0 then return false end
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local bind = get and select(14, get(item))
+  local meta = bind == nil and ns.ItemMeta and ns.ItemMeta[item]
+  if meta then bind = meta[1] end -- cold cache: the client's own data (ItemSparse)
   if bind == nil then -- not cached yet: unknown, ask the client to load it
     if ns.RequestItemData then ns.RequestItemData(item) end
     return nil

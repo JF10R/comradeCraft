@@ -3600,6 +3600,26 @@ def main():
           and asked[55555], "upgrade: skipped until the worn piece is cached")
         GetItemInfo, C_Item, ns.RequestItemData = oGet, oCI, oReq
 
+        -- Cold cache with ItemMeta (ItemSparse): real ids still answer, nothing requested.
+        do
+          local oGet2, oCI2, oReq2, oPS, oInst = GetItemInfo, C_Item, ns.RequestItemData, ns.PriceSource, GetItemInfoInstant
+          local req = {}
+          ns.RequestItemData = function(id) req[id] = true end
+          C_Item, GetItemInfo = nil, function() return nil end
+          assert(ns.IsBoP(918) == true and ns.IsBoP(2589) == false and not next(req), "itemmeta: bind when uncached")
+          assert(ns.Audit.BagSize(4500) == 16 and ns.Audit.BagSize(22250) == nil and ns.Audit.BagSize(253664) == nil
+            and ns.Audit.BagSize(2589) == nil, "itemmeta: plain bag slots; herb and reagent bags excluded")
+          ns.Recipes[999851] = { 197, 1, 10, 1, 2996, 1, { 999833, 1 } }
+          ns.Recipes[999852] = { 197, 1, 10, 1, 2580, 1, { 999833, 1 } }
+          ns.PriceSource = function(i) return ({ [2996] = 3000, [2580] = 3000, [999833] = 100 })[i] end
+          local e1, e2 = ns.CraftEconomics(999851, {}, {}, {}), ns.CraftEconomics(999852, {}, {}, {})
+          assert(e1 and e1.stackable == true and e2 and e2.stackable == false and not next(req), "itemmeta: stackable")
+          GetItemInfoInstant = function(id) if id == 2580 then return id, "Armor", "Cloth", "INVTYPE_CLOAK", 0, 4, 1 end end
+          assert(ns.DisenchantYield(2580) and ns.DisenchantSkill(2580) == 1, "itemmeta: disenchant facts when uncached")
+          ns.Recipes[999851], ns.Recipes[999852] = nil, nil
+          GetItemInfo, C_Item, ns.RequestItemData, ns.PriceSource, GetItemInfoInstant = oGet2, oCI2, oReq2, oPS, oInst
+        end
+
         -- Tools: an equipped tool counts.
         local oc, oi = ns.ToolCategories, ns.ToolItems
         ns.ToolCategories, ns.ToolItems = { [162] = { "Blacksmith Hammer", 24, 4 } }, { [5956] = 162 }

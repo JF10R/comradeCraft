@@ -34,6 +34,16 @@ ns.ENCHANTING = 333
 local function Facts(item)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local name, _, quality, ilvl, reqLevel, _, _, _, equipLoc, _, sellPrice, classID, subclassID = get(item)
+  local m = not name and ns.ItemMeta and ns.ItemMeta[item]
+  local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if m and instant then -- cold cache: class/slot are instant, levels from ItemSparse
+    local _, _, _, eq, _, cls, sub = instant(item)
+    local p = ns.ItemPrices and ns.ItemPrices[item]
+    if cls then
+      name, quality, ilvl, reqLevel, equipLoc, classID, subclassID = "", m[2], m[3], m[4], eq, cls, sub
+      sellPrice = p and p[1] or 0
+    end
+  end
   if not name then return nil end
   return { name = name, quality = quality or 0, reqLevel = reqLevel or 0, equipLoc = equipLoc or "",
     sellPrice = sellPrice or 0, classID = classID, subclassID = subclassID, level = ns.DELevel(reqLevel, ilvl) }

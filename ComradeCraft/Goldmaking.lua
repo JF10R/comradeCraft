@@ -74,6 +74,8 @@ end
 local function Stackable(item)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local stack = get and select(8, get(item))
+  local meta = stack == nil and ns.ItemMeta and ns.ItemMeta[item]
+  if meta then stack = meta[5] end -- cold cache: ItemSparse max stack
   if stack == nil then
     if ns.RequestItemData then ns.RequestItemData(item) end -- not cached yet: shown on the next refresh
     return nil
