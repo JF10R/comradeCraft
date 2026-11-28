@@ -164,13 +164,19 @@ function Bank.DepositItems()
   if not (c and c.bags) then return out end
   local now, first = {}, {}
   for line, need in pairs(c.needs or {}) do
-    for item in pairs(need.gross or {}) do
-      local step = need.when and need.when[item]
-      if line == 0 or step == 1 then
-        now[item] = true
-      elseif step and (not first[item] or step < first[item].step) then
-        local p = need.plan and need.plan[step]
-        first[item] = { step = step, skill = p and p.from }
+    for item, step in pairs(need.when or {}) do
+      if line == 0 or step == 1 then now[item] = true end
+    end
+    -- Candidates: raw mats (gross) and owned intermediates (used) of a later step.
+    for _, map in ipairs({ need.gross or {}, need.used or {} }) do
+      for item in pairs(map) do
+        local step = need.when and need.when[item]
+        if line == 0 or step == 1 then
+          now[item] = true
+        elseif step and (not first[item] or step < first[item].step) then
+          local p = need.plan and need.plan[step]
+          first[item] = { step = step, skill = p and p.from }
+        end
       end
     end
   end

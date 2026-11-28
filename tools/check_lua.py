@@ -2803,9 +2803,19 @@ def main():
             me.needs = { [197] = { name = "Tailoring", gross = { [2589] = 10, [2592] = 7, [2996] = 4, [4306] = 3 },
               items = {}, when = { [2589] = 1, [2592] = 3, [2996] = 2, [4306] = 4 },
               plan = { { from = 1 }, { from = 45 }, { from = 75 }, { from = 125 } } } }
-            me.reserved = { [2996] = { to = "Vez-Realm", qty = 4, t = 0 } }
+            me.reserved = nil
             ns.ClearGiveCache()
             local dl = {}
+            for _, it in ipairs(ns.Bank.DepositItems()) do dl[it.item] = it end
+            assert(dl[2996] and dl[2592], "bank deposit: unreserved later-step items listed")
+            me.needs[164] = { name = "Blacksmithing", gross = {}, used = { [2592] = 2 }, when = { [2592] = 1 } }
+            dl = {}
+            for _, it in ipairs(ns.Bank.DepositItems()) do dl[it.item] = it end
+            assert(not dl[2592], "bank deposit: needed now by another profession is kept")
+            me.needs[164] = nil
+            me.reserved = { [2996] = { to = "Vez-Realm", qty = 4, t = 0 } }
+            ns.ClearGiveCache()
+            dl = {}
             for _, it in ipairs(ns.Bank.DepositItems()) do dl[it.item] = it end
             assert(dl[2592] and dl[2592].n == 7 and dl[2592].skill == 75, "bank deposit: later-step item listed at its skill")
             assert(not dl[2589], "bank deposit: item needed at the current step is kept")
