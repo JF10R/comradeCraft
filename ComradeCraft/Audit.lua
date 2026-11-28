@@ -592,7 +592,7 @@ function Audit.Run()
         local sc, cat = GS.ScoreConsumable(cn.spell, tc)
         if sc > 0 and cat then
           local prev = consByCat[cat]
-          if not prev or sc > prev.score or (sc == prev.score and cn.prio < prev.prio) then
+          if not prev or sc > prev.score or (sc == prev.score and cn.prio < prev.cn.prio) then
             consByCat[cat] = { cn = cn, score = sc, cat = cat }
           end
         end

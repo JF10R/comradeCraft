@@ -1807,6 +1807,11 @@ def main():
           if cn.spell == 25126 then sawWizOil = true end
         end
         assert(sawFrostElixir and sawWizOil, "audit consumables: Frost Elixir + Wizard Oil suggested")
+        -- Two of your characters know the same elixir: equal scores tie-break on priority, no error.
+        ComradeCraftDB.chars["Twin-Realm"] = { class = "MAGE", level = 40, known = { [171] = { [21923] = true } }, updated = time() + 5 }
+        local okTie, errTie = pcall(ns.Audit.Run)
+        assert(okTie, "audit consumables: tie on score, got " .. tostring(errTie))
+        ComradeCraftDB.chars["Twin-Realm"] = nil
         -- #5 Trainer highlights: available trainer recipe crafting Frost Gloves (999101) flagged as upgrade!
         local oldSN = ns.SpellName
         ns.SpellName = function(sp) return sp == 999101 and "Frost Gloves" or oldSN(sp) end
