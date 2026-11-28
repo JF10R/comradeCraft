@@ -251,6 +251,15 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
   -- Resale unit by unit: the AH takes SaleCap units of an item over the whole route; the rest
   -- goes to the merchant or, when one of your characters can (ns.resaleCtx), the disenchanter.
   local ctx, soldAH, capOf = ns.resaleCtx, {}, {}
+  -- Treasury: what the route has spent on mats and recipes, what earlier crafts sold back.
+  -- With a budget, a recipe is only taken when the gold at hand covers its next point.
+  local budget = ctx and ctx.budget
+  local spent, income, bought, short = 0, 0, {}, nil
+  local function Outlay(a, crafts)
+    local v = a.mats * crafts
+    if a.learn and not bought[a.spell] then v = v + (ns.RecipeLearnCost and ns.RecipeLearnCost(a.spell) or 0) end
+    return v
+  end
   local function Marginal(a, crafts)
     local u = a.unit
     if not (u and u.item and u.item ~= 0) then return 0, 0, 0, 0 end
@@ -288,7 +297,15 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
     local floor = mode == "profit" and math.max(ns.MIN_GAIN, topGain * ns.PROFIT_SPEED) or ns.MIN_GAIN
     for i, a in ipairs(actions) do
       local gain = gains[i]
-      if gain >= floor then
+      local affordable = true
+      if budget and gain >= floor then
+        local over = Outlay(a, 1 / gain) - (budget - spent + income)
+        if over > 0 then
+          affordable = false
+          if not short or over < short then short = over end
+        end
+      end
+      if gain >= floor and affordable then
         local n = 1 / gain -- actions for one expected point
         local cost = a.cost * n
         if mode == "profit" then cost = (a.mats + a.fixed) * n - (Marginal(a, n)) end
@@ -324,10 +341,14 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       end
     end
     if not best then
-      info.reason = topGain > 0 and "lowgain" or "grey"
+      if short then info.reason, info.short = "budget", short
+      else info.reason = topGain > 0 and "lowgain" or "grey" end
       info.bestGain = topGain
       break
     end
+    short = nil
+    spent = spent + Outlay(best, bestN)
+    bought[best.spell] = true
     for item, c in pairs(best.raw) do
       local need = c * bestN
       acc[item] = (acc[item] or 0) + need
@@ -358,6 +379,8 @@ function ns.ComputeNeeds(rank, target, known, allKnown, owned, learnable, mode, 
       info.sales[pItem] = s
     end
     m.mats, m.points, m.best = m.mats + best.mats * bestN, m.points + 1, m.best + value
+    income = income + value
+    if spent - income > (info.peak or 0) then info.peak = spent - income end
     m.vendor = m.vendor + best.back.vendor * bestN
     for _, k in ipairs({ "de", "ah" }) do
       if best.back[k] then m[k] = m[k] + best.back[k] * bestN else m[k .. "Missing"] = true end
@@ -749,9 +772,24 @@ function ns.GroupStock(c)
   return stock
 end
 
+-- Leveling budget for a character, in copper (nil = no limit). Stored on your side, also for a
+-- friend's character (a kit is paid with your gold).
+function ns.BudgetFor(key)
+  return key and ComradeCraftDB and ComradeCraftDB.budgets and ComradeCraftDB.budgets[key] or nil
+end
+function ns.SetBudget(key, gold)
+  if not (key and ComradeCraftDB) then return end
+  gold = tonumber(gold)
+  ComradeCraftDB.budgets = ComradeCraftDB.budgets or {}
+  ComradeCraftDB.budgets[key] = gold and gold > 0 and math.floor(gold * 10000) or nil
+  local c = ns.AllChars()[key]
+  if c then ns.UpdateNeeds(c) end
+  ns.RequestRefresh()
+end
+
 -- Who can disenchant for character `c`: itself or a character of the same account (yours, or
 -- the friend's own synced alts), the one with the most Enchanting. { deBy(item) -> key|nil }.
-function ns.ResaleContext(c)
+function ns.ResaleContext(c, key)
   local pool, list = {}, {}
   if c.peer then
     for k, x in pairs(ns.AllChars and ns.AllChars() or {}) do if x.peer == c.peer then pool[k] = x end end
@@ -764,7 +802,7 @@ function ns.ResaleContext(c)
     end
   end
   table.sort(list, function(a, b) return a.rank > b.rank end)
-  return { deBy = function(item)
+  return { budget = ns.BudgetFor(key), deBy = function(item)
     local req = ns.DisenchantSkill and ns.DisenchantSkill(item)
     if not req then return nil end
     for _, e in ipairs(list) do if e.rank >= req then return e.key end end
@@ -842,7 +880,7 @@ function ns.UpdateNeeds(c)
     end
     local mode = ns.RouteMode(c)
     local other = mode == "profit" and "cheap" or "profit"
-    ns.resaleCtx = ns.ResaleContext(c)
+    ns.resaleCtx = ns.ResaleContext(c, foundKey)
     local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, nil, mode, remStock, breaks)
     local gross, reached, plan, info = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, mode, remStock, breaks)
     local oGross, oReached, _, oInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, other, remStock, breaks)
@@ -900,7 +938,7 @@ function ns.UpdateNeeds(c)
       reached = reached, target = target, cap = p.max, rankCaps = caps, plan = plan, reason = info.reason,
       bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
       knownOnly = { reached = kReached, reason = kInfo.reason },
-      mode = mode, milestones = info.milestones, sales = info.sales,
+      mode = mode, milestones = info.milestones, sales = info.sales, peak = info.peak, short = info.short,
       alt = { mode = other, reached = oReached, milestones = oInfo.milestones, gross = oGross, items = oItems } }
   end
   if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then

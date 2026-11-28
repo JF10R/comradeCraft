@@ -38,6 +38,7 @@ local function LayoutProfession(y, name, p, c, own, key)
 
   r.shop.key, r.shop.line = key, p.skillLine
   r.tLabel:Hide() r.tBox:Hide() r.tHint:Hide() r.tMax:Hide()
+  r.bLabel:Hide() r.bBox:Hide() r.bHint:Hide()
   r.shop:SetShown(ns.CanShop() and need ~= nil and next(need.items or {}) ~= nil)
 
   -- Folding only makes sense with every profession listed ("All"); a filtered view is open.
@@ -91,6 +92,18 @@ local function LayoutProfession(y, name, p, c, own, key)
     r.tMax:ClearAllPoints()
     r.tMax:SetPoint("LEFT", r.tHint, "RIGHT", 8, 0)
     r.tMax:SetShown(not atCap)
+    yy = yy + 24
+    r.bLabel:ClearAllPoints()
+    r.bLabel:SetPoint("TOPLEFT", r, "TOPLEFT", PROF_W, -(yy + 3))
+    r.bLabel:Show()
+    local bb, budget = r.bBox, ns.BudgetFor(key)
+    bb:ClearAllPoints()
+    bb:SetPoint("LEFT", r.bLabel, "RIGHT", 10, 0)
+    bb.key, bb.value = key, budget and tostring(math.floor(budget / 10000)) or ""
+    if not bb:HasFocus() then bb:SetText(bb.value) end
+    bb:Show()
+    r.bHint:SetText(budget and L["Enter to apply"] or L["no limit - type gold, Enter to apply"])
+    r.bHint:Show()
     yy = yy + 24
   end
 
@@ -152,6 +165,10 @@ local function LayoutProfession(y, name, p, c, own, key)
     end
     local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. note .. "|r", "GameFontDisableSmall", RIGHT_W)
     yy = yy + nh + 8
+    if d.peak then
+      local _, ph = Label(PROF_W, y - yy, "|cff7f7f7f" .. d.peak .. "|r", "GameFontDisableSmall", RIGHT_W)
+      yy = yy + ph + 6
+    end
     if d.sales and #d.sales > 0 then
       local _, sh = Label(PROF_W, y - yy, "|cffffd100" .. L["Sell the crafts:"] .. "|r\n" .. table.concat(d.sales, "\n"),
         "GameFontHighlightSmall", RIGHT_W)

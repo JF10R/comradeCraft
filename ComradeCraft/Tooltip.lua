@@ -691,6 +691,10 @@ function ns.DescribeNeed(p, c)
     table.sort(sales, function(a, b) return a.name < b.name end)
     out.sales = {}
     for _, s in ipairs(sales) do out.sales[#out.sales + 1] = s.text end
+    if (need.peak or 0) > 0 then
+      out.peak = ns.L["Gold needed at the worst moment: %s (sales of earlier crafts reinvested)."]:format(
+        ns.Money(math.ceil(need.peak)))
+    end
     local t = out.totals.routes[1]
     out.cost = ns.L["Total %d to %d: gross %s, to buy %s, resale %s, trainer %s, net %s (%s prices)."]:format(
       p.rank, need.reached, ns.TotalMoney(t.brut, t.brutOk), ns.TotalMoney(t.buy, t.buyOk),
@@ -707,7 +711,10 @@ function ns.DescribeNeed(p, c)
   table.sort(vendor)
   if #vendor > 0 then out.vendor = ns.L["Buy from a vendor: %s."]:format(table.concat(vendor, ", ")) end
 
-  if need.reason then
+  if need.reason == "budget" then
+    out.blocked = ns.L["Budget reached at %d: %s more needed (sales of earlier crafts included)."]:format(
+      need.reached, ns.Money(math.ceil(need.short or 0)))
+  elseif need.reason then
     local why = need.reason == "grey"
       and ns.L["Stuck at %d: all your known recipes are grey (no more points)."]:format(need.reached)
       or ns.L["Stuck at %d: your known recipes barely give points anymore (%d%% chance per craft at best, %d%% needed)."]:format(

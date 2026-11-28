@@ -942,6 +942,13 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["Budget (g):"] = "Budget (po) :",
+    ["Budget"] = "Budget",
+    ["Gold you put into leveling, Enter to apply; empty = no limit. Sales of earlier crafts are reinvested."] = "L'or que tu mets dans la montée, Entrée pour valider ; vide = sans limite. Les ventes des crafts précédents sont réinvesties.",
+    ["Enter to apply"] = "Entrée pour valider",
+    ["no limit - type gold, Enter to apply"] = "sans limite - tape un montant en po, Entrée pour valider",
+    ["Budget reached at %d: %s more needed (sales of earlier crafts included)."] = "Budget atteint à %d : il manque %s (ventes des crafts précédents comprises).",
+    ["Gold needed at the worst moment: %s (sales of earlier crafts reinvested)."] = "Or nécessaire au pire moment : %s (ventes des crafts précédents réinvesties).",
     ["Sell the crafts:"] = "Que faire des crafts :",
     ["%s: %s"] = "%s : %s",
     ["%d at the AH"] = "%d à l'HV",

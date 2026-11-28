@@ -518,6 +518,15 @@ def main():
         ns.resaleCtx = { deBy = function() return nil end }
         _, _, _, si = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
         assert(si.sales[999812].de == 0 and si.sales[999812].vendor > 0, "resale: no enchanter = merchant")
+        -- Budget: the route stops when the gold at hand (budget + earlier sales) runs out.
+        ns.PriceSource = function(item) return item == 2589 and 10 or nil end -- product barely sells
+        ns.ItemPrices[999812] = { 1, 4 }
+        ns.resaleCtx = { budget = 25, deBy = function() return nil end }
+        local _, bReached, _, bi = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
+        ns.resaleCtx = { deBy = function() return nil end }
+        local _, fReached, _, fi = ns.ComputeNeeds(1, 10, { [999811] = true }, nil, {}, nil, "cheap")
+        assert(fReached == 10 and fi.reason == nil and (fi.peak or 0) > 0, "budget: no limit reaches the target, peak known")
+        assert(bReached < 10 and bi.reason == "budget" and bi.short > 0, "budget: stops when the gold runs out")
         ns.SaleCap, ns.resaleCtx, ns.PriceSource, ns.DisenchantEstimate = oldCap, oldCtx, oldPS3, oldDE
         ns.Recipes[999811], ns.ItemPrices[999812] = nil, nil
       end

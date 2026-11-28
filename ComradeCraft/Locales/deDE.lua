@@ -1063,6 +1063,13 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Wunschliste abgeschlossen: %s",
   ["measured"] = "gemessen",
     -- Target skill (Plan tab)
+    ["Budget (g):"] = "Budget (G):",
+    ["Budget"] = "Budget",
+    ["Gold you put into leveling, Enter to apply; empty = no limit. Sales of earlier crafts are reinvested."] = "Gold, das du ins Leveln steckst, Enter zum Übernehmen; leer = kein Limit. Verkäufe früherer Herstellungen werden reinvestiert.",
+    ["Enter to apply"] = "Enter zum Übernehmen",
+    ["no limit - type gold, Enter to apply"] = "kein Limit - Gold eingeben, Enter zum Übernehmen",
+    ["Budget reached at %d: %s more needed (sales of earlier crafts included)."] = "Budget bei %d erreicht: %s fehlen (Verkäufe früherer Herstellungen eingerechnet).",
+    ["Gold needed at the worst moment: %s (sales of earlier crafts reinvested)."] = "Gold im ungünstigsten Moment nötig: %s (Verkäufe früherer Herstellungen reinvestiert).",
     ["Sell the crafts:"] = "Was tun mit den Herstellungen:",
     ["%s: %s"] = "%s: %s",
     ["%d at the AH"] = "%d im AH",

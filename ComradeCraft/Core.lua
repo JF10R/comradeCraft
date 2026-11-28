@@ -471,6 +471,8 @@ local function RebindKeyRefs(oldKey, newKey)
     for slot, m in pairs(moves) do lists[slot], lists[m[1]] = nil, m[2] end
   end
   if ComradeCraftDB.ui and ComradeCraftDB.ui.sel == oldKey then ComradeCraftDB.ui.sel = newKey end
+  local budgets = ComradeCraftDB.budgets
+  if budgets and budgets[oldKey] then budgets[newKey], budgets[oldKey] = budgets[newKey] or budgets[oldKey], nil end
   if ComradeCraftDB.favorites and ComradeCraftDB.favorites[oldKey] then
     ComradeCraftDB.favorites[newKey] = true
     ComradeCraftDB.favorites[oldKey] = nil

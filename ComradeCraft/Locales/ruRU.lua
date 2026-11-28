@@ -937,6 +937,13 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Список выполнен: %s",
   ["measured"] = "измерено",
     -- Target skill (Plan tab)
+    ["Budget (g):"] = "Бюджет (з):",
+    ["Budget"] = "Бюджет",
+    ["Gold you put into leveling, Enter to apply; empty = no limit. Sales of earlier crafts are reinvested."] = "Золото на прокачку, Enter - применить; пусто = без ограничений. Продажи прежних изделий вкладываются снова.",
+    ["Enter to apply"] = "Enter - применить",
+    ["no limit - type gold, Enter to apply"] = "без ограничений - введите золото, Enter - применить",
+    ["Budget reached at %d: %s more needed (sales of earlier crafts included)."] = "Бюджет исчерпан на %d: не хватает %s (с учётом продаж прежних изделий).",
+    ["Gold needed at the worst moment: %s (sales of earlier crafts reinvested)."] = "Нужно золота в худший момент: %s (продажи прежних изделий вложены снова).",
     ["Sell the crafts:"] = "Что делать с изделиями:",
     ["%s: %s"] = "%s: %s",
     ["%d at the AH"] = "%d на аукцион",
