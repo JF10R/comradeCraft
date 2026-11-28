@@ -964,7 +964,7 @@ translations.frFR = {
     ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] =
       "+ Formateur : %s (compris dans le net). À acheter = mats manquants (HV + marchand) ; net = à acheter - revente + formateur.",
     ["Other route: trainer not counted."] = "Autre route : formateur non compté.",
-    ["> = some prices are unknown (minimum)."] = "> = certains prix sont inconnus (minimum).",
+    ["> = some prices are unknown: a cost is a minimum, a profit (+<) a maximum."] = "> = certains prix sont inconnus : un coût est un minimum, un profit (+<) un maximum.",
 }
 ns.Translations = translations
 

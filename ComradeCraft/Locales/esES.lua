@@ -1083,5 +1083,5 @@ ns.Translations[loc] = {
     ["Stops at"] = "Se detiene en",
     ["+ Trainer: %s (in the net). To buy = missing mats (AH + merchant); net = to buy - resale + trainer."] = "+ Instructor: %s (incluido en el neto). A comprar = materiales que faltan (subasta + vendedor); neto = a comprar - reventa + instructor.",
     ["Other route: trainer not counted."] = "Otra ruta: instructor no contado.",
-    ["> = some prices are unknown (minimum)."] = "> = algunos precios son desconocidos (mínimo).",
+    ["> = some prices are unknown: a cost is a minimum, a profit (+<) a maximum."] = "> = algunos precios son desconocidos: un coste es un mínimo, una ganancia (+<) un máximo.",
 }

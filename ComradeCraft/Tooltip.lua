@@ -697,6 +697,7 @@ end
 
 -- Copper as text, ">" in front when some prices were missing (the sum is a minimum).
 function ns.TotalMoney(v, complete)
+  if not complete and (v or 0) == 0 then return "?" end -- nothing known at all
   local s = ns.Money(math.floor(math.abs(v or 0)))
   if (v or 0) < 0 then s = "-" .. s end
   return (complete and "" or ">") .. s

@@ -134,7 +134,9 @@ local function LayoutProfession(y, name, p, c, own, key)
       local name = L[rt.mode == "cheap" and "Cheapest" or "Profitable"]
       if (rt.reached or goal) < goal then name = name .. " (" .. rt.reached .. ")" end
       name = rt.active and ("|cffffd100" .. name .. "|r") or ("|cffb0b0b0" .. name .. "|r")
-      local net = rt.net < 0 and ("|cff40ff40+" .. TM(-rt.net, rt.netOk) .. "|r") or TM(rt.net, rt.netOk)
+      -- Unknown prices make a cost a minimum (">") but a profit a maximum ("<").
+      local net = rt.net < 0 and ("|cff40ff40+" .. (rt.netOk and "" or "<") .. ns.Money(math.floor(-rt.net)) .. "|r")
+        or TM(rt.net, rt.netOk)
       local tip = { { L["Gross"], TM(rt.brut, rt.brutOk) }, { L["To buy"], TM(rt.buy, rt.buyOk) },
         { L["Resale"], ShortMoney(rt.resale) },
         { L["Trainer"], rt.noTrainer and L["not counted"] or TM(rt.trainer, t.trainerOk) }, { L["Net"], net } }
@@ -146,7 +148,7 @@ local function LayoutProfession(y, name, p, c, own, key)
       :format(TM(t.trainer, t.trainerOk))
     if #t.routes > 1 then note = note .. " " .. L["Other route: trainer not counted."] end
     if not (t.routes[1].brutOk and t.routes[1].buyOk and t.trainerOk) then
-      note = note .. " " .. L["> = some prices are unknown (minimum)."]
+      note = note .. " " .. L["> = some prices are unknown: a cost is a minimum, a profit (+<) a maximum."]
     end
     local _, nh = Label(PROF_W, y - yy - 2, "|cff7f7f7f" .. note .. "|r", "GameFontDisableSmall", RIGHT_W)
     yy = yy + nh + 8
