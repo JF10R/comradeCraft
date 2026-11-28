@@ -1063,6 +1063,9 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Wunschliste abgeschlossen: %s",
   ["measured"] = "gemessen",
     -- Target skill (Plan tab)
+    ["once per cooldown"] = "einmal pro Abklingzeit",
+    ["Cooldown goldmakers"] = "Goldbringer mit Abklingzeit",
+    ["ready in %s"] = "bereit in %s",
     ["Goldmaking"] = "Goldverdienen",
     ["net %s per craft"] = "netto %s pro Herstellung",
     ["~%d sold per day"] = "~%d verkauft pro Tag",

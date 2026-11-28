@@ -74,8 +74,17 @@ end
 local function Stackable(item)
   local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   local stack = get and select(8, get(item))
-  if stack == nil then return nil end
+  if stack == nil then
+    if ns.RequestItemData then ns.RequestItemData(item) end -- not cached yet: shown on the next refresh
+    return nil
+  end
   return stack > 1
+end
+
+-- Crafts per day of a cooldown recipe: from its length seen in game; nil until seen.
+function ns.CooldownCraftsPerDay(spell)
+  local len = ComradeCraftDB and ComradeCraftDB.cooldownLength and ComradeCraftDB.cooldownLength[spell]
+  return len and len > 0 and 86400 / len or nil
 end
 
 -- One recipe as a money maker: { spell, item, cost, net (per craft, after the AH cut and the
@@ -96,6 +105,11 @@ function ns.CraftEconomics(spell, can, mine, memo)
   end
   e.perDay = ns.SalesPerDay(r[5])
   local crafts = e.perDay and math.min(e.perDay * ns.GOLD_SHARE / q, ns.GOLD_BATCH) or nil
+  e.cooldown = ns.IsCooldownRecipe and ns.IsCooldownRecipe(spell) or nil
+  if e.cooldown then -- one craft per cooldown, whatever the market takes
+    local cd = ns.CooldownCraftsPerDay(spell)
+    crafts = cd and (crafts and math.min(crafts, cd) or cd) or nil
+  end
   e.daily = crafts and e.net * crafts or nil
   e.stackable = Stackable(r[5])
   return e
@@ -110,12 +124,16 @@ end
 -- Best repeatable crafts of one profession: known recipes (or, for a profession the character
 -- does not have, what a trainer, merchant or the AH teaches: `whatIf`), net > 0, best first.
 -- Sub-components can be crafted with any recipe the character knows, or would learn.
-function ns.Goldmakers(c, line, whatIf)
+-- cooldowns = true: only recipes with a cooldown (transmutes, Mooncloth); else only the others.
+function ns.Goldmakers(c, line, whatIf, cooldowns)
   local known, can, mine = {}, {}, {}
   for _, set in pairs(c and c.known or {}) do for s in pairs(set) do can[s], mine[s] = true, true end end
   if whatIf then
-    for s in pairs(ns.TrainerRecipes(line, ns.MAX_SKILL, {})) do known[s] = true end
-    for s in pairs(ns.VendorRecipes(line, ns.MAX_SKILL, {}, c)) do known[s] = true end
+    -- known[spell] = required skill (what the trainer, merchant or AH lists say)
+    for _, list in ipairs({ ns.TrainerRecipes(line, ns.MAX_SKILL, {}), ns.VendorRecipes(line, ns.MAX_SKILL, {}, c),
+      ns.AuctionRecipes(line, ns.MAX_SKILL, {}) }) do
+      for s, req in pairs(list) do if known[s] == nil then known[s] = req end end
+    end
   else
     for s in pairs(c and c.known and c.known[line] or {}) do known[s] = true end
   end
@@ -123,11 +141,8 @@ function ns.Goldmakers(c, line, whatIf)
   local memo, out = {}, {}
   for spell in pairs(known) do
     local e = ns.Recipes[spell] and ns.Recipes[spell][1] == line and ns.CraftEconomics(spell, can, mine, memo)
-    if e and e.net > 0 then
-      if whatIf then
-        local lib = LibStub and LibStub("LibProfessionDB-1.0", true)
-        e.req = ns.RequiredSkill(spell, lib and lib.GetRequiredSkill and lib:GetRequiredSkill(line, spell))
-      end
+    if e and e.net > 0 and (e.cooldown or false) == (cooldowns or false) then
+      if whatIf then e.req = type(known[spell]) == "number" and known[spell] or nil end
       out[#out + 1] = e
     end
   end

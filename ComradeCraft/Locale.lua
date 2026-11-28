@@ -942,6 +942,9 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["once per cooldown"] = "une fois par temps de recharge",
+    ["Cooldown goldmakers"] = "Crafts rentables à temps de recharge",
+    ["ready in %s"] = "prêt dans %s",
     ["Goldmaking"] = "Faire de l'or",
     ["net %s per craft"] = "net %s par craft",
     ["~%d sold per day"] = "~%d vendus par jour",

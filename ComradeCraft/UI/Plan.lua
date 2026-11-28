@@ -673,9 +673,11 @@ end
 local CRAFT_LINES = { 171, 164, 185, 333, 202, 129, 165, 197 }
 local function GoldDetail(e)
   local parts = { L["net %s per craft"]:format(ns.Money(math.floor(e.net))) }
-  if e.perDay then
-    parts[#parts + 1] = L["~%d sold per day"]:format(math.floor(e.perDay + 0.5))
-    parts[#parts + 1] = L["~%s per day"]:format(ns.Money(math.floor(e.daily or 0)))
+  if e.perDay then parts[#parts + 1] = L["~%d sold per day"]:format(math.floor(e.perDay + 0.5)) end
+  if e.daily then
+    parts[#parts + 1] = L["~%s per day"]:format(ns.Money(math.floor(e.daily)))
+  elseif e.cooldown then
+    parts[#parts + 1] = L["once per cooldown"]
   else
     parts[#parts + 1] = L["sales volume unknown"]
   end
@@ -742,6 +744,20 @@ function U.RenderGold(key, c, filter, y)
       if shown == n0 then
         local _, h = Label(0, y, "|cff9d9d9d" .. L["No known recipe makes money at current prices."] .. "|r")
         y = y - h - 4
+      end
+      local cds = ns.Goldmakers(c, line, false, true)
+      if #cds > 0 then
+        y = y - SectionBar(0, y, LIST_W, "|cffffd100" .. prof .. "|r", L["Cooldown goldmakers"]) - 4
+        for _, e in ipairs(cds) do
+          if Match(e) then
+            local readyAt = c.cooldowns and c.cooldowns[e.spell]
+            local left = readyAt and readyAt - time() or 0
+            local state = left > 60 and ("|cffff8040" .. L["ready in %s"]:format(U.FormatDuration(left)) .. "|r")
+              or ("|cff40ff40" .. L["ready"] .. "|r")
+            Row(e, ("|cffffffff%s|r  %s"):format(ItemInfo(e.item) or ns.SpellName(e.spell), state),
+              "|cffc8d8ff" .. GoldDetail(e) .. "|r")
+          end
+        end
       end
       local recipes = ns.ProfitableRecipes(c, line, p.rank)
       if #recipes > 0 then

@@ -607,6 +607,17 @@ def main():
         local top = ns.Goldmakers(gc, 202)
         assert(top[1] and top[1].spell == 999841 and math.abs(top[1].daily - top[1].net * 9) < 0.01,
           "goldmaking: daily = net x 30% of 30 sales")
+        ns.COOLDOWN_RECIPES[999841] = true
+        for _, x in ipairs(ns.Goldmakers(gc, 202)) do
+          assert(x.spell ~= 999841, "goldmaking: a cooldown recipe is not a repeat goldmaker")
+        end
+        local cd = ns.Goldmakers(gc, 202, false, true)
+        assert(cd[1] and cd[1].spell == 999841 and cd[1].daily == nil and #cd == 1,
+          "goldmaking: cooldown recipes apart, per day unknown until the cooldown is seen")
+        ComradeCraftDB.cooldownLength = { [999841] = 172800 }
+        cd = ns.Goldmakers(gc, 202, false, true)
+        assert(math.abs(cd[1].daily - cd[1].net * 0.5) < 0.01, "goldmaking: 2-day cooldown = half a craft a day")
+        ns.COOLDOWN_RECIPES[999841], ComradeCraftDB.cooldownLength = nil, nil
         ns.VendorRecipes = function() return { [999843] = 110 } end
         ns.AuctionRecipes = function() return {} end
         ns.RecipeLearnCost = function(s) return s == 999843 and 10000 or nil end
@@ -614,6 +625,13 @@ def main():
         local pe = pr[1]
         assert(pe and pe.spell == 999843 and not pe.canLearn and pe.payback == math.ceil(10000 / pe.net),
           "goldmaking: schematic worth buying, payback in crafts")
+        local oldT = ns.TrainerRecipes
+        ns.TrainerRecipes = function() return {} end
+        ns.VendorRecipes = function() return {} end
+        ns.AuctionRecipes = function() return { [999843] = 110 } end
+        local wi = ns.Goldmakers({ known = {} }, 202, true)
+        assert(wi[1] and wi[1].spell == 999843 and wi[1].req, "goldmaking: what-if includes recipes sold at the AH")
+        ns.TrainerRecipes = oldT
         ns.PriceSource, ns.VendorRecipes, ns.AuctionRecipes, ns.RecipeLearnCost = oldPS, oldV, oldA, oldLC
         ComradeCraftDB.saleRates = nil
         ns.Recipes[999841], ns.Recipes[999842], ns.Recipes[999843] = nil, nil, nil

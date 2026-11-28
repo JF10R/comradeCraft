@@ -184,6 +184,10 @@ function Alerts.ScanCooldowns()
         -- unknown now (secret value): keep what we had
       elseif duration > LONG_CD then
         c.cooldowns[spell] = math.floor(Now() + (start + duration - (GetTime and GetTime() or 0)))
+        -- Full length, as seen in game (Goldmaking: crafts per day of a cooldown recipe).
+        local len = ComradeCraftDB.cooldownLength or {}
+        ComradeCraftDB.cooldownLength = len
+        if duration > (len[spell] or 0) then len[spell] = math.floor(duration) end
       elseif duration == 0 and c.cooldowns[spell] and c.cooldowns[spell] > Now() + 60 then
         c.cooldowns[spell] = Now() -- reset early (a game change): ready
       end

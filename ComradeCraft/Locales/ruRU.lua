@@ -937,6 +937,9 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Список выполнен: %s",
   ["measured"] = "измерено",
     -- Target skill (Plan tab)
+    ["once per cooldown"] = "раз за перезарядку",
+    ["Cooldown goldmakers"] = "Выгодные изделия с перезарядкой",
+    ["ready in %s"] = "готово через %s",
     ["Goldmaking"] = "Заработок",
     ["net %s per craft"] = "чистыми %s за изготовление",
     ["~%d sold per day"] = "~%d продаж в день",
