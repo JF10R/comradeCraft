@@ -918,6 +918,55 @@ function ns.QuestAlternatives(p, target, known, all, owned, learnable, mode, sto
   return #out > 0 and out or nil
 end
 
+-- The greedy spreads a bought recipe's price over its points, so it may buy one used for only a
+-- few: retry without each (dearest per point first) and keep a cheaper route that reaches as far.
+local MAX_DROP_TRIES = 6
+function ns.DropCostlyBuys(rank, target, known, all, owned, learnable, mode, stock, breaks, gross, reached, plan, info)
+  local function Cost(g, pl)
+    local v = RouteCost(g, pl, known)
+    if mode == "profit" then for _, st in ipairs(pl) do v = v - (st.back or 0) end end
+    return v
+  end
+  local cost, tried, tries, dropped = Cost(gross, plan), {}, 0, nil
+  while tries < MAX_DROP_TRIES do
+    local pts, cands = {}, {}
+    for _, st in ipairs(plan) do
+      local s = st.spell
+      if st.learn and not tried[s] then
+        if not pts[s] then
+          local price = ns.RecipeLearnCost and ns.RecipeLearnCost(s)
+          if price and price > 0 then cands[#cands + 1] = { spell = s, price = price } pts[s] = 0 end
+        end
+        if pts[s] then pts[s] = pts[s] + (st.to - st.from) end
+      end
+    end
+    if #cands == 0 then break end
+    table.sort(cands, function(a, b)
+      local x, y = a.price / math.max(1, pts[a.spell]), b.price / math.max(1, pts[b.spell])
+      if x ~= y then return x > y end
+      return a.spell < b.spell
+    end)
+    local adopted = false
+    for _, cd in ipairs(cands) do
+      if tries >= MAX_DROP_TRIES then break end
+      tried[cd.spell], tries = true, tries + 1
+      local l2 = {}
+      for s, rq in pairs(learnable) do if s ~= cd.spell then l2[s] = rq end end
+      local g2, r2, p2, i2 = ns.ComputeNeeds(rank, target, known, all, owned, l2, mode, stock, breaks)
+      local c2 = Cost(g2, p2)
+      if r2 >= reached and c2 < cost then
+        learnable, gross, reached, plan, info, cost = l2, g2, r2, p2, i2, c2
+        dropped = dropped or {}
+        dropped[#dropped + 1] = cd.spell
+        adopted = true
+        break
+      end
+    end
+    if not adopted then break end
+  end
+  return gross, reached, plan, info, learnable, dropped
+end
+
 function ns.UpdateNeeds(c)
   c.needs = {}
   if c.bankAlt then
@@ -988,6 +1037,9 @@ function ns.UpdateNeeds(c)
     ns.resaleCtx = ns.ResaleContext(c, foundKey)
     local _, kReached, _, kInfo = ns.ComputeNeeds(p.rank, target, known, all, remOwned, nil, mode, remStock, breaks)
     local gross, reached, plan, info = ns.ComputeNeeds(p.rank, target, known, all, remOwned, learnable, mode, remStock, breaks)
+    local skippedBuys
+    gross, reached, plan, info, learnable, skippedBuys = ns.DropCostlyBuys(p.rank, target, known, all, remOwned,
+      learnable, mode, remStock, breaks, gross, reached, plan, info)
     -- Budget too small: the rest of the way without a limit, shown greyed (recipes the budget
     -- route learns count as known).
     local overPlan, overReached
@@ -1063,7 +1115,7 @@ function ns.UpdateNeeds(c)
       bestGain = info.bestGain, used = info.used, when = FirstStepOf(plan),
       knownOnly = { reached = kReached, reason = kInfo.reason },
       mode = mode, milestones = info.milestones, sales = info.sales, peak = info.peak, short = info.short,
-      overPlan = overPlan, overReached = overReached, alternatives = alternatives,
+      overPlan = overPlan, overReached = overReached, alternatives = alternatives, skippedBuys = skippedBuys,
       alt = { mode = other, reached = oReached, milestones = oInfo.milestones, gross = oGross, items = oItems } }
   end
   if ns.Wishlist and ns.Wishlist.InjectNeeds and foundKey then

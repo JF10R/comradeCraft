@@ -723,6 +723,33 @@ def main():
         lib.GetRecipeSources, ns.PriceSource = oldSrc, oldPS
         ns.Recipes[999821], ns.Recipes[999824] = nil, nil
       end
+      -- Bought recipe used for 2 points (price 20s > 6s saved on mats): dropped; used for 20: kept.
+      do
+        local oldPS, oldLC, oldCN = ns.PriceSource, ns.RecipeLearnCost, ns.ComputeNeeds
+        ns.Recipes[999851] = { 197, 30, 60, 1, 999852, 1, { 999853, 4 } }
+        ns.Recipes[999854] = { 197, 30, 60, 1, 999855, 1, { 999853, 1 } }
+        ns.PriceSource = function(item) return item == 999853 and 100 or nil end
+        ns.RecipeLearnCost = function(s) return s == 999854 and 2000 or nil end
+        local known, learn = { [999851] = true }, { [999854] = 10 }
+        local function Uses(pl) for _, st in ipairs(pl) do if st.spell == 999854 then return true end end end
+        local calls = 0
+        local function Run(target)
+          local g, r, pl, inf = ns.ComputeNeeds(1, target, known, known, {}, learn, "cheap")
+          calls = 0
+          ns.ComputeNeeds = function(...) calls = calls + 1 return oldCN(...) end
+          local g2, r2, p2, _, l2, dr = ns.DropCostlyBuys(1, target, known, known, {}, learn, "cheap", nil, nil, g, r, pl, inf)
+          ns.ComputeNeeds = oldCN
+          return pl, r, g2, r2, p2, l2, dr
+        end
+        local pl, r, _, r2, p2, l2, dr = Run(12)
+        assert(Uses(pl) and dr and dr[1] == 999854 and not Uses(p2) and r2 >= r and not l2[999854]
+          and learn[999854] == 10 and calls == 1, "drop buys: a recipe bought for 2 points is skipped")
+        pl, r, _, r2, p2, l2, dr = Run(30)
+        assert(Uses(pl) and not dr and p2 == pl and r2 == r and l2[999854] and calls == 1,
+          "drop buys: a recipe bought for 20 points is kept")
+        ns.PriceSource, ns.RecipeLearnCost, ns.ComputeNeeds = oldPS, oldLC, oldCN
+        ns.Recipes[999851], ns.Recipes[999854] = nil, nil
+      end
       -- A friend's character: the target is local (kit), never sent, and wins over theirs.
       ComradeCraftDB.remote = ComradeCraftDB.remote or {}
       local fr = { class = "MAGE", peer = "pvT", targets = { [197] = 60 }, updated = 5,
