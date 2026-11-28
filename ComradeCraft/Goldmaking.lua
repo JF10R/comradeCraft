@@ -81,9 +81,10 @@ local function Stackable(item)
   return stack > 1
 end
 
--- Crafts per day of a cooldown recipe: from its length seen in game; nil until seen.
+-- Crafts per day of a cooldown recipe: its length seen in game, else the client's (RecipeCooldowns).
 function ns.CooldownCraftsPerDay(spell)
   local len = ComradeCraftDB and ComradeCraftDB.cooldownLength and ComradeCraftDB.cooldownLength[spell]
+  len = len or (ns.RecipeCooldowns and ns.RecipeCooldowns[spell])
   return len and len > 0 and 86400 / len or nil
 end
 

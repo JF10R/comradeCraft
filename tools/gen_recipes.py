@@ -230,6 +230,18 @@ def main():
     lines += [f"[{k}]={q(focus_names[k])}," for k in sorted(focus_names)]
     lines.append("}")
     print(f"{len(tools)} recipes need a tool, {len(focus)} a station")
+    # Cooldowns (transmutes 23 h / 47 h, Mooncloth 95 h, Iron to Gold 1 h): one craft per cooldown.
+    cds = {}
+    for r in table("SpellCooldowns", build):
+        spell = int(r["SpellID"])
+        sec = max(int(r["RecoveryTime"] or 0), int(r["CategoryRecoveryTime"] or 0)) // 1000
+        if spell in recipes and sec >= 60:
+            cds[spell] = max(cds.get(spell, 0), sec)
+    lines.append("-- [spellID] = cooldown in seconds (SpellCooldowns)")
+    lines.append("ns.RecipeCooldowns = {")
+    lines += [f"[{s}]={cds[s]}," for s in sorted(cds)]
+    lines.append("}")
+    print(f"{len(cds)} recipes with a cooldown")
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8", newline="\n") as f:

@@ -583,8 +583,11 @@ end
 ns.COOLDOWN_RECIPES = { [11479] = true, [11480] = true, [17187] = true, [17559] = true, [17560] = true,
   [17561] = true, [17562] = true, [17563] = true, [17564] = true, [17565] = true, [17566] = true,
   [25146] = true, [18560] = true, [1317279] = true } -- 1317279 Legionite: category 310, 47 h
+ns.MIN_COOLDOWN = 600 -- from 10 min on (Elemental Fire), a recipe cannot be ground; Campfire (5 min) can
 function ns.IsCooldownRecipe(spell)
   if ns.COOLDOWN_RECIPES[spell] then return true end
+  local cd = ns.RecipeCooldowns and ns.RecipeCooldowns[spell]
+  if cd and cd >= ns.MIN_COOLDOWN then return true end
   for _, c in pairs(ComradeCraftDB and ComradeCraftDB.chars or {}) do
     if type(c) == "table" and c.cooldowns and c.cooldowns[spell] then return true end
   end

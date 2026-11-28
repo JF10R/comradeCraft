@@ -404,6 +404,9 @@ def main():
           and ns.RecipeRepOK(7259, {}), "reputation recipes: need the standing")
         assert(vr[7259] == 190 and not vr[2329], "vendor recipes: Nature Protection Potion, not trainer ones")
         assert(ns.IsCooldownRecipe(11479) and not ns.IsCooldownRecipe(7259), "cooldown recipes: transmute")
+        assert(ns.CooldownCraftsPerDay(11479) == 24 and ns.CooldownCraftsPerDay(17187) == 86400 / 169200
+          and ns.IsCooldownRecipe(25146) and not ns.IsCooldownRecipe(818),
+          "cooldown recipes: client lengths (Iron to Gold 1 h, Arcanite 47 h); Campfire 5 min stays groundable")
         local _, _, cdPlan = ns.ComputeNeeds(225, 260, {}, {}, {}, { [11479] = 225 }, "cheap")
         assert(#cdPlan == 0, "cooldown recipes: never planned")
         -- A mat with no AH price, no merchant and none held (Fiery Core) rules the recipe out.
