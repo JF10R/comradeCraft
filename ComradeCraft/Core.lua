@@ -442,6 +442,7 @@ local function RebindKeyRefs(oldKey, newKey)
     if a.char == oldKey then a.char = newKey end
   end
 end
+ns.RebindKeyRefs = RebindKeyRefs
 
 -- Merges broken "Name-" keys, realm-alias duplicates, legacy 1-word Forever keys (even when
 -- multiple alts share a first name, using class disambiguation), and purges stale remote copies

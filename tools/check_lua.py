@@ -843,8 +843,23 @@ def main():
       IsInInstance = function() return false end
       f.onEvent(f, "ZONE_CHANGED_NEW_AREA")
       assert(#sent == 1 and ns.Sync.QueueSize() == 0, "sync: flushed after leaving")
+      -- They upgrade "Vez" to "Vez Ironcrest": your kit target and favorite follow the new key.
+      ComradeCraftDB.remote["Vez-Realm"].localTargets = { [197] = 60 }
+      ComradeCraftDB.favorites = ComradeCraftDB.favorites or {}
+      ComradeCraftDB.favorites["Vez-Realm"] = true
+      From({ t = "H", v = 1, id = "peerVez", c = { ["Vez Ironcrest-Realm"] = { u = 2 ^ 31 - 1, cl = "DRUID", lv = 20 } } }, "Vez")
+      local vi = ComradeCraftDB.remote["Vez Ironcrest-Realm"]
+      assert(vi and vi.localTargets and vi.localTargets[197] == 60 and not ComradeCraftDB.remote["Vez-Realm"]
+        and ComradeCraftDB.favorites["Vez Ironcrest-Realm"] and not ComradeCraftDB.favorites["Vez-Realm"],
+        "sync: a first-name key upgraded to the full name keeps your target and favorite")
+      From({ t = "D", v = 1, id = "peerVez", key = "Vez Ironcrest-Realm", rec = { class = "DRUID", updated = 2 ^ 31 - 1 } }, "Vez")
+      assert(ComradeCraftDB.remote["Vez Ironcrest-Realm"].localTargets[197] == 60, "sync: target kept when their record arrives")
+      assert(ns.Sync.UpgradedKey("Wo-R", { ["Wo A-R"] = {}, ["Wo B-R"] = {} }, {}) == nil
+        and ns.Sync.UpgradedKey("Wo-R", { ["Wox A-R"] = {} }, {}) == nil, "sync: ambiguous or other first name: no rename")
+      ComradeCraftDB.favorites["Vez Ironcrest-Realm"] = nil
       From({ t = "H", v = 1, id = "peerVez", c = {} }, "Vez")
-      assert(not ComradeCraftDB.remote["Vez-Realm"], "sync: a character they stop sharing disappears")
+      assert(not ComradeCraftDB.remote["Vez-Realm"] and not ComradeCraftDB.remote["Vez Ironcrest-Realm"],
+        "sync: a character they stop sharing disappears")
       ns.Sync.Exclude("peerVez")
       assert(not ns.AllChars()["Vez-Realm"], "sync: excluded peer hidden")
       ns.RefreshWindow()

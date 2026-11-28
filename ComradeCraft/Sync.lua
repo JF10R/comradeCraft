@@ -493,6 +493,27 @@ local function IsLocalChar(db, key, rec)
   return false
 end
 
+-- The one "First Last-<realm>" key in `chars` that a first-name key ("First-<realm>") became,
+-- skipping keys you already hold. nil when none or ambiguous.
+function Sync.UpgradedKey(old, chars, remote)
+  local bare, r = old:match("^([^-]+)-(.*)$")
+  bare = bare or old
+  if bare:find(" ", 1, true) then return nil end
+  local function Norm(x) return type(x) == "string" and x:gsub("[%s%-']", ""):lower() or "" end
+  local fl, nr, found = bare:lower(), Norm(r), nil
+  for k in pairs(chars) do
+    local b2, r2 = k:match("^([^-]+)-(.*)$")
+    b2 = b2 or k
+    local n2 = Norm(r2)
+    if not remote[k] and b2:find(" ", 1, true) and (b2:match("^%S+") or ""):lower() == fl
+      and (n2 == nr or n2 == "" or nr == "") then
+      if found then return nil end
+      found = k
+    end
+  end
+  return found
+end
+
 local function RequestChanged(id, meshTable)
   local db = DB()
   local peer = db.peers[id]
@@ -759,6 +780,19 @@ function Sync.OnMessage(text, dist, sender)
     end
     if peer.included and ns.ForeverDB and ns.ForeverDB.SendToPeer then
       ns.ForeverDB.SendToPeer(id, sender)
+    end
+    -- Forever: a first-name key they upgraded to "First Last" keeps what you set on it (kit
+    -- target, favorite, wishlist) until their full record arrives.
+    local renames = {}
+    for key, rec in pairs(db.remote) do
+      if rec.peer == id and not chars[key] then
+        local nk = Sync.UpgradedKey(key, chars, db.remote)
+        if nk then renames[key] = nk end
+      end
+    end
+    for old, nk in pairs(renames) do
+      db.remote[nk], db.remote[old] = db.remote[old], nil
+      if ns.RebindKeyRefs then ns.RebindKeyRefs(old, nk) end
     end
     RequestChanged(id, msg.m)
     -- Characters they stopped sharing disappear.
