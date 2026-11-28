@@ -360,8 +360,23 @@ local function RealmName()
     cachedRealm = r
     return r
   end
+  -- Forever can give no usable realm on a new character: reuse the realm of this account's
+  -- latest character, or the character would never be saved.
+  if ns.TwoPartNames() and ComradeCraftDB and ComradeCraftDB.chars then
+    local best, bestU
+    for k, ch in pairs(ComradeCraftDB.chars) do
+      local kr = k:match("^[^-]+%-(.+)$")
+      local u = type(ch) == "table" and ch.updated or 0
+      if kr and not IsBogusSurnameRealm(kr, name) and (not bestU or u > bestU) then best, bestU = kr, u end
+    end
+    if best then
+      cachedRealm = best
+      return best
+    end
+  end
   return nil
 end
+function ns.ResetRealmCache() cachedRealm = nil end -- tests only
 
 function ns.CharKey()
   local name = ns.UnitFullName("player") or ""

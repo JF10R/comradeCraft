@@ -2049,6 +2049,19 @@ def main():
             and ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].bank
             and ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].bank[2589] == 36,
             "self-mail fix: known recipes & bank preserved on merge")
+          -- New alt with no usable realm at all: borrows the account's realm instead of never saving.
+          UnitName = function() return "Jhf", "Nainsuline" end
+          local savedCVar = GetCVar
+          GetCVar = function() return "" end
+          ComradeCraftDB.chars["Jhf Mage-CAMWOW US1 Realm 3 PvE"].updated = 2 ^ 40 -- latest character
+          ns.ResetRealmCache()
+          assert(ns.CharKey() == "Jhf Nainsuline-CAMWOW US1 Realm 3 PvE",
+            "new alt: borrows the account realm, got " .. tostring(ns.CharKey()))
+          ns.CharData()
+          assert(ComradeCraftDB.chars["Jhf Nainsuline-CAMWOW US1 Realm 3 PvE"], "new alt: saved")
+          ComradeCraftDB.chars["Jhf Nainsuline-CAMWOW US1 Realm 3 PvE"] = nil
+          GetCVar = savedCVar
+          ns.ResetRealmCache()
           GetRealmName, UnitName = savedRealmFn, savedUnitFn
           -- 2. Remote peer entry for same character under normalized realm is shadowed by local char.
           ComradeCraftDB.peers = ComradeCraftDB.peers or {}
