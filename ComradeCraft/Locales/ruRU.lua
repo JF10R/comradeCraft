@@ -937,6 +937,7 @@ ns.Translations[loc] = {
   ["Wishlist completed: %s"] = "Список выполнен: %s",
   ["measured"] = "измерено",
     -- Target skill (Plan tab)
+    ["auction house"] = "аукцион",
     ["Queued %dx %s: open the profession window and click Craft next."] = "%dx %s в очереди: откройте окно профессии и нажмите «Создать следующее».",
     ["Restock: %s"] = "Пополнить: %s",
     ["Restock"] = "Пополнить",

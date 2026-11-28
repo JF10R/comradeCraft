@@ -65,7 +65,8 @@ local function AddNeeds(tooltip, itemID)
   end
   local myReserve = ns.Reserve and ns.Reserve.Get and ns.Reserve.Get(itemID) or nil
   local incomingRes = ns.Reserve and ns.Reserve.IncomingFor and ns.Reserve.IncomingFor(me, itemID) or {}
-  local _, transitList = ns.InTransitFor and ns.InTransitFor(nil, itemID) or 0, {}
+  local transitList = {}
+  if ns.InTransitFor then transitList = select(2, ns.InTransitFor(nil, itemID)) end
   if #rows == 0 and #sends == 0 and not myReserve and #incomingRes == 0 and #transitList == 0 then return end
   local supply, holders = ns.GroupSupply(itemID)
   -- Active mail recipient first, then most urgent, then biggest quantity.
@@ -147,15 +148,32 @@ local function OnItem(tooltip, id)
 end
 ns.OnItemTooltip = OnItem
 
+-- Game hook entry: skips forbidden tooltips and repeats of the same item on one tooltip
+-- (recipe items fire the item hook more than once); the mark clears with the tooltip.
+local shownOn = setmetatable({}, { __mode = "k" })
+local function Hooked(tooltip, id)
+  if not (tooltip and id) or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
+  if shownOn[tooltip] == nil then
+    local ok = tooltip.HookScript and pcall(tooltip.HookScript, tooltip, "OnTooltipCleared",
+      function(t) shownOn[t] = false end)
+    shownOn[tooltip] = (not ok) and "nodedupe" or false
+  end
+  if shownOn[tooltip] == id then return end
+  if shownOn[tooltip] ~= "nodedupe" then shownOn[tooltip] = id end
+  OnItem(tooltip, id)
+end
+ns.TooltipHook = Hooked
+
 if TooltipDataProcessor and Enum and Enum.TooltipDataType then
   TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-    if data and data.id then OnItem(tooltip, data.id) end
+    if data and data.id then Hooked(tooltip, data.id) end
   end)
 elseif GameTooltip then
   local function OnSetItem(tooltip)
+    if tooltip.IsForbidden and tooltip:IsForbidden() then return end
     local _, link = tooltip:GetItem()
     local id = link and tonumber(link:match("item:(%d+)"))
-    OnItem(tooltip, id)
+    Hooked(tooltip, id)
   end
   for _, tt in ipairs({ GameTooltip, ItemRefTooltip }) do
     if tt then tt:HookScript("OnTooltipSetItem", OnSetItem) end

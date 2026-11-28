@@ -43,7 +43,8 @@ function U.RenderGroup(filter)
         end
       end
     end
-    local _, allTr = ns.InTransitFor and ns.InTransitFor() or 0, {}
+    local allTr = {}
+    if ns.InTransitFor then allTr = select(2, ns.InTransitFor()) end
     for _, tr in ipairs(allTr) do
       local name = ItemInfo(tr.item)
       if name and name:lower():find(filter, 1, true) then
@@ -470,7 +471,8 @@ end
   end
 
   -- Sky-blue banner: active peer mail shipments currently in the 1h Classic/Forever transit window.
-  local _, allTransit = ns.InTransitFor and ns.InTransitFor() or 0, {}
+  local allTransit = {}
+  if ns.InTransitFor then allTransit = select(2, ns.InTransitFor()) end
   if #allTransit > 0 then
     y = y - SectionBar(0, y, LIST_W, "|cff80ccff" .. L["In transit (1h mail)"] .. "|r",
       L["Already mailed between group accounts — counted as on the way so nobody double-sends."]) - 6

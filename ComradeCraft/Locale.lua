@@ -942,6 +942,7 @@ translations.frFR = {
     ["Wishlist completed: %s"] = "Liste de souhaits terminée : %s",
     ["measured"] = "mesuré",
     -- Target skill (Plan tab)
+    ["auction house"] = "hôtel des ventes",
     ["Queued %dx %s: open the profession window and click Craft next."] = "%dx %s en file : ouvre la fenêtre du métier et clique sur Fabriquer la suite.",
     ["Restock: %s"] = "Réappro : %s",
     ["Restock"] = "Réappro",

@@ -23,16 +23,20 @@ function ns.ToolFits(have, need)
 end
 
 -- Does the character hold a tool for `req` (category id, or -itemID for an exact item)?
--- Bags, bank and mail count.
+-- Bags, bank, mail and equipped items (a Blacksmith Hammer wielded) count.
+local function ToolMatches(item, req)
+  if req < 0 then return item == -req end
+  local cat = ns.ToolItems and ns.ToolItems[item]
+  return cat and ns.ToolFits(cat, req) or false
+end
 function ns.HasTool(c, req)
   for _, src in ipairs({ c and c.bags or {}, c and c.bank or {}, c and c.mail or {} }) do
     for item, n in pairs(src) do
-      if n > 0 then
-        if req < 0 and item == -req then return true end
-        local cat = req > 0 and ns.ToolItems and ns.ToolItems[item]
-        if cat and ns.ToolFits(cat, req) then return true end
-      end
+      if n > 0 and ToolMatches(item, req) then return true end
     end
+  end
+  for _, item in pairs(c and c.equipped or {}) do
+    if ToolMatches(item, req) then return true end
   end
   return false
 end

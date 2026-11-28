@@ -23,6 +23,12 @@ local function AreaName(areaId, uiMap)
   end
 end
 
+-- Starting zones and capitals by areaId and uiMap: never sent to the other faction's.
+local HORDE_START = { area = { [14] = true, [215] = true, [85] = true, [1637] = true, [1638] = true, [1497] = true },
+  map = { [1411] = true, [1412] = true, [1420] = true, [1454] = true, [1456] = true, [1458] = true } }
+local ALLIANCE_START = { area = { [12] = true, [1] = true, [141] = true, [1519] = true, [1537] = true, [1657] = true },
+  map = { [1429] = true, [1426] = true, [1438] = true, [1453] = true, [1455] = true, [1457] = true } }
+
 -- Finds the best QuestieDB farm spot (gathering node or mob drop) for `itemID`.
 -- Returns { name, zone, uiMap, x, y, kind = "node"|"drop" } or nil without QuestieDB.
 function FarmAdvice.Spot(itemID)
@@ -31,16 +37,19 @@ function FarmAdvice.Spot(itemID)
   local zdb = ZoneDB()
   local myLvl = (UnitLevel and UnitLevel("player")) or 60
   local best, bestScore
+  local faction = UnitFactionGroup and UnitFactionGroup("player")
+  local enemy = faction == "Alliance" and HORDE_START or faction == "Horde" and ALLIANCE_START
+    or { area = {}, map = {} }
 
   local function TrySpawns(spawns, name, kind, lvl)
     if type(spawns) ~= "table" then return end
     for areaId, pts in pairs(spawns) do
       local p = type(pts) == "table" and pts[1]
-      if p and p[1] and p[1] >= 0 then
-        local uiMap = zdb and zdb:GetUiMapIdByAreaId(areaId)
-        -- Prefer nodes & level-appropriate mobs (not way above player level).
+      local uiMap = p and zdb and zdb:GetUiMapIdByAreaId(areaId)
+      if p and p[1] and p[1] >= 0 and not (enemy.area[areaId] or enemy.map[uiMap or 0]) then
+        -- Prefer nodes, level-appropriate mobs, then the zone with the most spawn points.
         local lvlPenalty = (lvl and lvl > myLvl + 3) and (lvl - myLvl) * 20 or 0
-        local score = (kind == "node" and 0 or 50) + lvlPenalty + (uiMap and 0 or 500)
+        local score = (kind == "node" and 0 or 50) + lvlPenalty + (uiMap and 0 or 500) - math.min(#pts, 40) * 0.5
         if not best or score < bestScore then
           bestScore = score
           best = { name = name or "?", zone = AreaName(areaId, uiMap), uiMap = uiMap, x = p[1], y = p[2], kind = kind }

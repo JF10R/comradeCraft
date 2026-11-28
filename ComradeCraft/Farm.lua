@@ -109,7 +109,8 @@ function ns.AddPlanLines(tt, row)
   for _, h in ipairs(row.holders) do
     tt:AddDoubleLine(L["Spare in the group"] .. ": " .. ShortName(h.key), tostring(h.n), 0.5, 0.8, 1, 0.5, 0.8, 1)
   end
-  local _, trList = ns.InTransitFor and ns.InTransitFor(nil, row.item) or 0, {}
+  local trList = {}
+  if ns.InTransitFor then trList = select(2, ns.InTransitFor(nil, row.item)) end
   for _, tr in ipairs(trList) do
     local mins = math.max(1, math.ceil((tr.left or 0) / 60))
     tt:AddDoubleLine(L["In transit"], ("%dx %s -> %s (~%dm)"):format(tr.qty, ShortName(tr.from), ShortName(tr.to), mins),

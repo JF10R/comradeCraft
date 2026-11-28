@@ -3221,6 +3221,97 @@ def main():
         GetItemInfo, GetItemStats = savedGet, savedStats
       end)()
 
+      -- Audit fixes: transit multi-return, tooltip hook guards, sources, farm faction, cold cache.
+      do (function() -- own function: the outer one is at the 200-locals limit
+        local oldT = ns.InTransitFor
+        ns.InTransitFor = function() return 3, { { from = "Aa-Realm", to = "Bb-Realm", qty = 3, left = 600, item = 424242 } } end
+        local tl, heads, cleared = {}, 0, nil
+        local tt = MockWidget()
+        tt.AddDoubleLine = function(_, l, r) tl[#tl + 1] = l .. " | " .. r end
+        tt.AddLine = function(_, s) if s == "ComradeCraft" then heads = heads + 1 end end
+        tt.HookScript = function(_, ev, fn) if ev == "OnTooltipCleared" then cleared = fn end end
+        ns.AddNeeds(tt, 424242)
+        assert(tl[1] and tl[1]:find("In transit", 1, true) and tl[1]:find("3x Aa", 1, true),
+          "transit: second return of InTransitFor reaches the tooltip: " .. tostring(tl[1]))
+        heads = 0
+        ns.TooltipHook(tt, 424242) ns.TooltipHook(tt, 424242)
+        assert(heads == 1 and cleared, "tooltip hook: one block per item per tooltip")
+        cleared(tt) ns.TooltipHook(tt, 424242)
+        assert(heads == 2, "tooltip hook: shows again once the tooltip is cleared")
+        local ftt = MockWidget()
+        ftt.IsForbidden = function() return true end
+        ftt.AddLine = function() heads = heads + 1 end
+        ns.TooltipHook(ftt, 424242)
+        assert(heads == 2, "tooltip hook: forbidden tooltip skipped")
+        ns.InTransitFor = oldT
+
+        -- Observed Forever vendor without any lib source; container kind shown by item name.
+        local lib = LibStub("LibProfessionDB-1.0")
+        local oSrc, oItem, oVend = lib.GetRecipeSources, lib.GetRecipeItem, ns.ForeverDB.Vendor
+        lib.GetRecipeSources = function() return nil end
+        lib.GetRecipeItem = function() return 777001, false end
+        ns.ForeverDB.Vendor = function(id) return id == 777001 and { npc = 5, name = "Vend", map = 1429, x = 40, y = 50 } or nil end
+        local s1 = ns.RecipeSources(2963)
+        assert(s1 and s1.vendor and s1.vendor.list[1].name == "Vend", "sources: observed vendor without lib vendor")
+        ns.ForeverDB.Vendor = function() return nil end
+        lib.GetRecipeSources = function() return { container = { { id = 4632 }, total = 1 } } end
+        local s2 = ns.RecipeSources(2963)
+        assert(s2 and s2.container and s2.container.list[1].name:find("4632") and not s2.container.list[1].place,
+          "sources: container kind listed by item, no spawn place")
+        lib.GetRecipeSources, lib.GetRecipeItem, ns.ForeverDB.Vendor = oSrc, oItem, oVend
+
+        -- Patterns: Forever recipe with a teaching item but no lib source -> AH.
+        local oRec, oKinds, oRS, oPS = lib.GetRecipes, lib.GetRecipeSourceKinds, ns.RecipeSources, ns.PriceSource
+        local GS = ns.GearScore
+        local oCons, oSC = GS.CONSUMABLES, GS.ScoreConsumable
+        lib.GetRecipes = function(_, line) return line == 197 and { [2963] = { requiredSkill = 1, itemId = 777001 } } or {} end
+        lib.GetRecipeSourceKinds = function() return nil end
+        ns.RecipeSources, ns.PriceSource = function() return nil end, nil
+        GS.CONSUMABLES, GS.ScoreConsumable = { [2963] = true }, function() return 10 end
+        ComradeCraftDB.chars["Crafty-Realm"] = { class = "MAGE", level = 20, known = {},
+          professions = { Tailoring = { skillLine = 197, rank = 50, max = 75 } } }
+        local pl = ns.Audit.PatternsForCrafter("Crafty-Realm")
+        ComradeCraftDB.chars["Crafty-Realm"] = nil
+        lib.GetRecipes, lib.GetRecipeSourceKinds, ns.RecipeSources, ns.PriceSource = oRec, oKinds, oRS, oPS
+        GS.CONSUMABLES, GS.ScoreConsumable = oCons, oSC
+        assert(pl[1] and pl[1].spell == 2963 and pl[1].sourceText == "auction house" and pl[1].sourceKind == "ah",
+          "patterns: custom recipe with teaching item, no source -> auction house")
+
+        -- FarmAdvice: never the other faction's starting zone.
+        local oQ, oFac = LibQuestieDB, UnitFactionGroup
+        LibQuestieDB = { Item = { objectDrops = function() return { 1 } end },
+          Object = { name = function() return "Vein" end,
+            spawns = function() return { [14] = { { 50, 50 }, { 51, 51 }, { 52, 52 } }, [12] = { { 40, 40 } } } end } }
+        UnitFactionGroup = function() return "Alliance" end
+        assert(ns.FarmAdvice.Spot(2770).x == 40, "farm advice: Alliance not sent to Durotar")
+        UnitFactionGroup = function() return "Horde" end
+        assert(ns.FarmAdvice.Spot(2770).x == 50, "farm advice: Horde not sent to Elwynn")
+        LibQuestieDB, UnitFactionGroup = oQ, oFac
+
+        -- Cold cache: IsBoP unknown + requested; upgrade skipped while worn piece uncached.
+        local oGet, oCI, oReq = GetItemInfo, C_Item, ns.RequestItemData
+        local asked = {}
+        ns.RequestItemData = function(id) asked[id] = true end
+        C_Item = nil
+        GetItemInfo = function(id)
+          if id == 55555 then return nil end
+          if id == 99001 then return "Robe", "|Hitem:99001|h", 2, 15, 15, "Armor", "Cloth", 1, "INVTYPE_CHEST", 0, 0, 4, 1 end
+          return oGet(id)
+        end
+        assert(ns.IsBoP(55555) == nil and asked[55555], "isbop: uncached -> unknown, item requested")
+        asked = {}
+        assert(not ns.GearScore.UpgradeFor(99001, { class = "MAGE", level = 20, equipped = { [5] = 55555 } })
+          and asked[55555], "upgrade: skipped until the worn piece is cached")
+        GetItemInfo, C_Item, ns.RequestItemData = oGet, oCI, oReq
+
+        -- Tools: an equipped tool counts.
+        local oc, oi = ns.ToolCategories, ns.ToolItems
+        ns.ToolCategories, ns.ToolItems = { [162] = { "Blacksmith Hammer", 24, 4 } }, { [5956] = 162 }
+        assert(ns.HasTool({ equipped = { [16] = 5956 } }, 162) and ns.HasTool({ equipped = { [16] = 5956 } }, -5956)
+          and not ns.HasTool({ equipped = { [16] = 1 } }, 162), "tools: equipped hammer counts")
+        ns.ToolCategories, ns.ToolItems = oc, oi
+      end)() end
+
       -- Log: commands and their output are kept, colors stripped; errors logged then re-raised.
       local log = ComradeCraftDB.log
       local joined = table.concat(log, " / ")

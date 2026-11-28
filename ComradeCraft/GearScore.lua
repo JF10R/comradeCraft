@@ -564,6 +564,16 @@ function GS.UpgradeFor(item, c, scoreFn, levelAhead)
     end
     return true, nil, nil, slots[1]
   end
+  -- A worn piece not in the item cache would score 0: skip until it loads (cold login).
+  local check = f.classID == 2 or f.equipLoc == "INVTYPE_SHIELD" or f.equipLoc == "INVTYPE_HOLDABLE"
+    or f.equipLoc == "INVTYPE_RANGED" or f.equipLoc == "INVTYPE_RANGEDRIGHT"
+  for _, slot in ipairs(check and { 16, 17, unpack(slots) } or slots) do
+    local ref = WornRef(c, slot)
+    if ref and not ItemFacts(ref) then
+      if ns.RequestItemData then ns.RequestItemData(c.equipped[slot]) end
+      return false
+    end
+  end
 
   local function Score(ref, offHand)
     if not ref then return 0, nil end

@@ -270,17 +270,33 @@ local function PlaceZoneName(place)
   end
 end
 
+-- Teaching item of a recipe, and whether it can be obtained: a known source kind, or a
+-- teaching item (Forever custom recipes without Sources entry are bought at the AH).
+local function RecipeItemOf(lib, spell, e)
+  local id, isBook = type(e) == "table" and e.itemId or nil, false
+  if not id and lib.GetRecipeItem then id, isBook = lib:GetRecipeItem(spell) end
+  return (not isBook) and id or nil
+end
+local function Obtainable(lib, spell, e)
+  local k = lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
+  if k and (k.trainer or k.vendor or k.quest or k.drop or k.container) then return true end
+  return RecipeItemOf(lib, spell, e) ~= nil
+end
+
 -- Compact source summary for an unlearned pattern (trainer / vendor / quest / drop + drop rate / AH).
 local function PatternSourceText(spell, recipeItem)
   local src = ns.RecipeSources and ns.RecipeSources(spell)
-  if not src then return nil, nil end
   local ahTxt = ""
   if recipeItem and recipeItem > 0 and not (ns.IsBoP and ns.IsBoP(recipeItem)) and ns.PriceSource then
     local p = ns.PriceSource(recipeItem)
     if p and p > 0 then ahTxt = " | " .. L["AH ~%s"]:format(ns.Money(math.floor(p))) end
   end
+  if not src then -- Forever recipe with a teaching item but no known source: the AH
+    if not (recipeItem and recipeItem > 0) then return nil, nil end
+    return ahTxt ~= "" and ahTxt:sub(4) or L["auction house"], "ah"
+  end
   local myMap = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-  for _, kind in ipairs({ "trainer", "vendor", "quest", "drop" }) do
+  for _, kind in ipairs({ "trainer", "vendor", "quest", "drop", "container" }) do
     local s = src[kind]
     if s and s.list and s.list[1] then
       local first = s.list[1]
@@ -344,8 +360,7 @@ local function FindUnlearnedPatterns(tc, tkey, chars, knownSet, bestKnownBySlot,
           -- Fast path: only score cached items with a known source kind (O(1)); defer heavy
           -- Questie/HereBeDragons RecipeSources lookup to the final top-3 winners only!
           local name, _, eqLoc, _, _, subClassID = ItemInfo(item, false)
-          local kinds = name and lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
-          if name and kinds and (kinds.trainer or kinds.vendor or kinds.quest or kinds.drop) then
+          if name and Obtainable(lib, spell, e) then
             local up, gain, how, slotID = ns.UpgradeFor(item, tc)
             local knownGain = slotID and bestKnownBySlot[slotID] and bestKnownBySlot[slotID].gain or 0
             if up and gain and gain > knownGain + 1e-6 then
@@ -353,7 +368,7 @@ local function FindUnlearnedPatterns(tc, tkey, chars, knownSet, bestKnownBySlot,
               local prev = bestBySlot[sk]
               if not prev or gain > prev.gain then
                 bestBySlot[sk] = {
-                  kind = "pattern", spell = spell, item = item, recipeItem = type(e) == "table" and e.itemId or nil,
+                  kind = "pattern", spell = spell, item = item, recipeItem = RecipeItemOf(lib, spell, e),
                   gain = gain, how = how, slot = sk,
                   isShield = (eqLoc == "INVTYPE_SHIELD" or subClassID == 6),
                   crafter = pb.key, crafterClass = pb.class, ownCrafter = pb.own,
@@ -673,10 +688,9 @@ function Audit.PatternsForCrafter(crafterKey)
         local req = type(e) == "table" and e.requiredSkill or 0
         if r and not knownAll[spell] and req <= rank + 40
           and not (lib.IsHiddenRecipe and lib:IsHiddenRecipe(spell)) then
-          local kinds = lib.GetRecipeSourceKinds and lib:GetRecipeSourceKinds(spell)
-          if kinds and (kinds.trainer or kinds.vendor or kinds.quest or kinds.drop) then
+          if Obtainable(lib, spell, e) then
             local item = r[5] or 0
-            local recipeItem = type(e) == "table" and e.itemId or nil
+            local recipeItem = RecipeItemOf(lib, spell, e)
             local forList, helpsSelf, bestScore, cat, slotGroup = {}, false, 0, nil, "Other"
             local bagSz = item ~= 0 and BAG_SLOTS[item]
             if bagSz and bagSz >= 12 then

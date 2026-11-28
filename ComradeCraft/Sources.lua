@@ -4,7 +4,7 @@
 local _, ns = ...
 local L = ns.L
 
-local KINDS = { "trainer", "vendor", "drop", "quest" }
+local KINDS = { "trainer", "vendor", "drop", "quest", "container" }
 local MAX_LIST = 3
 
 local function Lib() return LibStub and LibStub("LibProfessionDB-1.0", true) end
@@ -225,7 +225,11 @@ function ns.RecipeSources(spell)
     end
   end
   local extra = ns.EXTRA_VENDORS[spell]
-  if not src and #visited == 0 and not extra then return nil end
+  -- In-game observed vendor of the teaching item: shown even when the lib knows no vendor.
+  local rid = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
+  local fv = rid and ns.ForeverDB and ns.ForeverDB.Vendor and ns.ForeverDB.Vendor(rid)
+  if not (fv and fv.map) then fv = nil end
+  if not src and #visited == 0 and not extra and not fv then return nil end
   src = src or {}
   -- A recipe with a teaching item is bought or looted on Forever, not trained (unless a
   -- trainer was seen teaching it); merge the extra vendors in.
@@ -252,11 +256,14 @@ function ns.RecipeSources(spell)
   local out = {}
   for _, kind in ipairs(KINDS) do
     local list = src[kind] or (kind == "trainer" and #visited > 0 and {} or nil)
+      or (kind == "vendor" and fv and {} or nil)
     if list then
       local entries = {}
       for _, e in ipairs(list) do
         local x = { id = e.id, name = e.name }
-        if kind ~= "quest" then
+        if kind == "container" then -- ids are items (lockboxes, clams): no spawn place
+          x.name = ns.ItemName and ns.ItemName(e.id) or x.name
+        elseif kind ~= "quest" then
           if (kind == "trainer" or kind == "vendor") and not Friendly(e.id) then x = nil end
           if x and kind == "trainer" and r and TrainerDisqualified(e.id, spell, r[1]) then x = nil end
           if x then
@@ -282,10 +289,8 @@ function ns.RecipeSources(spell)
           if seen[v.id] then seen[v.id].visited, seen[v.id].place, seen[v.id].dist = true, v.place, v.dist
           else entries[#entries + 1] = v end
         end
-      elseif kind == "vendor" and ns.ForeverDB and ns.ForeverDB.Vendor then
-        local rid = lib and lib.GetRecipeItem and lib:GetRecipeItem(spell)
-        local fv = rid and ns.ForeverDB.Vendor(rid)
-        if fv and fv.map then
+      elseif kind == "vendor" then
+        if fv then
           local fp = { uiMap = fv.map, x = fv.x or 50, y = fv.y or 50 }
           local fd = Distance(fp, map, px, py)
           local hit = false
