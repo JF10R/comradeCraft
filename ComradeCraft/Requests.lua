@@ -85,6 +85,9 @@ function Requests.Clean(q)
   if not (out.id and out.from and out.to and validTarget and out.qty and out.status and out.updated) then
     return nil
   end
+  local Rk = ns.RenamedKey or function(k) return k end -- a sender still using an old name
+  out.from, out.to = Rk(out.from), Rk(out.to)
+  if out.deliverTo then out.deliverTo = Rk(out.deliverTo) end
   return out
 end
 

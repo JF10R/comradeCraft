@@ -173,7 +173,7 @@ function Sync.CleanRecord(r)
       local arr = Num(e.a or e.arrives, 1, 2 ^ 31)
       local snt = Num(e.s or e.sent, 0, 2 ^ 31) or math.max(0, (arr or 0) - 3600)
       if to and it and q and arr and arr > nowS and arr <= nowS + 7200 then
-        tr[#tr + 1] = { to = to, item = it, qty = q, sent = snt, arrives = arr }
+        tr[#tr + 1] = { to = ns.RenamedKey and ns.RenamedKey(to) or to, item = it, qty = q, sent = snt, arrives = arr }
       end
     end
   end
@@ -231,7 +231,7 @@ function Sync.CleanRecord(r)
     if item and type(rv) == "table" and nr < MAX_FARM then
       local to, qty = Str(rv.t or rv.to, 80), Num(rv.q or rv.qty, 1, 1000000)
       if to and qty then
-        res[item] = { to = to, qty = qty }
+        res[item] = { to = ns.RenamedKey and ns.RenamedKey(to) or to, qty = qty }
         nr = nr + 1
       end
     end

@@ -847,11 +847,28 @@ def main():
       ComradeCraftDB.remote["Vez-Realm"].localTargets = { [197] = 60 }
       ComradeCraftDB.favorites = ComradeCraftDB.favorites or {}
       ComradeCraftDB.favorites["Vez-Realm"] = true
+      ComradeCraftDB.requests = ComradeCraftDB.requests or {}
+      ComradeCraftDB.requests["rn-1"] = { id = "rn-1", from = "Test-Realm", to = "Vez-Realm", spell = 2963, qty = 1,
+        status = "pending", updated = 1 }
+      c.reserved = { [2589] = { to = "Vez-Realm", qty = 3, t = 1 } }
+      ComradeCraftDB.shopLists = ComradeCraftDB.shopLists or {}
+      ComradeCraftDB.shopLists["Vez-Realm:197"] = "Tailoring"
       From({ t = "H", v = 1, id = "peerVez", c = { ["Vez Ironcrest-Realm"] = { u = 2 ^ 31 - 1, cl = "DRUID", lv = 20 } } }, "Vez")
       local vi = ComradeCraftDB.remote["Vez Ironcrest-Realm"]
       assert(vi and vi.localTargets and vi.localTargets[197] == 60 and not ComradeCraftDB.remote["Vez-Realm"]
         and ComradeCraftDB.favorites["Vez Ironcrest-Realm"] and not ComradeCraftDB.favorites["Vez-Realm"],
         "sync: a first-name key upgraded to the full name keeps your target and favorite")
+      assert(ComradeCraftDB.requests["rn-1"].to == "Vez Ironcrest-Realm" and c.reserved[2589].to == "Vez Ironcrest-Realm"
+        and ComradeCraftDB.shopLists["Vez Ironcrest-Realm:197"] and not ComradeCraftDB.shopLists["Vez-Realm:197"],
+        "rename: requests, reservations and shopping lists follow")
+      do
+      local lateQ = ns.Requests.Clean({ rid = "rn-2", from = "Vez-Realm", to = "Test-Realm", spell = 2963, qty = 1,
+        status = "pending", u = 5 })
+      local lateR = ns.Sync.CleanRecord({ class = "DRUID", reserved = { [2589] = { t = "Vez-Realm", q = 2 } } })
+      assert(lateQ.from == "Vez Ironcrest-Realm" and lateR.reserved[2589].to == "Vez Ironcrest-Realm",
+        "rename: data arriving later with the old name lands on the new one")
+      end
+      ComradeCraftDB.requests["rn-1"], c.reserved, ComradeCraftDB.shopLists["Vez Ironcrest-Realm:197"] = nil, nil, nil
       From({ t = "D", v = 1, id = "peerVez", key = "Vez Ironcrest-Realm", rec = { class = "DRUID", updated = 2 ^ 31 - 1 } }, "Vez")
       assert(ComradeCraftDB.remote["Vez Ironcrest-Realm"].localTargets[197] == 60, "sync: target kept when their record arrives")
       assert(ns.Sync.UpgradedKey("Wo-R", { ["Wo A-R"] = {}, ["Wo B-R"] = {} }, {}) == nil

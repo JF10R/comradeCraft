@@ -428,8 +428,48 @@ local function MergeCharRecords(dst, src)
   return dst
 end
 
+-- A character key after renames (Forever "First" -> "First Last"), for data still using the old one.
+function ns.RenamedKey(key)
+  local map = ComradeCraftDB and ComradeCraftDB.renamed
+  for _ = 1, 5 do
+    local nk = map and key and map[key]
+    if not nk or nk == key then break end
+    key = nk
+  end
+  return key
+end
+
+-- Moves everything stored under a character key to its new key, and remembers the rename so
+-- data arriving later with the old key (requests, reservations, mail) lands on the new one.
 local function RebindKeyRefs(oldKey, newKey)
   if not (ComradeCraftDB and oldKey and newKey and oldKey ~= newKey) then return end
+  ComradeCraftDB.renamed = ComradeCraftDB.renamed or {}
+  ComradeCraftDB.renamed[oldKey] = newKey
+  if ComradeCraftDB.renamed[newKey] == oldKey then ComradeCraftDB.renamed[newKey] = nil end
+  for _, r in pairs(ComradeCraftDB.requests or {}) do
+    if type(r) == "table" then
+      if r.from == oldKey then r.from = newKey end
+      if r.to == oldKey then r.to = newKey end
+      if r.deliverTo == oldKey then r.deliverTo = newKey end
+    end
+  end
+  for _, store in ipairs({ ComradeCraftDB.chars or {}, ComradeCraftDB.remote or {} }) do
+    for _, ch in pairs(store) do
+      if type(ch) == "table" then
+        for _, rv in pairs(ch.reserved or {}) do if rv.to == oldKey then rv.to = newKey end end
+        for _, e in ipairs(ch.inTransit or {}) do if e.to == oldKey then e.to = newKey end end
+      end
+    end
+  end
+  local lists = ComradeCraftDB.shopLists
+  if lists then
+    local moves = {}
+    for slot, name in pairs(lists) do
+      local line = slot:sub(1, #oldKey + 1) == oldKey .. ":" and slot:sub(#oldKey + 2)
+      if line then moves[slot] = { newKey .. ":" .. line, name } end
+    end
+    for slot, m in pairs(moves) do lists[slot], lists[m[1]] = nil, m[2] end
+  end
   if ComradeCraftDB.ui and ComradeCraftDB.ui.sel == oldKey then ComradeCraftDB.ui.sel = newKey end
   if ComradeCraftDB.favorites and ComradeCraftDB.favorites[oldKey] then
     ComradeCraftDB.favorites[newKey] = true
